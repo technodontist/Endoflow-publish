@@ -2,6 +2,10 @@ import { EnhancedAssistantAppointmentOrganizer } from '@/components/assistant/en
 import { getCurrentUser } from '@/lib/actions/auth'
 import { redirect } from 'next/navigation'
 
+
+
+export const dynamic = 'force-dynamic';
+
 export default async function AssistantAppointmentsPage() {
   const user = await getCurrentUser()
 
