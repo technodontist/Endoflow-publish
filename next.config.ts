@@ -4,11 +4,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  experimental: {
-    ppr: true,
-    clientSegmentCache: true,
-    nodeMiddleware: true
-  },
   output: 'standalone',
   env: {
     // TEMPORARY: Expose service role key to client to bypass RLS issues
