@@ -1,0 +1,15 @@
+{
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "functions": {
+    "app/**/*.ts": {
+      "maxDuration": 30
+    },
+    "app/**/*.tsx": {
+      "maxDuration": 30
+    }
+  },
+  "crons": []
+}

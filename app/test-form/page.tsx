@@ -1,4 +1,4 @@
-import { IsolatedTestForm } from '../../test-isolated-form'
+import { IsolatedTestForm } from '@/components/test-isolated-form'
 
 export default function TestFormPage() {
   return (

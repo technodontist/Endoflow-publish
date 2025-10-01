@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (same as production)
+  postgres:
+    image: postgres:15-alpine
+    container_name: endoflow-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: endoflow_dev
+      POSTGRES_USER: endoflow_user
+      POSTGRES_PASSWORD: endoflow_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U endoflow_user -d endoflow_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Next.js Application for Development
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: endoflow-app-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=development
+      - POSTGRES_URL=postgresql://endoflow_user:endoflow_password@postgres:5432/endoflow_dev
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm run dev
+
+  # pgAdmin for database management (development only)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: endoflow-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@endoflow.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: endoflow-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  default:
+    name: endoflow-dev-network

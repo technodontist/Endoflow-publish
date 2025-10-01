@@ -1,0 +1,109 @@
+const { createClient } = require('@supabase/supabase-js');
+
+async function showManualSetup() {
+  console.log('🔧 Research Projects Manual Setup Guide\n');
+
+  console.log('📋 Copy and paste this SQL into your Supabase SQL Editor:\n');
+  console.log('=' * 70);
+
+  const sql = `-- RESEARCH PROJECTS SETUP SQL
+CREATE TABLE IF NOT EXISTS api.research_projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dentist_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    hypothesis TEXT,
+    start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    end_date DATE,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'completed', 'paused')),
+    tags TEXT[] DEFAULT '{}',
+    filter_criteria JSONB DEFAULT '[]',
+    patient_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT fk_research_projects_dentist
+        FOREIGN KEY (dentist_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS api.research_cohorts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL,
+    patient_id UUID NOT NULL,
+    cohort_name TEXT DEFAULT 'default',
+    inclusion_date DATE DEFAULT CURRENT_DATE,
+    exclusion_date DATE,
+    notes TEXT,
+    match_score DECIMAL(5,2) DEFAULT 0.0,
+    matching_criteria JSONB DEFAULT '[]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT fk_research_cohorts_project
+        FOREIGN KEY (project_id) REFERENCES api.research_projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_research_cohorts_patient
+        FOREIGN KEY (patient_id) REFERENCES auth.users(id) ON DELETE CASCADE,
+    CONSTRAINT unique_patient_project UNIQUE (project_id, patient_id)
+);
+
+-- Enable Row Level Security
+ALTER TABLE api.research_projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api.research_cohorts ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS Policies
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'research_projects'
+        AND policyname = 'Dentists can manage their own research projects'
+    ) THEN
+        CREATE POLICY "Dentists can manage their own research projects" ON api.research_projects
+            FOR ALL USING (
+                EXISTS (
+                    SELECT 1 FROM public.profiles
+                    WHERE id = auth.uid()
+                    AND role = 'dentist'
+                    AND status = 'active'
+                )
+                AND dentist_id = auth.uid()
+            );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'research_cohorts'
+        AND policyname = 'Dentists can manage cohorts for their projects'
+    ) THEN
+        CREATE POLICY "Dentists can manage cohorts for their projects" ON api.research_cohorts
+            FOR ALL USING (
+                EXISTS (
+                    SELECT 1 FROM api.research_projects rp
+                    WHERE rp.id = project_id
+                    AND rp.dentist_id = auth.uid()
+                )
+            );
+    END IF;
+END $$;
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_research_projects_dentist_id ON api.research_projects(dentist_id);
+CREATE INDEX IF NOT EXISTS idx_research_projects_status ON api.research_projects(status);
+CREATE INDEX IF NOT EXISTS idx_research_cohorts_project_id ON api.research_cohorts(project_id);
+
+-- Success message
+DO $$
+BEGIN
+    RAISE NOTICE 'Research Projects tables created successfully!';
+    RAISE NOTICE 'Research Projects system is ready!';
+END $$;`;
+
+  console.log(sql);
+  console.log('=' * 70);
+  console.log('\n🎯 Steps:');
+  console.log('1. Go to your Supabase project dashboard');
+  console.log('2. Open SQL Editor');
+  console.log('3. Paste the above SQL and run it');
+  console.log('4. Verify by running: node check-research-setup.js');
+  console.log('\n✅ The Research Projects feature will then work!');
+}
+
+showManualSetup();
