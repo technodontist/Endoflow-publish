@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { updateAppointmentStatusAction } from '@/lib/actions/appointments'
 import { createClient } from '@/lib/supabase/client'
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
 export default function FDIColorsTestPage() {
   const [patientId, setPatientId] = useState('')
   const [appointments, setAppointments] = useState<any[]>([])

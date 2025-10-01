@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
 export default function FindPatientPage() {
   const [patients, setPatients] = useState<any[]>([])
   const [loading, setLoading] = useState(false)

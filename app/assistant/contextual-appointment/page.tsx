@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
 export default function AssistantContextualAppointmentPage() {
   const supabase = createClient()
   const [patientId, setPatientId] = useState('')
