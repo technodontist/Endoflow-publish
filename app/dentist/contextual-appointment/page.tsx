@@ -10,7 +10,6 @@ import { createClient } from '@/lib/supabase/client'
 export const dynamic = 'force-dynamic'
 
 export default function DentistContextualAppointmentPage() {
-  const supabase = createClient()
   const [patientId, setPatientId] = useState('')
   const [dentistId, setDentistId] = useState('')
 
@@ -57,17 +56,23 @@ export default function DentistContextualAppointmentPage() {
   useEffect(() => {
     const run = async () => {
       if (!query || patientId) { setResults([]); return }
-      const { data } = await supabase
-        .schema('api')
-        .from('patients')
-        .select('id, first_name, last_name')
-        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
-        .limit(10)
-      setResults(data || [])
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .schema('api')
+          .from('patients')
+          .select('id, first_name, last_name')
+          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+          .limit(10)
+        setResults(data || [])
+      } catch (error) {
+        console.error('Search error:', error)
+        setResults([])
+      }
     }
     const t = setTimeout(run, 250)
     return () => clearTimeout(t)
-  }, [query, patientId, supabase])
+  }, [query, patientId])
 
   return (
     <div className="max-w-2xl mx-auto p-6" onKeyDown={(e)=>{e.stopPropagation()}}>
