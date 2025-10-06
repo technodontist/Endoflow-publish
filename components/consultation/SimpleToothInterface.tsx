@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { X, Search, Plus } from "lucide-react"
+import { X, Search, Plus, ChevronDown, ChevronRight } from "lucide-react"
 
 interface SimpleToothInterfaceProps {
   toothNumber: string
@@ -42,6 +42,8 @@ export function SimpleToothInterface({ toothNumber, onClose, onSave, existingDat
   const [customTreatment, setCustomTreatment] = useState('')
   const [diagnosisSearch, setDiagnosisSearch] = useState('')
   const [treatmentSearch, setTreatmentSearch] = useState('')
+  const [expandedDiagnosisCategories, setExpandedDiagnosisCategories] = useState<Record<string, boolean>>({})
+  const [expandedTreatmentCategories, setExpandedTreatmentCategories] = useState<Record<string, boolean>>({})
 
   // Multi-select individual treatment mode
   const [treatmentMode, setTreatmentMode] = useState<'unified' | 'individual'>('unified')
@@ -78,40 +80,185 @@ export function SimpleToothInterface({ toothNumber, onClose, onSave, existingDat
     return payload.fallback || 'healthy'
   }
 
-  const commonDiagnoses = [
-    'Incipient Caries',
-    'Moderate Caries',
-    'Deep Caries',
-    'Rampant Caries',
-    'Root Caries',
-    'Recurrent Caries',
-    'Irreversible Pulpitis',
-    'Furcation Involvement',
-    'Vertical Root Fracture'
-  ]
+  const categorizedDiagnoses = {
+    'Caries & Cavities': [
+      'Incipient Caries',
+      'Moderate Caries',
+      'Deep Caries',
+      'Rampant Caries',
+      'Root Caries',
+      'Recurrent Caries',
+    ],
+    'Pulpal Conditions': [
+      'Reversible Pulpitis',
+      'Irreversible Pulpitis',
+      'Pulp Necrosis',
+      'Pulp Hyperplasia',
+      'Internal Resorption',
+    ],
+    'Periapical Conditions': [
+      'Acute Apical Periodontitis',
+      'Chronic Apical Periodontitis',
+      'Apical Abscess',
+      'Apical Granuloma',
+      'Apical Cyst',
+    ],
+    'Periodontal': [
+      'Gingivitis',
+      'Chronic Periodontitis',
+      'Aggressive Periodontitis',
+      'Gingival Recession',
+      'Furcation Involvement',
+    ],
+    'Restorative': [
+      'Failed Restoration',
+      'Marginal Leakage',
+      'Secondary Caries',
+      'Fractured Restoration',
+      'Worn Restoration',
+    ],
+    'Developmental Anomalies': [
+      'Enamel Hypoplasia',
+      'Dentinogenesis Imperfecta',
+      'Amelogenesis Imperfecta',
+      'Taurodontism',
+      'Dens Invaginatus',
+      'Supernumerary Tooth',
+    ],
+    'Traumatic Injuries': [
+      'Crown Fracture (Enamel Only)',
+      'Crown Fracture (Enamel-Dentin)',
+      'Crown Fracture (Pulp Exposure)',
+      'Root Fracture',
+      'Vertical Root Fracture',
+      'Luxation (Lateral)',
+      'Intrusive Luxation',
+      'Extrusive Luxation',
+      'Avulsion',
+    ],
+    'Wear & Erosion': [
+      'Attrition (Occlusal Wear)',
+      'Abrasion (Cervical Wear)',
+      'Erosion (Acid Wear)',
+      'Abfraction',
+      'Bruxism-Related Wear',
+    ],
+    'Tooth Resorption': [
+      'External Root Resorption',
+      'Internal Root Resorption',
+      'Cervical Resorption',
+      'Replacement Resorption',
+    ],
+    'Other Conditions': [
+      'Hypersensitivity',
+      'Tooth Discoloration',
+      'Cracked Tooth Syndrome',
+      'Fistula',
+      'Mobility (Grade I/II/III)',
+      'Impacted Tooth',
+    ],
+  }
 
-  const commonTreatments = [
-    'Fluoride Application',
-    'Dental Sealants',
-    'Oral Hygiene Instructions',
-    'Dietary Counseling',
-    'Root Resection',
-    'Root Canal Treatment',
-    'Bone Grafting',
-    'GTR Procedure'
-  ]
+  const categorizedTreatments = {
+    'Preventive': [
+      'Fluoride Application',
+      'Dental Sealants',
+      'Oral Hygiene Instructions',
+      'Dietary Counseling',
+    ],
+    'Restorative': [
+      'Composite Filling',
+      'Amalgam Filling',
+      'Glass Ionomer Filling',
+      'Inlay/Onlay',
+      'Crown Preparation',
+    ],
+    'Endodontic': [
+      'Pulp Capping',
+      'Pulpotomy',
+      'Root Canal Treatment',
+      'Retreatment',
+      'Apexification',
+    ],
+    'Surgical': [
+      'Simple Extraction',
+      'Surgical Extraction',
+      'Apicoectomy',
+      'Root Resection',
+      'Hemisection',
+    ],
+    'Periodontal': [
+      'Scaling & Root Planing',
+      'Gingivectomy',
+      'Flap Surgery',
+      'Bone Grafting',
+      'GTR Procedure',
+    ],
+    'Prosthodontic': [
+      'Post & Core',
+      'Full Crown (PFM)',
+      'Full Crown (Zirconia)',
+      'Full Crown (E-max)',
+      'Veneer (Porcelain)',
+      'Veneer (Composite)',
+      'Inlay/Onlay (Ceramic)',
+    ],
+    'Orthodontic': [
+      'Space Maintainer',
+      'Fixed Orthodontic Appliance',
+      'Removable Appliance',
+      'Interceptive Orthodontics',
+    ],
+    'Pediatric': [
+      'Stainless Steel Crown',
+      'Strip Crown',
+      'Pulpectomy (Primary Tooth)',
+      'Space Regainer',
+      'Fluoride Varnish',
+    ],
+    'Emergency/Trauma': [
+      'Emergency Pain Relief',
+      'Splinting',
+      'Tooth Repositioning',
+      'Reimplantation',
+      'Temporary Restoration',
+    ],
+    'Advanced': [
+      'Bone Grafting (Socket Preservation)',
+      'Sinus Lift',
+      'Ridge Augmentation',
+      'Implant Placement',
+      'Guided Bone Regeneration',
+      'Connective Tissue Graft',
+    ],
+  }
 
   const availableSymptoms = ['Pain', 'Sensitivity', 'Swelling', 'Bleeding', 'Mobility', 'Fracture']
 
-  // Filter diagnoses based on search term
-  const filteredDiagnoses = commonDiagnoses.filter(diagnosis =>
-    diagnosis.toLowerCase().includes(diagnosisSearch.toLowerCase())
-  )
+  // Filter diagnoses by category based on search term
+  const filteredDiagnosesByCategory = Object.entries(categorizedDiagnoses).reduce((acc, [category, diagnoses]) => {
+    const filtered = diagnoses.filter(diagnosis =>
+      diagnosis.toLowerCase().includes(diagnosisSearch.toLowerCase())
+    )
+    if (filtered.length > 0) {
+      acc[category] = filtered
+    }
+    return acc
+  }, {} as Record<string, string[]>)
 
-  // Filter treatments based on search term
-  const filteredTreatments = commonTreatments.filter(treatment =>
-    treatment.toLowerCase().includes(treatmentSearch.toLowerCase())
-  )
+  // Filter treatments by category based on search term
+  const filteredTreatmentsByCategory = Object.entries(categorizedTreatments).reduce((acc, [category, treatments]) => {
+    const filtered = treatments.filter(treatment =>
+      treatment.toLowerCase().includes(treatmentSearch.toLowerCase())
+    )
+    if (filtered.length > 0) {
+      acc[category] = filtered
+    }
+    return acc
+  }, {} as Record<string, string[]>)
+
+  // Get all treatments as flat array for individual mode
+  const allTreatments = Object.values(categorizedTreatments).flat()
 
   const handleUpdate = (field: keyof ToothData, value: any) => {
     setToothData(prev => ({ ...prev, [field]: value }))
@@ -373,23 +520,52 @@ export function SimpleToothInterface({ toothNumber, onClose, onSave, existingDat
                   </div>
                 )}
 
-                {/* Common Diagnoses */}
-                <div>
-                  <Label className="text-sm font-medium mb-2 block">Caries & Cavities</Label>
-                  <div className="max-h-48 overflow-y-auto border rounded-lg">
-                    {filteredDiagnoses.map((diagnosis) => (
-                      <div
-                        key={diagnosis}
-                        className={`p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 transition-all duration-200 ${
-                          toothData.selectedDiagnoses.includes(diagnosis)
-                            ? 'bg-blue-100 border-l-4 border-blue-500'
-                            : ''
-                        }`}
-                        onClick={() => addDiagnosis(diagnosis)}
-                      >
-                        <div className="text-sm font-medium">{diagnosis}</div>
-                        {toothData.selectedDiagnoses.includes(diagnosis) && (
-                          <div className="text-xs text-blue-600 mt-1">✓ Added</div>
+                {/* Common Diagnoses by Category - Single Scrollable Container */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto">
+                    {Object.entries(filteredDiagnosesByCategory).map(([category, diagnoses], categoryIndex) => (
+                      <div key={category} className="border-b last:border-b-0">
+                        {/* Category Header - Collapsible */}
+                        <div
+                          className="bg-gray-50 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between sticky top-0 z-10"
+                          onClick={() => {
+                            setExpandedDiagnosisCategories(prev => ({
+                              ...prev,
+                              [category]: !prev[category]
+                            }))
+                          }}
+                        >
+                          <Label className="text-sm font-medium text-gray-700 cursor-pointer">{category}</Label>
+                          {expandedDiagnosisCategories[category] ? (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                          )}
+                        </div>
+                        
+                        {/* Category Items */}
+                        {expandedDiagnosisCategories[category] && (
+                          <div>
+                            {diagnoses.map((diagnosis) => (
+                              <div
+                                key={diagnosis}
+                                className={`p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 transition-all duration-200 ${
+                                  toothData.selectedDiagnoses.includes(diagnosis)
+                                    ? 'bg-blue-100 border-l-4 border-blue-500'
+                                    : ''
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  addDiagnosis(diagnosis)
+                                }}
+                              >
+                                <div className="text-sm font-medium">{diagnosis}</div>
+                                {toothData.selectedDiagnoses.includes(diagnosis) && (
+                                  <div className="text-xs text-blue-600 mt-1">✓ Added</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -459,27 +635,56 @@ export function SimpleToothInterface({ toothNumber, onClose, onSave, existingDat
                   </div>
                 )}
 
-                {/* Common Treatments */}
-                <div>
-                  <Label className="text-sm font-medium mb-2 block">Preventive</Label>
-                  <div className="max-h-48 overflow-y-auto border rounded-lg">
-                    {filteredTreatments.map((treatment) => (
-                      <div
-                        key={treatment}
-                        className={`p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 flex items-center justify-between transition-all duration-200 ${
-                          toothData.selectedTreatments.includes(treatment)
-                            ? 'bg-teal-100 border-l-4 border-teal-500'
-                            : ''
-                        }`}
-                        onClick={() => addTreatment(treatment)}
-                      >
-                        <div className="text-sm font-medium">{treatment}</div>
-                        <input
-                          type="checkbox"
-                          checked={toothData.selectedTreatments.includes(treatment)}
-                          readOnly
-                          className="text-teal-600"
-                        />
+                {/* Common Treatments by Category - Single Scrollable Container */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto">
+                    {Object.entries(filteredTreatmentsByCategory).map(([category, treatments], categoryIndex) => (
+                      <div key={category} className="border-b last:border-b-0">
+                        {/* Category Header - Collapsible */}
+                        <div
+                          className="bg-gray-50 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between sticky top-0 z-10"
+                          onClick={() => {
+                            setExpandedTreatmentCategories(prev => ({
+                              ...prev,
+                              [category]: !prev[category]
+                            }))
+                          }}
+                        >
+                          <Label className="text-sm font-medium text-gray-700 cursor-pointer">{category}</Label>
+                          {expandedTreatmentCategories[category] ? (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                          )}
+                        </div>
+                        
+                        {/* Category Items */}
+                        {expandedTreatmentCategories[category] && (
+                          <div>
+                            {treatments.map((treatment) => (
+                              <div
+                                key={treatment}
+                                className={`p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 flex items-center justify-between transition-all duration-200 ${
+                                  toothData.selectedTreatments.includes(treatment)
+                                    ? 'bg-teal-100 border-l-4 border-teal-500'
+                                    : ''
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  addTreatment(treatment)
+                                }}
+                              >
+                                <div className="text-sm font-medium">{treatment}</div>
+                                <input
+                                  type="checkbox"
+                                  checked={toothData.selectedTreatments.includes(treatment)}
+                                  readOnly
+                                  className="text-teal-600"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -505,7 +710,7 @@ export function SimpleToothInterface({ toothNumber, onClose, onSave, existingDat
                           <div className="space-y-2">
                             <Label className="text-xs text-gray-600">Select Treatments:</Label>
                             <div className="flex flex-wrap gap-1">
-                              {filteredTreatments.slice(0, 4).map(treatment => {
+                              {allTreatments.slice(0, 4).map(treatment => {
                                 const isSelected = individualToothTreatments[tooth]?.selectedTreatments?.includes(treatment) ||
                                                  (!individualToothTreatments[tooth] && toothData.selectedTreatments.includes(treatment))
                                 return (

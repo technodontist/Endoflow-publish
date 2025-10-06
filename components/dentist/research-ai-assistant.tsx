@@ -21,6 +21,7 @@ import {
   Sparkles,
   Lightbulb
 } from 'lucide-react'
+import { saveResearchConversationAction, getProjectConversationsAction } from '@/lib/actions/research-ai'
 
 interface Message {
   id: string
@@ -29,6 +30,8 @@ interface Message {
   timestamp: Date
   analysisType?: string
   metadata?: any
+  source?: 'langflow' | 'n8n' | 'fallback'
+  processingTime?: number
 }
 
 interface ResearchAIAssistantProps {
@@ -88,6 +91,7 @@ export default function ResearchAIAssistant({
   const [currentQuery, setCurrentQuery] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<string | null>(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -98,16 +102,85 @@ export default function ResearchAIAssistant({
     scrollToBottom()
   }, [messages])
 
-  const addMessage = (content: string, type: 'user' | 'ai', analysisType?: string, metadata?: any) => {
+  // Load conversation history when project changes
+  useEffect(() => {
+    if (selectedProject) {
+      loadConversationHistory()
+    } else {
+      // Clear messages when no project is selected
+      setMessages([])
+    }
+  }, [selectedProject])
+
+  const loadConversationHistory = async () => {
+    if (!selectedProject) return
+
+    setLoadingHistory(true)
+    try {
+      const result = await getProjectConversationsAction(selectedProject)
+      if (result.success && result.data) {
+        // Convert database conversations to Message format
+        const historyMessages: Message[] = result.data.flatMap(conv => [
+          {
+            id: `${conv.id}-user`,
+            type: 'user' as const,
+            content: conv.user_query,
+            timestamp: new Date(conv.created_at),
+            analysisType: conv.analysis_type || undefined,
+          },
+          {
+            id: `${conv.id}-ai`,
+            type: 'ai' as const,
+            content: conv.ai_response,
+            timestamp: new Date(conv.created_at),
+            analysisType: conv.analysis_type || undefined,
+            source: conv.source as 'langflow' | 'n8n' | 'fallback',
+            processingTime: conv.processing_time || undefined,
+            metadata: conv.metadata
+          }
+        ])
+        setMessages(historyMessages)
+      }
+    } catch (error) {
+      console.error('Error loading conversation history:', error)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  const addMessage = (content: string, type: 'user' | 'ai', analysisType?: string, metadata?: any, source?: 'langflow' | 'n8n' | 'fallback', processingTime?: number) => {
     const newMessage: Message = {
       id: Date.now().toString(),
       type,
       content,
       timestamp: new Date(),
       analysisType,
-      metadata
+      metadata,
+      source,
+      processingTime
     }
     setMessages(prev => [...prev, newMessage])
+  }
+
+  const saveConversation = async (userQuery: string, aiResponse: string, analysisType?: string, metadata?: any, source?: 'langflow' | 'n8n' | 'fallback', processingTime?: number) => {
+    if (!selectedProject) return // Don't save if no project selected
+
+    try {
+      await saveResearchConversationAction({
+        projectId: selectedProject,
+        userQuery,
+        aiResponse,
+        analysisType,
+        cohortSize: matchingPatients?.length || 0,
+        metadata,
+        source,
+        processingTime
+      })
+      console.log('✅ [RESEARCH AI] Conversation saved to database')
+    } catch (error) {
+      console.error('Error saving conversation:', error)
+      // Don't block the UI if saving fails
+    }
   }
 
   const handleQuickAnalysis = async (analysisType: string) => {
@@ -116,7 +189,8 @@ export default function ResearchAIAssistant({
     setIsProcessing(true)
 
     const analysisConfig = ANALYSIS_TYPES.find(t => t.id === analysisType)
-    addMessage(`Running ${analysisConfig?.label}...`, 'user', analysisType)
+    const userQuery = `Running ${analysisConfig?.label}...`
+    addMessage(userQuery, 'user', analysisType)
 
     try {
       // First try API endpoints, fall back to simulation if needed
@@ -160,7 +234,13 @@ export default function ResearchAIAssistant({
 
         if (result.success) {
           const aiContent = formatAIResponse(result, analysisType)
-          addMessage(aiContent, 'ai', analysisType, result)
+          const source = result.source || 'fallback'
+          const processingTime = result.processingTime
+
+          addMessage(aiContent, 'ai', analysisType, result, source, processingTime)
+
+          // Save conversation to database if project is selected
+          await saveConversation(userQuery, aiContent, analysisType, result, source, processingTime)
 
           if (onAnalysisComplete) {
             onAnalysisComplete(result)
@@ -173,11 +253,16 @@ export default function ResearchAIAssistant({
         // Fallback to simulation
         const simulatedResult = generateFallbackAnalysis(analysisType, matchingPatients)
         const aiContent = formatAIResponse(simulatedResult, analysisType)
-        addMessage(aiContent, 'ai', analysisType, simulatedResult)
+        addMessage(aiContent, 'ai', analysisType, simulatedResult, 'fallback')
+
+        // Save fallback conversation
+        await saveConversation(userQuery, aiContent, analysisType, simulatedResult, 'fallback')
       }
     } catch (error) {
       console.error('AI Analysis error:', error)
-      addMessage('I\'m having trouble processing your request. Please try again.', 'ai')
+      const errorMessage = 'I\'m having trouble processing your request. Please try again.'
+      addMessage(errorMessage, 'ai')
+      await saveConversation(userQuery, errorMessage, analysisType, { error: true }, 'fallback')
     } finally {
       setIsProcessing(false)
       setSelectedAnalysisType(null)
@@ -210,13 +295,23 @@ export default function ResearchAIAssistant({
 
       if (result.success) {
         const aiContent = formatAIResponse(result, 'general_query')
-        addMessage(aiContent, 'ai', 'general_query', result)
+        const source = result.source || 'fallback'
+        const processingTime = result.processingTime
+
+        addMessage(aiContent, 'ai', 'general_query', result, source, processingTime)
+
+        // Save custom query conversation
+        await saveConversation(userQuery, aiContent, 'general_query', result, source, processingTime)
       } else {
-        addMessage('I encountered an error processing your query. Please try again.', 'ai')
+        const errorMessage = 'I encountered an error processing your query. Please try again.'
+        addMessage(errorMessage, 'ai')
+        await saveConversation(userQuery, errorMessage, 'general_query', { error: true }, 'fallback')
       }
     } catch (error) {
       console.error('Custom query error:', error)
-      addMessage('I\'m having trouble processing your query. Please try again.', 'ai')
+      const errorMessage = 'I\'m having trouble processing your query. Please try again.'
+      addMessage(errorMessage, 'ai')
+      await saveConversation(userQuery, errorMessage, 'general_query', { error: true }, 'fallback')
     } finally {
       setIsProcessing(false)
     }
@@ -357,60 +452,84 @@ export default function ResearchAIAssistant({
   // Removed the conditional return that required selectedProject
 
   return (
-    <div className="h-full flex flex-col space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Bot className="w-6 h-6 text-[#009688]" />
-          <h3 className="text-lg font-semibold text-gray-900">EndoAI Co-Pilot</h3>
-          <Badge variant="secondary" className="bg-[#009688]/10 text-[#009688]">
-            <Sparkles className="w-3 h-3 mr-1" />
-            AI-Powered
-          </Badge>
-        </div>
-        <div className="text-xs text-gray-500">
-          {selectedProject ? `Project: ${selectedProject}` : `Analyzing ${matchingPatients?.length || 0} patients`}
-        </div>
-      </div>
+    <div className="h-full flex flex-col space-y-4 pb-4">
+      {/* Header - Enhanced */}
+      <Card className="border-teal-200 bg-gradient-to-r from-teal-50 to-white">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-teal-900">EndoAI Co-Pilot</h3>
+                <p className="text-xs text-teal-600">AI-Powered Research Assistant</p>
+              </div>
+            </div>
+            <Badge variant="secondary" className="bg-teal-100 text-teal-700 border-teal-300">
+              <Sparkles className="w-3 h-3 mr-1" />
+              {selectedProject ? 'Active Project' : `${matchingPatients?.length || 0} Patients`}
+            </Badge>
+          </div>
+        </CardHeader>
+      </Card>
 
-      {/* Quick Analysis Buttons */}
-      <div className="grid grid-cols-2 gap-2">
-        {ANALYSIS_TYPES.map((analysis) => {
-          const Icon = analysis.icon
-          return (
-            <Button
-              key={analysis.id}
-              variant="outline"
-              size="sm"
-              onClick={() => handleQuickAnalysis(analysis.id)}
-              disabled={isProcessing}
-              className="h-auto p-3 flex flex-col items-center space-y-1 hover:bg-gray-50"
-            >
-              <Icon
-                className="w-4 h-4"
-                style={{ color: analysis.color }}
-              />
-              <span className="text-xs font-medium">{analysis.label}</span>
-            </Button>
-          )
-        })}
-      </div>
+      {/* Quick Analysis Buttons - Enhanced */}
+      <Card className="border-gray-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-gray-700">Quick Analysis</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2">
+            {ANALYSIS_TYPES.map((analysis) => {
+              const Icon = analysis.icon
+              return (
+                <Button
+                  key={analysis.id}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickAnalysis(analysis.id)}
+                  disabled={isProcessing}
+                  className="h-auto p-3 flex items-center space-x-2 justify-start hover:bg-gray-50 border-gray-200 transition-all hover:border-teal-300 hover:shadow-sm"
+                  style={{
+                    borderLeftWidth: '3px',
+                    borderLeftColor: analysis.color
+                  }}
+                >
+                  <Icon
+                    className="w-4 h-4 flex-shrink-0"
+                    style={{ color: analysis.color }}
+                  />
+                  <div className="flex-1 text-left">
+                    <div className="text-xs font-medium text-gray-900">{analysis.label}</div>
+                  </div>
+                </Button>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Chat Messages */}
-      <Card className="flex-1 flex flex-col min-h-0">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center">
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Research Chat
+      {/* Chat Messages - Enhanced */}
+      <Card className="flex-1 flex flex-col min-h-0 border-gray-200 shadow-sm">
+        <CardHeader className="pb-3 border-b bg-gradient-to-r from-gray-50 to-white">
+          <CardTitle className="text-sm font-semibold text-gray-700 flex items-center">
+            <MessageSquare className="w-4 h-4 mr-2 text-teal-600" />
+            Research Conversation
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 flex flex-col min-h-0">
+        <CardContent className="flex-1 flex flex-col min-h-0 bg-gray-50/30 p-4">
           <ScrollArea className="flex-1 pr-4">
             <div className="space-y-4">
               {messages.length === 0 && (
-                <div className="text-center py-8">
-                  <Brain className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-sm text-gray-500">
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-100 to-teal-50 flex items-center justify-center mx-auto mb-4">
+                    <Brain className="w-8 h-8 text-teal-600" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700 mb-1">
+                    No messages yet
+                  </p>
+                  <p className="text-xs text-gray-500">
                     Start by clicking an analysis button above or ask a custom question below
                   </p>
                 </div>
@@ -421,29 +540,29 @@ export default function ResearchAIAssistant({
                   key={message.id}
                   className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`flex items-start space-x-2 max-w-[80%]`}>
+                  <div className={`flex items-start space-x-3 max-w-[85%]`}>
                     {message.type === 'ai' && (
-                      <div className="w-8 h-8 rounded-full bg-[#009688]/10 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 text-[#009688]" />
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-600 to-teal-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <Bot className="w-5 h-5 text-white" />
                       </div>
                     )}
                     <div
-                      className={`rounded-lg px-3 py-2 ${
+                      className={`rounded-xl px-4 py-3 shadow-sm ${
                         message.type === 'user'
-                          ? 'bg-[#009688] text-white'
-                          : 'bg-gray-100 text-gray-900'
+                          ? 'bg-gradient-to-br from-teal-600 to-teal-500 text-white'
+                          : 'bg-white border border-gray-200 text-gray-900'
                       }`}
                     >
-                      <div className="text-sm whitespace-pre-wrap">
+                      <div className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
                         {message.content}
                       </div>
-                      <div className="text-xs opacity-70 mt-1">
-                        {message.timestamp.toLocaleTimeString()}
+                      <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-teal-100' : 'text-gray-400'}`}>
+                        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
                     {message.type === 'user' && (
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                        <User className="w-4 h-4 text-gray-600" />
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-300 to-gray-200 flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <User className="w-5 h-5 text-gray-700" />
                       </div>
                     )}
                   </div>
@@ -452,14 +571,14 @@ export default function ResearchAIAssistant({
 
               {isProcessing && (
                 <div className="flex justify-start">
-                  <div className="flex items-start space-x-2">
-                    <div className="w-8 h-8 rounded-full bg-[#009688]/10 flex items-center justify-center">
-                      <Bot className="w-4 h-4 text-[#009688]" />
+                  <div className="flex items-start space-x-3">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-600 to-teal-500 flex items-center justify-center shadow-sm">
+                      <Bot className="w-5 h-5 text-white" />
                     </div>
-                    <div className="bg-gray-100 rounded-lg px-3 py-2">
+                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
                       <div className="flex items-center space-x-2">
-                        <RefreshCw className="w-4 h-4 animate-spin text-[#009688]" />
-                        <span className="text-sm text-gray-600">
+                        <RefreshCw className="w-4 h-4 animate-spin text-teal-600" />
+                        <span className="text-sm text-gray-700 font-medium">
                           {selectedAnalysisType
                             ? `Running ${ANALYSIS_TYPES.find(t => t.id === selectedAnalysisType)?.label}...`
                             : 'Analyzing your query...'
@@ -476,35 +595,42 @@ export default function ResearchAIAssistant({
         </CardContent>
       </Card>
 
-      {/* Input Area */}
-      <div className="space-y-2">
-        <Textarea
-          placeholder="Ask about treatment outcomes, patient patterns, statistical analysis, or clinical insights..."
-          value={currentQuery}
-          onChange={(e) => setCurrentQuery(e.target.value)}
-          onKeyPress={handleKeyPress}
-          rows={2}
-          className="resize-none border-gray-300 focus:border-[#009688] focus:ring-[#009688]"
-          disabled={isProcessing}
-        />
-        <Button
-          onClick={handleCustomQuery}
-          disabled={!currentQuery.trim() || isProcessing}
-          className="w-full bg-[#009688] hover:bg-[#009688]/90 text-white"
-        >
-          {isProcessing ? (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4 mr-2" />
-              Send Query
-            </>
-          )}
-        </Button>
-      </div>
+      {/* Input Area - Enhanced */}
+      <Card className="border-gray-200 shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          <Textarea
+            placeholder="Ask about treatment outcomes, patient patterns, statistical analysis, or clinical insights..."
+            value={currentQuery}
+            onChange={(e) => setCurrentQuery(e.target.value)}
+            onKeyPress={handleKeyPress}
+            rows={3}
+            className="resize-none border-gray-300 focus:border-teal-500 focus:ring-teal-500 bg-white"
+            disabled={isProcessing}
+          />
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500">
+              Press <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to send
+            </p>
+            <Button
+              onClick={handleCustomQuery}
+              disabled={!currentQuery.trim() || isProcessing}
+              className="bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white shadow-sm"
+            >
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send Query
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

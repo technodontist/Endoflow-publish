@@ -60,6 +60,45 @@ export function FullScreenToothDiagnosis({ toothNumber, patientName, onBack }: F
       "Fractured Restoration",
       "Worn Restoration",
     ],
+    "Developmental Anomalies": [
+      "Enamel Hypoplasia",
+      "Dentinogenesis Imperfecta",
+      "Amelogenesis Imperfecta",
+      "Taurodontism",
+      "Dens Invaginatus",
+      "Supernumerary Tooth",
+    ],
+    "Traumatic Injuries": [
+      "Crown Fracture (Enamel Only)",
+      "Crown Fracture (Enamel-Dentin)",
+      "Crown Fracture (Pulp Exposure)",
+      "Root Fracture",
+      "Luxation (Lateral)",
+      "Intrusive Luxation",
+      "Extrusive Luxation",
+      "Avulsion",
+    ],
+    "Wear & Erosion": [
+      "Attrition (Occlusal Wear)",
+      "Abrasion (Cervical Wear)",
+      "Erosion (Acid Wear)",
+      "Abfraction",
+      "Bruxism-Related Wear",
+    ],
+    "Tooth Resorption": [
+      "External Root Resorption",
+      "Internal Root Resorption",
+      "Cervical Resorption",
+      "Replacement Resorption",
+    ],
+    "Other Conditions": [
+      "Hypersensitivity",
+      "Tooth Discoloration",
+      "Cracked Tooth Syndrome",
+      "Fistula",
+      "Mobility (Grade I/II/III)",
+      "Impacted Tooth",
+    ],
   }
 
   const predefinedTreatments = {
@@ -68,6 +107,43 @@ export function FullScreenToothDiagnosis({ toothNumber, patientName, onBack }: F
     Endodontic: ["Pulp Capping", "Pulpotomy", "Root Canal Treatment", "Retreatment", "Apexification"],
     Surgical: ["Simple Extraction", "Surgical Extraction", "Apicoectomy", "Root Resection", "Hemisection"],
     Periodontal: ["Scaling & Root Planing", "Gingivectomy", "Flap Surgery", "Bone Grafting", "GTR Procedure"],
+    Prosthodontic: [
+      "Post & Core",
+      "Full Crown (PFM)",
+      "Full Crown (Zirconia)",
+      "Full Crown (E-max)",
+      "Veneer (Porcelain)",
+      "Veneer (Composite)",
+      "Inlay/Onlay (Ceramic)",
+    ],
+    Orthodontic: [
+      "Space Maintainer",
+      "Fixed Orthodontic Appliance",
+      "Removable Appliance",
+      "Interceptive Orthodontics",
+    ],
+    Pediatric: [
+      "Stainless Steel Crown",
+      "Strip Crown",
+      "Pulpectomy (Primary Tooth)",
+      "Space Regainer",
+      "Fluoride Varnish",
+    ],
+    "Emergency/Trauma": [
+      "Emergency Pain Relief",
+      "Splinting",
+      "Tooth Repositioning",
+      "Reimplantation",
+      "Temporary Restoration",
+    ],
+    Advanced: [
+      "Bone Grafting (Socket Preservation)",
+      "Sinus Lift",
+      "Ridge Augmentation",
+      "Implant Placement",
+      "Guided Bone Regeneration",
+      "Connective Tissue Graft",
+    ],
   }
 
   const filterItems = (items: Record<string, string[]>, searchTerm: string) => {
@@ -207,7 +283,7 @@ export function FullScreenToothDiagnosis({ toothNumber, patientName, onBack }: F
                 )}
 
                 {/* Diagnosis Categories */}
-                <div className="max-h-96 overflow-y-auto space-y-4">
+                <div className="max-h-[600px] overflow-y-auto space-y-4">
                   {Object.entries(filteredDiagnoses).map(([category, diagnoses]) => (
                     <div key={category} className="border rounded-lg p-4">
                       <h4 className="font-medium text-sm text-primary mb-3">{category}</h4>
@@ -293,7 +369,7 @@ export function FullScreenToothDiagnosis({ toothNumber, patientName, onBack }: F
                 )}
 
                 {/* Treatment Categories */}
-                <div className="max-h-96 overflow-y-auto space-y-4">
+                <div className="max-h-[600px] overflow-y-auto space-y-4">
                   {Object.entries(filteredTreatments).map(([category, treatments]) => (
                     <div key={category} className="border rounded-lg p-4">
                       <h4 className="font-medium text-sm text-teal-700 mb-3">{category}</h4>

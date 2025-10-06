@@ -24,6 +24,8 @@ import {
   CheckCircle,
   XCircle,
   Pause,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -32,8 +34,19 @@ import {
   assignTaskAction,
   addTaskCommentAction,
   getTaskCommentsAction,
-  getAvailableAssistantsAction
+  getAvailableAssistantsAction,
+  deleteTaskAction
 } from '@/lib/actions/assistant-tasks'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface Task {
   id: string
@@ -93,6 +106,8 @@ export function TaskDetailsDialog({ task, open, onOpenChange, onTaskUpdated }: T
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     if (open && task) {
@@ -165,6 +180,25 @@ export function TaskDetailsDialog({ task, open, onOpenChange, onTaskUpdated }: T
       console.error('Error adding comment:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteTask = async () => {
+    setIsDeleting(true)
+    try {
+      const result = await deleteTaskAction(task.id)
+      if (result.success) {
+        onTaskUpdated()
+        onOpenChange(false)
+        setDeleteDialogOpen(false)
+      } else {
+        alert(`Failed to delete task: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error)
+      alert('An error occurred while deleting the task')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -399,8 +433,54 @@ export function TaskDetailsDialog({ task, open, onOpenChange, onTaskUpdated }: T
               </div>
             </CardContent>
           </Card>
+
+          {/* Delete Task Section */}
+          <div className="pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(true)}
+              className="w-full text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Task
+            </Button>
+          </div>
         </div>
       </DialogContent>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the task <strong>&quot;{task.title}&quot;</strong> and all associated comments and activity logs.
+              <br /><br />
+              <span className="text-red-600 font-semibold">This action cannot be undone.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTask}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Task
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

@@ -604,3 +604,51 @@ export async function getTaskStatsAction() {
     return { error: 'Failed to fetch task statistics' }
   }
 }
+
+// Delete a task (dentist only)
+export async function deleteTaskAction(taskId: string) {
+  try {
+    const supabase = await createServiceClient()
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser?.id) {
+      return { error: 'Not authenticated' }
+    }
+
+    // Verify user is dentist (only dentists can delete tasks)
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('role, status')
+      .eq('id', currentUser.id)
+      .single()
+
+    if (!userProfile || userProfile.role !== 'dentist' || userProfile.status !== 'active') {
+      return { error: 'Only dentists can delete tasks' }
+    }
+
+    console.log('🗑️ [TASKS] Deleting task:', taskId)
+
+    // Delete the task (cascade deletes comments and activity log automatically)
+    const { error } = await supabase
+      .schema('api')
+      .from('assistant_tasks')
+      .delete()
+      .eq('id', taskId)
+
+    if (error) {
+      console.error('Delete task error:', error)
+      return { error: 'Failed to delete task' }
+    }
+
+    console.log('✅ [TASKS] Task deleted successfully')
+
+    // Revalidate the dentist dashboard
+    revalidatePath('/dentist')
+
+    return { success: true }
+
+  } catch (error) {
+    console.error('Delete task exception:', error)
+    return { error: 'Failed to delete task' }
+  }
+}

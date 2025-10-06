@@ -11,6 +11,16 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Plus,
   Users,
   Calendar,
@@ -39,9 +49,9 @@ import {
   deleteResearchProjectAction,
   findMatchingPatientsAction,
   getProjectAnalyticsAction,
-  // addPatientToCohortAction,
-  // removePatientFromCohortAction,
-  // getCohortPatientsAction,
+  addPatientToCohortAction,
+  removePatientFromCohortAction,
+  getCohortPatientsAction,
   updateProjectStatusAction,
   // exportResearchDataAction,
   queryAIResearchAssistantAction,
@@ -57,7 +67,9 @@ import {
   getOperatorsForDataType,
   type FilterField
 } from '@/lib/utils/filter-engine'
+import { JSONB_FILTER_CATEGORIES, isJSONBField } from '@/lib/utils/jsonb-query-builder'
 import ResearchAIAssistant from './research-ai-assistant'
+import { GroupSelectorDialog } from './group-selector-dialog'
 
 interface ResearchProject {
   id: string
@@ -86,12 +98,24 @@ interface MatchingPatient {
 interface ProjectAnalytics {
   totalPatients: number
   averageAge: number
+  ageStats: {
+    mean: number
+    mode: number
+    sd: number
+    ci95Lower: number
+    ci95Upper: number
+    min: number
+    max: number
+  }
+  ageDistribution: { range: string; count: number; fill: string }[]
   genderDistribution: { name: string; value: number; fill: string }[]
   conditionDistribution: { name: string; value: number; fill: string }[]
   outcomeDistribution: { name: string; value: number; fill: string }[]
-  treatmentSuccess: number
-  followUpRate: number
-  monthlyProgress: { month: string; patients: number; outcomes: number }[]
+  treatmentComparison: { treatment: string; successRate: number }[]
+  healingTimeComparison: { protocol: string; avgDays: number }[]
+  treatmentSuccess?: number
+  followUpRate?: number
+  monthlyProgress?: { month: string; patients: number; outcomes: number }[]
 }
 
 export function ResearchProjects() {
@@ -130,6 +154,19 @@ export function ResearchProjects() {
   // Analytics State
   const [projectAnalytics, setProjectAnalytics] = useState<ProjectAnalytics | null>(null)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+
+  // Cohort Members State
+  const [cohortPatients, setCohortPatients] = useState<any[]>([])
+  const [isLoadingCohort, setIsLoadingCohort] = useState(false)
+
+  // Delete Dialog State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Group Selector Dialog State
+  const [showGroupSelector, setShowGroupSelector] = useState(false)
+  const [isAddingToCohort, setIsAddingToCohort] = useState(false)
 
   // AI Assistant State
 
@@ -177,6 +214,26 @@ export function ResearchProjects() {
     }
   }, [])
 
+  const loadCohortPatients = useCallback(async (projectId: string) => {
+    setIsLoadingCohort(true)
+    try {
+      console.log('👥 [RESEARCH UI] Loading cohort patients for project:', projectId)
+      const result = await getCohortPatientsAction(projectId)
+      if (result.success && result.patients) {
+        setCohortPatients(result.patients)
+        console.log(`✅ [RESEARCH UI] Loaded ${result.patients.length} cohort patients`)
+      } else {
+        console.error('Failed to load cohort patients:', result.error)
+        setCohortPatients([])
+      }
+    } catch (error) {
+      console.error('Error loading cohort patients:', error)
+      setCohortPatients([])
+    } finally {
+      setIsLoadingCohort(false)
+    }
+  }, [])
+
   const handleFindMatchingPatients = useCallback(async () => {
     setIsLoadingPatients(true)
     try {
@@ -206,18 +263,30 @@ export function ResearchProjects() {
     loadProjects()
   }, [loadProjects])
 
-  // ✅ FIX: Load all patients on initial mount and when filter criteria changes
+  // ✅ FIX: Debounced patient matching - prevent execution on every keystroke
   useEffect(() => {
-    console.log('🔬 [RESEARCH UI] Loading patient data - criteria changed or component mounted')
-    handleFindMatchingPatients()
-  }, [handleFindMatchingPatients]) // Properly depend on the callback
+    console.log('🔬 [RESEARCH UI] Filter criteria changed, scheduling debounced search...')
 
-  // Load analytics when project is selected
+    // Debounce: wait 800ms after user stops typing/changing filters
+    const timeoutId = setTimeout(() => {
+      console.log('🔬 [RESEARCH UI] Executing debounced patient search')
+      handleFindMatchingPatients()
+    }, 800)
+
+    // Cleanup: cancel the timeout if criteria changes again before 800ms
+    return () => {
+      console.log('🔬 [RESEARCH UI] Cancelling previous search timeout')
+      clearTimeout(timeoutId)
+    }
+  }, [filterCriteria, handleFindMatchingPatients]) // Re-run when filter criteria changes
+
+  // Load analytics and cohort when project is selected
   useEffect(() => {
     if (selectedProject && !isCreatingProject && !isEditingProject) {
       loadProjectAnalytics(selectedProject)
+      loadCohortPatients(selectedProject)
     }
-  }, [selectedProject, isCreatingProject, isEditingProject, loadProjectAnalytics])
+  }, [selectedProject, isCreatingProject, isEditingProject, loadProjectAnalytics, loadCohortPatients])
 
   const handleCreateProject = useCallback(() => {
     setIsCreatingProject(true)
@@ -321,6 +390,50 @@ export function ResearchProjects() {
     }
   }, [selectedProject, loadProjects])
 
+  const handleDeleteClick = useCallback((projectId: string, projectName: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setProjectToDelete({ id: projectId, name: projectName })
+    setDeleteDialogOpen(true)
+  }, [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!projectToDelete) return
+
+    setIsDeleting(true)
+    console.log('🗑️ [RESEARCH UI] Deleting project:', projectToDelete.id)
+
+    try {
+      const result = await deleteResearchProjectAction(projectToDelete.id)
+      if (result.success) {
+        console.log('✅ [RESEARCH UI] Project deleted successfully')
+
+        // Clear selection if deleted project was selected
+        if (selectedProject === projectToDelete.id) {
+          setSelectedProject(null)
+          setIsCreatingProject(false)
+          setIsEditingProject(false)
+        }
+
+        // Reload projects
+        await loadProjects()
+
+        // Close dialog
+        setDeleteDialogOpen(false)
+        setProjectToDelete(null)
+
+        alert(`✅ Successfully deleted project "${projectToDelete.name}"`)
+      } else {
+        console.error('❌ [RESEARCH UI] Failed to delete project:', result.error)
+        alert(`❌ Failed to delete project: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('❌ [RESEARCH UI] Exception deleting project:', error)
+      alert('❌ An error occurred while deleting the project')
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [projectToDelete, selectedProject, loadProjects])
+
 
   const addFilterCriteria = useCallback(() => {
     setFilterCriteria(prev => [...prev, {
@@ -377,25 +490,78 @@ export function ResearchProjects() {
 
   const handleAddSelectedToCohort = useCallback(async () => {
     if (!selectedProject || selectedPatients.size === 0) return
+    // Open group selector dialog
+    setShowGroupSelector(true)
+  }, [selectedProject, selectedPatients])
+
+  const handleGroupSelected = useCallback(async (groupName: string) => {
+    if (!selectedProject || selectedPatients.size === 0) return
 
     console.log('👥 [RESEARCH UI] Adding selected patients to cohort:', {
       projectId: selectedProject,
-      patientCount: selectedPatients.size
+      patientCount: selectedPatients.size,
+      groupName
     })
 
-    // TODO: Implement when backend cohort management is ready
-    // For now, just show feedback
-    alert(`Added ${selectedPatients.size} patients to project cohort!`)
-    setSelectedPatients(new Set())
-  }, [selectedProject, selectedPatients])
+    setIsAddingToCohort(true)
+
+    try {
+      let successCount = 0
+      let errorCount = 0
+
+      // Add each selected patient to the cohort
+      for (const patientId of Array.from(selectedPatients)) {
+        const result = await addPatientToCohortAction(selectedProject, patientId, groupName)
+        if (result.success) {
+          successCount++
+        } else {
+          errorCount++
+          console.error('Failed to add patient:', patientId, result.error)
+        }
+      }
+
+      if (successCount > 0) {
+        alert(`✅ Successfully added ${successCount} patient(s) to ${groupName} group!\n${errorCount > 0 ? `\n⚠️ ${errorCount} patient(s) failed to add.` : ''}`)
+        setSelectedPatients(new Set())
+        setShowGroupSelector(false)
+        // Refresh project data and cohort
+        await loadProjects()
+        if (selectedProject) {
+          await loadCohortPatients(selectedProject)
+        }
+      } else {
+        alert(`❌ Failed to add patients to cohort. Please try again.`)
+      }
+    } catch (error) {
+      console.error('Error adding patients to cohort:', error)
+      alert('❌ An error occurred while adding patients to cohort.')
+    } finally {
+      setIsAddingToCohort(false)
+    }
+  }, [selectedProject, selectedPatients, loadProjects, loadCohortPatients])
 
   const handleRemoveFromCohort = useCallback(async (patientId: string) => {
     if (!selectedProject) return
 
+    const confirmed = confirm('Are you sure you want to remove this patient from the cohort?')
+    if (!confirmed) return
+
     console.log('👥 [RESEARCH UI] Removing patient from cohort:', { projectId: selectedProject, patientId })
 
-    // TODO: Implement when backend cohort management is ready
-    alert('Patient removed from cohort!')
+    try {
+      const result = await removePatientFromCohortAction(selectedProject, patientId)
+      if (result.success) {
+        alert('✅ Patient removed from cohort successfully!')
+        // Refresh project data and cohort
+        await loadProjects()
+        await loadCohortPatients(selectedProject)
+      } else {
+        alert(`❌ Failed to remove patient: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error removing patient from cohort:', error)
+      alert('❌ An error occurred while removing patient from cohort.')
+    }
   }, [selectedProject])
 
   const currentProject = useMemo(() => {
@@ -600,14 +766,24 @@ export function ResearchProjects() {
                                 {project.description}
                               </CardDescription>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 hover:bg-gray-100 flex-shrink-0 ml-2"
-                              onClick={(e) => handleEditProject(project.id, e)}
-                            >
-                              <Edit className="w-3 h-3" />
-                            </Button>
+                            <div className="flex gap-1 flex-shrink-0 ml-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-gray-100"
+                                onClick={(e) => handleEditProject(project.id, e)}
+                              >
+                                <Edit className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={(e) => handleDeleteClick(project.id, project.name, e)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
                           </div>
                           <div className="flex items-center justify-between mt-3">
                             <div className="flex items-center text-xs text-gray-600">
@@ -677,6 +853,31 @@ export function ResearchProjects() {
                         rows={3}
                         className="border-gray-300 focus:border-primary focus:ring-primary"
                       />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-2 block">
+                        Research Type
+                      </label>
+                      <Select
+                        value={projectFormData.researchType || ''}
+                        onValueChange={(value) => setProjectFormData(prev => ({ ...prev, researchType: value as any }))}
+                      >
+                        <SelectTrigger className="border-gray-300 focus:border-primary focus:ring-primary">
+                          <SelectValue placeholder="Select research study design..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cohort">Cohort Study</SelectItem>
+                          <SelectItem value="case_control">Case-Control Study</SelectItem>
+                          <SelectItem value="rct">Randomized Controlled Trial (RCT)</SelectItem>
+                          <SelectItem value="cross_sectional">Cross-Sectional Study</SelectItem>
+                          <SelectItem value="longitudinal">Longitudinal Study</SelectItem>
+                          <SelectItem value="comparative">Comparative Study</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Choose the study design that best fits your research methodology
+                      </p>
                     </div>
 
                     <div>
@@ -777,11 +978,65 @@ export function ResearchProjects() {
                             }}
                           >
                             <SelectTrigger className="border-gray-300">
-                              <SelectValue placeholder="Field" />
+                              <SelectValue placeholder="Select filter field..." />
                             </SelectTrigger>
-                            <SelectContent>
-                              {PATIENT_FILTER_FIELDS.map((field) => (
+                            <SelectContent className="max-h-[400px]">
+                              {/* Basic Demographics Section */}
+                              <div className="px-2 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 sticky top-0">
+                                {JSONB_FILTER_CATEGORIES.demographics.icon} {JSONB_FILTER_CATEGORIES.demographics.label}
+                              </div>
+                              {PATIENT_FILTER_FIELDS.filter(f =>
+                                JSONB_FILTER_CATEGORIES.demographics.fields.includes(f.key)
+                              ).map((field) => (
                                 <SelectItem key={field.key} value={field.key}>
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+
+                              {/* Pain Assessment Section */}
+                              <div className="px-2 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 sticky top-0 mt-1">
+                                {JSONB_FILTER_CATEGORIES.pain_assessment.icon} {JSONB_FILTER_CATEGORIES.pain_assessment.label}
+                              </div>
+                              {PATIENT_FILTER_FIELDS.filter(f =>
+                                JSONB_FILTER_CATEGORIES.pain_assessment.fields.includes(f.key)
+                              ).map((field) => (
+                                <SelectItem key={field.key} value={field.key} className="text-teal-700">
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+
+                              {/* Diagnosis Section */}
+                              <div className="px-2 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 sticky top-0 mt-1">
+                                {JSONB_FILTER_CATEGORIES.diagnosis.icon} {JSONB_FILTER_CATEGORIES.diagnosis.label}
+                              </div>
+                              {PATIENT_FILTER_FIELDS.filter(f =>
+                                JSONB_FILTER_CATEGORIES.diagnosis.fields.includes(f.key)
+                              ).map((field) => (
+                                <SelectItem key={field.key} value={field.key} className="text-blue-700">
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+
+                              {/* Treatment Plan Section */}
+                              <div className="px-2 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 sticky top-0 mt-1">
+                                {JSONB_FILTER_CATEGORIES.treatment_plan.icon} {JSONB_FILTER_CATEGORIES.treatment_plan.label}
+                              </div>
+                              {PATIENT_FILTER_FIELDS.filter(f =>
+                                JSONB_FILTER_CATEGORIES.treatment_plan.fields.includes(f.key)
+                              ).map((field) => (
+                                <SelectItem key={field.key} value={field.key} className="text-purple-700">
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+
+                              {/* FDI Tooth Chart Section */}
+                              <div className="px-2 py-1.5 text-xs font-semibold text-green-700 bg-green-50 sticky top-0 mt-1">
+                                {JSONB_FILTER_CATEGORIES.fdi_tooth_chart.icon} {JSONB_FILTER_CATEGORIES.fdi_tooth_chart.label}
+                              </div>
+                              {PATIENT_FILTER_FIELDS.filter(f =>
+                                JSONB_FILTER_CATEGORIES.fdi_tooth_chart.fields.includes(f.key)
+                              ).map((field) => (
+                                <SelectItem key={field.key} value={field.key} className="text-green-700">
                                   {field.label}
                                 </SelectItem>
                               ))}
@@ -873,11 +1128,14 @@ export function ResearchProjects() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => loadProjectAnalytics(selectedProject)}
-                    disabled={isLoadingAnalytics}
+                    onClick={() => {
+                      loadProjectAnalytics(selectedProject)
+                      loadCohortPatients(selectedProject)
+                    }}
+                    disabled={isLoadingAnalytics || isLoadingCohort}
                     className="border-gray-300"
                   >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAnalytics ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAnalytics || isLoadingCohort ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
@@ -919,31 +1177,95 @@ export function ResearchProjects() {
 
                 {/* Cohort Table */}
                 <div className="border rounded-lg bg-white">
-                  <div className="grid grid-cols-5 gap-4 p-3 bg-gray-50 font-medium text-sm border-b">
-                    <div>Patient ID</div>
+                  <div className="grid grid-cols-6 gap-4 p-3 bg-gray-50 font-medium text-sm border-b">
+                    <div>Anonymous ID</div>
+                    <div>Patient Name</div>
                     <div>Age</div>
-                    <div>Gender</div>
-                    <div>Last Visit</div>
-                    <div>Match Score</div>
+                    <div>Group</div>
+                    <div>Status</div>
+                    <div>Actions</div>
                   </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {/* Mock data - replace with actual cohort data */}
-                    {[...Array(10)].map((_, index) => (
-                      <div key={index} className="grid grid-cols-5 gap-4 p-3 border-b text-sm hover:bg-gray-50">
-                        <div className="font-mono">P{String(index + 1).padStart(3, '0')}</div>
-                        <div>{25 + Math.floor(Math.random() * 40)}</div>
-                        <div>{Math.random() > 0.5 ? 'Female' : 'Male'}</div>
-                        <div>{new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000).toLocaleDateString()}</div>
-                        <div>
-                          <Progress
-                            value={70 + Math.random() * 30}
-                            className="h-2"
-                          />
+                  <div className="max-h-96 overflow-y-auto">
+                    {isLoadingCohort ? (
+                      <div className="flex items-center justify-center py-8">
+                        <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                      </div>
+                    ) : cohortPatients.length === 0 ? (
+                      <div className="flex items-center justify-center py-8 text-center">
+                        <div className="space-y-2">
+                          <Users className="w-8 h-8 mx-auto text-gray-400" />
+                          <p className="text-sm text-gray-600">No patients in cohort yet</p>
+                          <p className="text-xs text-gray-500">Add patients from Live Patient Matching</p>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      cohortPatients.map((patient) => (
+                        <div key={patient.id} className="grid grid-cols-6 gap-4 p-3 border-b text-sm hover:bg-gray-50 items-center">
+                          <div className="font-mono text-xs font-semibold" style={{ color: COLORS.primary }}>
+                            {patient.anonymous_id}
+                          </div>
+                          <div className="truncate">{patient.patient_name}</div>
+                          <div>{patient.patient_age || 'N/A'}</div>
+                          <div>
+                            <Badge
+                              variant="outline"
+                              className="text-xs px-2 py-1 bg-teal-50 text-teal-700 border-teal-200"
+                            >
+                              {patient.group_name}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs px-2 py-1 ${
+                                patient.status === 'included'
+                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              {patient.status}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveFromCohort(patient.patient_id)}
+                              className="h-7 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
+
+                {/* Group Summary */}
+                {cohortPatients.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Group Distribution</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {(() => {
+                        const groupCounts = cohortPatients.reduce((acc: Record<string, number>, patient) => {
+                          acc[patient.group_name] = (acc[patient.group_name] || 0) + 1
+                          return acc
+                        }, {})
+                        return Object.entries(groupCounts).map(([group, count]) => (
+                          <Badge
+                            key={group}
+                            variant="outline"
+                            className="px-3 py-1 bg-teal-50 text-teal-700 border-teal-200"
+                          >
+                            {group}: {count}
+                          </Badge>
+                        ))
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-center">
@@ -963,9 +1285,9 @@ export function ResearchProjects() {
 
         {/* Panel 3: Live Patient Matching or Analytics Dashboard */}
         <ResizablePanel defaultSize={35} minSize={25}>
-          <div className="p-4 h-full bg-white">
+          <div className="p-4 h-full bg-white flex flex-col">
             {isCreatingProject || isEditingProject ? (
-              <div className="space-y-4 h-full">
+              <div className="flex flex-col h-full gap-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold" style={{ color: COLORS.primary }}>
                     Live Patient Matching
@@ -1126,7 +1448,7 @@ export function ResearchProjects() {
                 </TabsList>
 
                 <TabsContent value="analytics" className="flex-1 overflow-hidden">
-                  <div className="space-y-4 h-full overflow-y-auto">
+                  <div className="space-y-4 h-full overflow-y-auto pb-4">
                     <h3 className="text-lg font-semibold" style={{ color: COLORS.primary }}>
                       Cohort Analysis
                     </h3>
@@ -1137,69 +1459,92 @@ export function ResearchProjects() {
                       </div>
                     ) : projectAnalytics ? (
                       <div className="space-y-4">
-                        {/* Key Metrics */}
-                        <div className="grid gap-3">
+                        {/* Statistical Summary Section */}
+                        <Card className="border-gray-200 bg-gradient-to-br from-teal-50 to-white">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-sm font-semibold flex items-center">
+                              <Activity className="w-4 h-4 mr-2 text-teal-600" />
+                              Statistical Summary
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-white rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-gray-500">Mean Age</p>
+                                <p className="text-lg font-bold" style={{ color: COLORS.primary }}>
+                                  {projectAnalytics.ageStats.mean} yrs
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  95% CI: {projectAnalytics.ageStats.ci95Lower}-{projectAnalytics.ageStats.ci95Upper}
+                                </p>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-gray-500">Mode Age</p>
+                                <p className="text-lg font-bold" style={{ color: COLORS.secondary }}>
+                                  {projectAnalytics.ageStats.mode} yrs
+                                </p>
+                                <p className="text-xs text-gray-400">Most frequent</p>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-gray-500">Std Dev (σ)</p>
+                                <p className="text-lg font-bold text-orange-600">
+                                  ±{projectAnalytics.ageStats.sd}
+                                </p>
+                                <p className="text-xs text-gray-400">Variability</p>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-gray-500">Age Range</p>
+                                <p className="text-lg font-bold text-purple-600">
+                                  {projectAnalytics.ageStats.min}-{projectAnalytics.ageStats.max}
+                                </p>
+                                <p className="text-xs text-gray-400">{projectAnalytics.totalPatients} patients</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        {/* Age Distribution Histogram */}
+                        {projectAnalytics.ageDistribution.length > 0 && (
                           <Card className="border-gray-200">
                             <CardHeader className="pb-2">
-                              <CardTitle className="text-sm flex items-center">
-                                <Users className="w-4 h-4 mr-2" />
-                                Total Patients
-                              </CardTitle>
+                              <CardTitle className="text-sm">Age Distribution</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              <div className="text-2xl font-bold" style={{ color: COLORS.primary }}>
-                                {projectAnalytics.totalPatients}
-                              </div>
+                              <ResponsiveContainer width="100%" height={140}>
+                                <BarChart data={projectAnalytics.ageDistribution}>
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis dataKey="range" style={{ fontSize: '11px' }} />
+                                  <YAxis style={{ fontSize: '11px' }} />
+                                  <Tooltip />
+                                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                    {projectAnalytics.ageDistribution.map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
                             </CardContent>
                           </Card>
+                        )}
 
+                        {/* Distribution Charts Grid */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Gender Distribution */}
                           <Card className="border-gray-200">
                             <CardHeader className="pb-2">
-                              <CardTitle className="text-sm flex items-center">
-                                <Calendar className="w-4 h-4 mr-2" />
-                                Average Age
-                              </CardTitle>
+                              <CardTitle className="text-xs">Gender</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              <div className="text-2xl font-bold" style={{ color: COLORS.secondary }}>
-                                {projectAnalytics.averageAge}
-                              </div>
-                              <p className="text-xs text-gray-500">years</p>
-                            </CardContent>
-                          </Card>
-
-                          <Card className="border-gray-200">
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-sm flex items-center">
-                                <TrendingUp className="w-4 h-4 mr-2" />
-                                Success Rate
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="text-2xl font-bold" style={{ color: COLORS.success }}>
-                                {projectAnalytics.treatmentSuccess}%
-                              </div>
-                              <Progress value={projectAnalytics.treatmentSuccess} className="mt-2" />
-                            </CardContent>
-                          </Card>
-                        </div>
-
-                        {/* Charts */}
-                        <div className="space-y-3">
-                          <Card className="border-gray-200">
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-sm">Gender Distribution</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <ResponsiveContainer width="100%" height={120}>
+                              <ResponsiveContainer width="100%" height={100}>
                                 <PieChart>
                                   <Pie
                                     data={projectAnalytics.genderDistribution}
                                     cx="50%"
                                     cy="50%"
                                     innerRadius={20}
-                                    outerRadius={40}
+                                    outerRadius={35}
                                     dataKey="value"
+                                    label={(entry) => `${entry.name}: ${entry.value}`}
                                   >
                                     {projectAnalytics.genderDistribution.map((entry, index) => (
                                       <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -1211,28 +1556,121 @@ export function ResearchProjects() {
                             </CardContent>
                           </Card>
 
+                          {/* Outcome Distribution */}
                           <Card className="border-gray-200">
                             <CardHeader className="pb-2">
-                              <CardTitle className="text-sm">Monthly Progress</CardTitle>
+                              <CardTitle className="text-xs">Outcomes</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              <ResponsiveContainer width="100%" height={120}>
-                                <LineChart data={projectAnalytics.monthlyProgress}>
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="month" />
-                                  <YAxis />
+                              <ResponsiveContainer width="100%" height={100}>
+                                <PieChart>
+                                  <Pie
+                                    data={projectAnalytics.outcomeDistribution}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={20}
+                                    outerRadius={35}
+                                    dataKey="value"
+                                  >
+                                    {projectAnalytics.outcomeDistribution.map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                  </Pie>
                                   <Tooltip />
-                                  <Line
-                                    type="monotone"
-                                    dataKey="patients"
-                                    stroke={COLORS.primary}
-                                    strokeWidth={2}
-                                  />
-                                </LineChart>
+                                </PieChart>
                               </ResponsiveContainer>
                             </CardContent>
                           </Card>
                         </div>
+
+                        {/* Condition Distribution - Top Conditions */}
+                        {projectAnalytics.conditionDistribution.length > 0 && (
+                          <Card className="border-gray-200">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm">Top Conditions</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <ResponsiveContainer width="100%" height={120}>
+                                <BarChart
+                                  data={projectAnalytics.conditionDistribution.slice(0, 5)}
+                                  layout="vertical"
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis type="number" style={{ fontSize: '10px' }} />
+                                  <YAxis
+                                    type="category"
+                                    dataKey="name"
+                                    width={100}
+                                    style={{ fontSize: '9px' }}
+                                    tick={{ width: 95 }}
+                                  />
+                                  <Tooltip />
+                                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                                    {projectAnalytics.conditionDistribution.slice(0, 5).map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Treatment Analysis */}
+                        <Card className="border-gray-200">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Treatment Comparison</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={100}>
+                              <BarChart data={projectAnalytics.treatmentComparison}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="treatment" style={{ fontSize: '10px' }} />
+                                <YAxis style={{ fontSize: '10px' }} />
+                                <Tooltip />
+                                <Bar dataKey="successRate" fill="#009688" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+
+                        {/* Healing Time Comparison */}
+                        <Card className="border-gray-200">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Healing Time Analysis</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={100}>
+                              <BarChart data={projectAnalytics.healingTimeComparison}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="protocol" style={{ fontSize: '10px' }} />
+                                <YAxis style={{ fontSize: '10px' }} />
+                                <Tooltip />
+                                <Bar dataKey="avgDays" fill="#005A9C" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+
+                        {/* Statistical Insights */}
+                        <Card className="border-teal-200 bg-teal-50">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm flex items-center text-teal-800">
+                              <Lightbulb className="w-4 h-4 mr-2" />
+                              Key Insights
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            <div className="text-xs text-teal-700 space-y-1">
+                              <p>• <strong>Sample Size:</strong> N={projectAnalytics.totalPatients} patients {projectAnalytics.totalPatients >= 30 ? '(adequate for statistical analysis)' : '(consider increasing sample size)'}</p>
+                              <p>• <strong>Confidence Interval:</strong> 95% CI for mean age is [{projectAnalytics.ageStats.ci95Lower}, {projectAnalytics.ageStats.ci95Upper}] years</p>
+                              <p>• <strong>Age Variability:</strong> Standard deviation of ±{projectAnalytics.ageStats.sd} years indicates {projectAnalytics.ageStats.sd < 10 ? 'low' : projectAnalytics.ageStats.sd < 15 ? 'moderate' : 'high'} variability</p>
+                              {projectAnalytics.ageStats.mean !== projectAnalytics.ageStats.mode && (
+                                <p>• <strong>Distribution:</strong> Mean ({projectAnalytics.ageStats.mean}) differs from mode ({projectAnalytics.ageStats.mode}), suggesting non-normal distribution</p>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center h-32 text-center">
@@ -1271,6 +1709,49 @@ export function ResearchProjects() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* Group Selector Dialog */}
+      <GroupSelectorDialog
+        open={showGroupSelector}
+        onOpenChange={setShowGroupSelector}
+        onConfirm={handleGroupSelected}
+        selectedPatientCount={selectedPatients.size}
+        isLoading={isAddingToCohort}
+      />
+
+      {/* Delete Project Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Research Project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the project <strong>&quot;{projectToDelete?.name}&quot;</strong> and all associated cohort data.
+              <br /><br />
+              <span className="text-red-600 font-semibold">This action cannot be undone.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Project
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

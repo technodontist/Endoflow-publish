@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServiceClient()
+    // Fix async cookies issue for Next.js 15
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      console.log('🔒 [AI-QUERY] Authentication failed:', { authError, hasUser: !!user })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -24,62 +28,59 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { projectId, query, cohortData, analysisType } = body
 
+    const startTime = Date.now()
+
     console.log('🤖 [AI-QUERY] Processing research AI request:', {
       projectId,
       analysisType,
-      query: query?.substring(0, 100) + '...'
+      query: query?.substring(0, 100) + '...',
+      cohortSize: cohortData?.length || 0
     })
 
-    // Prepare data for N8N workflow
-    const n8nPayload = {
-      type: 'research_query',
-      projectId,
-      query,
-      cohortData,
-      analysisType,
-      dentistId: user.id,
-      timestamp: new Date().toISOString(),
-      context: {
-        clinicType: 'dental',
-        specialty: 'endodontics',
-        anonymized: true
+    // Use Google Gemini to analyze patient database
+    // Research AI should query actual patient data, NOT medical knowledge base
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+    let source: 'gemini' | 'fallback' = 'fallback'
+    let aiResponse: any
+
+    if (GEMINI_API_KEY) {
+      try {
+        console.log('🧠 [AI-QUERY] Using Gemini to analyze patient database')
+
+        // Import Gemini service
+        const { analyzePatientCohort } = await import('@/lib/services/gemini-ai')
+
+        aiResponse = await analyzePatientCohort({
+          cohortData: cohortData || [],
+          query
+        })
+
+        source = 'gemini'
+        console.log('✅ [AI-QUERY] Gemini analysis completed')
+      } catch (error) {
+        console.error('❌ [AI-QUERY] Error calling Gemini:', error)
+        // Fall through to fallback
       }
     }
 
-    // TODO: Replace with actual N8N webhook URL
-    const N8N_WEBHOOK_URL = process.env.N8N_RESEARCH_WEBHOOK_URL || 'http://localhost:5678/webhook/research-ai'
-
-    console.log('🔗 [AI-QUERY] Sending to N8N webhook:', N8N_WEBHOOK_URL)
-
-    const n8nResponse = await fetch(N8N_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.N8N_API_KEY || 'dev-key'}`,
-      },
-      body: JSON.stringify(n8nPayload),
-    })
-
-    if (!n8nResponse.ok) {
-      console.error('❌ [AI-QUERY] N8N webhook failed:', n8nResponse.status)
-
-      // Fallback response for development
-      return NextResponse.json({
-        success: true,
-        response: generateFallbackResponse(analysisType, query, cohortData),
-        source: 'fallback',
-        timestamp: new Date().toISOString()
-      })
+    // Use fallback if Gemini is not configured or failed
+    if (source === 'fallback') {
+      console.log('💡 [AI-QUERY] Using fallback response (GEMINI_API_KEY not configured)')
+      aiResponse = generateFallbackResponse(analysisType, query, cohortData)
     }
 
-    const aiResponse = await n8nResponse.json()
+    const processingTime = Date.now() - startTime
 
-    console.log('✅ [AI-QUERY] N8N response received')
+    console.log('✅ [AI-QUERY] Response ready:', {
+      source,
+      processingTime: `${processingTime}ms`
+    })
 
     return NextResponse.json({
       success: true,
-      response: aiResponse.response || aiResponse,
-      source: 'n8n',
+      response: aiResponse.response || aiResponse.output || aiResponse,
+      source,
+      processingTime,
       timestamp: new Date().toISOString()
     })
 

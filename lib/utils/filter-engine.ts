@@ -63,9 +63,13 @@ export interface FilterField {
 /**
  * Available filter fields for patient research
  * Based on ENDOFLOW database schema
+ *
+ * ✅ CLEANED & OPTIMIZED - Only fields with verified data
  */
 export const PATIENT_FILTER_FIELDS: FilterField[] = [
-  // Basic Demographics
+  // ===============================================
+  // BASIC DEMOGRAPHICS (3 filters)
+  // ===============================================
   {
     key: 'age',
     label: 'Age',
@@ -76,364 +80,216 @@ export const PATIENT_FILTER_FIELDS: FilterField[] = [
     allowedOperators: ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal', 'between']
   },
   {
-    key: 'gender',
-    label: 'Gender',
+    key: 'first_name',
+    label: 'First Name',
     dataType: 'string',
     table: 'api.patients',
-    column: 'gender',
-    description: 'Patient gender',
-    allowedOperators: ['equals', 'not_equals', 'in', 'not_in'],
-    options: [
-      { value: 'male', label: 'Male' },
-      { value: 'female', label: 'Female' },
-      { value: 'other', label: 'Other' }
-    ]
+    column: 'first_name',
+    description: 'Patient first name',
+    allowedOperators: ['equals', 'contains', 'starts_with', 'ends_with']
   },
   {
-    key: 'registration_date',
-    label: 'Registration Date',
-    dataType: 'date',
-    table: 'api.patients',
-    column: 'created_at',
-    description: 'When patient registered',
-    allowedOperators: ['equals', 'greater_than', 'less_than', 'between']
-  },
-
-  // Medical History
-  {
-    key: 'medical_conditions',
-    label: 'Medical Conditions',
+    key: 'last_name',
+    label: 'Last Name',
     dataType: 'string',
     table: 'api.patients',
-    column: 'medical_history_summary',
-    description: 'Existing medical conditions',
-    allowedOperators: ['contains', 'not_contains', 'is_null', 'is_not_null']
-  },
-  {
-    key: 'allergies',
-    label: 'Allergies',
-    dataType: 'string',
-    table: 'api.patients',
-    column: 'allergies',
-    description: 'Known allergies',
-    allowedOperators: ['contains', 'not_contains', 'is_null', 'is_not_null']
-  },
-  {
-    key: 'medications',
-    label: 'Current Medications',
-    dataType: 'string',
-    table: 'api.patients',
-    column: 'current_medications',
-    description: 'Currently taking medications',
-    allowedOperators: ['contains', 'not_contains', 'is_null', 'is_not_null']
+    column: 'last_name',
+    description: 'Patient last name',
+    allowedOperators: ['equals', 'contains', 'starts_with', 'ends_with']
   },
 
-  // Dental History
+  // ===============================================
+  // PAIN ASSESSMENT (4 filters) - VERIFIED DATA
+  // ===============================================
   {
-    key: 'total_visits',
-    label: 'Total Visits',
-    dataType: 'number',
-    table: 'api.appointments',
-    column: 'COUNT(*)',
-    description: 'Total number of appointments',
-    allowedOperators: ['equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal', 'between']
-  },
-  {
-    key: 'last_visit_date',
-    label: 'Last Visit Date',
-    dataType: 'date',
-    table: 'api.appointments',
-    column: 'MAX(appointment_date)',
-    description: 'Most recent appointment',
-    allowedOperators: ['equals', 'greater_than', 'less_than', 'between']
-  },
-  {
-    key: 'appointment_status',
-    label: 'Appointment Status',
-    dataType: 'string',
-    table: 'api.appointments',
-    column: 'status',
-    description: 'Latest appointment status',
-    allowedOperators: ['equals', 'not_equals', 'in', 'not_in'],
-    options: [
-      { value: 'scheduled', label: 'Scheduled' },
-      { value: 'completed', label: 'Completed' },
-      { value: 'cancelled', label: 'Cancelled' },
-      { value: 'no_show', label: 'No Show' }
-    ]
-  },
-
-  // Patient Status
-  {
-    key: 'patient_status',
-    label: 'Patient Status',
-    dataType: 'string',
-    table: 'api.patients',
-    column: 'status',
-    description: 'Current patient status',
-    allowedOperators: ['equals', 'not_equals', 'in', 'not_in'],
-    options: [
-      { value: 'active', label: 'Active' },
-      { value: 'inactive', label: 'Inactive' },
-      { value: 'pending', label: 'Pending' }
-    ]
-  },
-
-  // Treatment History
-  {
-    key: 'diagnosis',
-    label: 'Diagnosis',
-    dataType: 'string',
-    table: 'api.consultations',
-    column: 'diagnosis',
-    description: 'Clinical diagnosis',
-    allowedOperators: ['contains', 'not_contains', 'equals', 'not_equals']
-  },
-  {
-    key: 'treatment_type',
-    label: 'Treatment Type',
-    dataType: 'string',
-    table: 'api.consultations',
-    column: 'treatment_plan',
-    description: 'Type of treatment received',
-    allowedOperators: ['contains', 'not_contains', 'equals', 'not_equals'],
-    options: [
-      { value: 'Root Canal', label: 'Root Canal Treatment' },
-      { value: 'Extraction', label: 'Tooth Extraction' },
-      { value: 'Filling', label: 'Dental Filling' },
-      { value: 'Crown', label: 'Crown Placement' },
-      { value: 'Cleaning', label: 'Professional Cleaning' }
-    ]
-  },
-  {
-    key: 'prognosis',
-    label: 'Prognosis',
-    dataType: 'string',
-    table: 'api.consultations',
-    column: 'prognosis',
-    description: 'Treatment outcome prediction',
-    allowedOperators: ['equals', 'not_equals', 'in', 'not_in'],
-    options: [
-      { value: 'excellent', label: 'Excellent' },
-      { value: 'good', label: 'Good' },
-      { value: 'fair', label: 'Fair' },
-      { value: 'poor', label: 'Poor' }
-    ]
-  },
-
-  // Dental Chart Data
-  {
-    key: 'affected_teeth',
-    label: 'Affected Teeth',
-    dataType: 'array',
-    table: 'api.tooth_diagnoses',
-    column: 'tooth_number',
-    description: 'Specific teeth with diagnoses',
-    allowedOperators: ['in', 'not_in', 'contains']
-  },
-  {
-    key: 'tooth_condition',
-    label: 'Tooth Condition',
-    dataType: 'string',
-    table: 'api.tooth_diagnoses',
-    column: 'condition',
-    description: 'Specific tooth conditions',
-    allowedOperators: ['equals', 'not_equals', 'contains', 'in', 'not_in'],
-    options: [
-      { value: 'caries', label: 'Dental Caries' },
-      { value: 'pulpitis', label: 'Pulpitis' },
-      { value: 'periodontitis', label: 'Periodontitis' },
-      { value: 'abscess', label: 'Abscess' },
-      { value: 'fracture', label: 'Tooth Fracture' }
-    ]
-  },
-
-  // Treatment Outcomes
-  {
-    key: 'treatment_success',
-    label: 'Treatment Success',
-    dataType: 'boolean',
-    table: 'api.consultations',
-    column: 'treatment_successful',
-    description: 'Whether treatment was successful',
-    allowedOperators: ['equals', 'not_equals']
-  },
-  {
-    key: 'follow_up_required',
-    label: 'Follow-up Required',
-    dataType: 'boolean',
-    table: 'api.consultations',
-    column: 'follow_up_required',
-    description: 'Whether follow-up is needed',
-    allowedOperators: ['equals', 'not_equals']
-  },
-
-  // Advanced Clinical Filters
-  {
-    key: 'treatment_outcome',
-    label: 'Treatment Outcome',
-    dataType: 'string',
-    table: 'api.treatments',
-    column: 'outcome',
-    description: 'Result of treatment',
-    allowedOperators: ['equals', 'not_equals', 'contains', 'in', 'not_in'],
-    options: [
-      { value: 'successful', label: 'Successful' },
-      { value: 'partial', label: 'Partially Successful' },
-      { value: 'failed', label: 'Failed' },
-      { value: 'ongoing', label: 'Ongoing' },
-      { value: 'complicated', label: 'Complicated' }
-    ]
-  },
-  {
-    key: 'pain_level',
-    label: 'Pain Level',
+    key: 'pain_intensity',
+    label: 'Pain Intensity (1-10)',
     dataType: 'number',
     table: 'api.consultations',
-    column: 'pain_scale',
-    description: 'Patient reported pain level (0-10)',
+    column: "(pain_assessment->>'intensity')::int",
+    description: 'Patient reported pain intensity level',
     allowedOperators: ['equals', 'greater_than', 'less_than', 'between', 'greater_than_or_equal', 'less_than_or_equal']
   },
   {
-    key: 'emergency_visits',
-    label: 'Emergency Visits',
-    dataType: 'number',
-    table: 'api.appointments',
-    column: 'COUNT(*)',
-    description: 'Number of emergency appointments',
-    allowedOperators: ['equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal']
+    key: 'pain_location',
+    label: 'Pain Location',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "pain_assessment->>'location'",
+    description: 'Specific location of pain',
+    allowedOperators: ['equals', 'contains', 'not_contains']
   },
   {
-    key: 'treatment_duration_days',
-    label: 'Treatment Duration (Days)',
-    dataType: 'number',
-    table: 'api.treatments',
-    column: 'EXTRACT(DAY FROM (completed_date - start_date))',
-    description: 'Duration of treatment in days',
-    allowedOperators: ['equals', 'greater_than', 'less_than', 'between', 'greater_than_or_equal', 'less_than_or_equal']
+    key: 'pain_duration',
+    label: 'Pain Duration',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "pain_assessment->>'duration'",
+    description: 'How long patient has had pain',
+    allowedOperators: ['contains', 'equals'],
+    options: [
+      { value: 'acute', label: 'Acute (< 1 week)' },
+      { value: 'subacute', label: 'Subacute (1-4 weeks)' },
+      { value: 'chronic', label: 'Chronic (> 4 weeks)' }
+    ]
   },
   {
-    key: 'follow_up_compliance',
-    label: 'Follow-up Compliance',
-    dataType: 'boolean',
-    table: 'api.appointments',
-    column: 'attended',
-    description: 'Whether patient attended follow-up appointments',
-    allowedOperators: ['equals', 'not_equals']
+    key: 'pain_character',
+    label: 'Pain Character',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "pain_assessment->>'character'",
+    description: 'Type/quality of pain',
+    allowedOperators: ['equals', 'contains', 'in', 'not_in'],
+    options: [
+      { value: 'sharp', label: 'Sharp' },
+      { value: 'dull', label: 'Dull/Aching' },
+      { value: 'throbbing', label: 'Throbbing' },
+      { value: 'constant', label: 'Constant' },
+      { value: 'intermittent', label: 'Intermittent' }
+    ]
   },
 
-  // Clinical Specialty Areas
+  // ===============================================
+  // DIAGNOSIS (3 filters) - VERIFIED DATA
+  // ===============================================
   {
-    key: 'endodontic_treatment',
-    label: 'Endodontic Treatment',
-    dataType: 'boolean',
+    key: 'diagnosis_final',
+    label: 'Final Diagnosis',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "diagnosis->'final'",
+    description: 'Final diagnosis from consultation (array)',
+    allowedOperators: ['contains', 'not_contains']
+  },
+  {
+    key: 'diagnosis_provisional',
+    label: 'Provisional Diagnosis',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "diagnosis->'provisional'",
+    description: 'Provisional diagnosis (array)',
+    allowedOperators: ['contains', 'not_contains']
+  },
+  {
+    key: 'diagnosis_primary',
+    label: 'Primary Diagnosis',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "diagnosis->>'primary'",
+    description: 'Primary clinical diagnosis from consultation',
+    allowedOperators: ['equals', 'contains', 'not_contains', 'in', 'not_in']
+  },
+
+  // ===============================================
+  // TREATMENT PLAN (1 filter) - VERIFIED DATA
+  // ===============================================
+  {
+    key: 'treatment_procedures',
+    label: 'Treatment Procedures (Planned)',
+    dataType: 'string',
+    table: 'api.consultations',
+    column: "treatment_plan->'plan'",
+    description: 'Treatment procedures planned in consultations (searches array of procedures)',
+    allowedOperators: ['contains', 'not_contains']
+  },
+
+  // ===============================================
+  // COMPLETED TREATMENTS (3 filters) - ACTUAL TREATMENTS DONE
+  // ===============================================
+  {
+    key: 'completed_treatment_type',
+    label: 'Completed Treatment Type',
+    dataType: 'string',
     table: 'api.treatments',
     column: 'treatment_type',
-    description: 'Has received root canal or endodontic care',
-    allowedOperators: ['equals', 'not_equals']
+    description: 'Actual treatments that were completed (from treatments table)',
+    allowedOperators: ['equals', 'contains', 'not_contains', 'in', 'not_in']
   },
   {
-    key: 'periodontal_condition',
-    label: 'Periodontal Condition',
-    dataType: 'string',
-    table: 'api.consultations',
-    column: 'periodontal_status',
-    description: 'Gum and periodontal health status',
-    allowedOperators: ['equals', 'not_equals', 'contains', 'in', 'not_in'],
-    options: [
-      { value: 'healthy', label: 'Healthy' },
-      { value: 'gingivitis', label: 'Gingivitis' },
-      { value: 'periodontitis_mild', label: 'Mild Periodontitis' },
-      { value: 'periodontitis_moderate', label: 'Moderate Periodontitis' },
-      { value: 'periodontitis_severe', label: 'Severe Periodontitis' }
-    ]
-  },
-  {
-    key: 'restoration_type',
-    label: 'Restoration Type',
+    key: 'treatment_status',
+    label: 'Treatment Status',
     dataType: 'string',
     table: 'api.treatments',
-    column: 'restoration_type',
-    description: 'Type of dental restoration',
-    allowedOperators: ['equals', 'not_equals', 'contains', 'in', 'not_in'],
+    column: 'status',
+    description: 'Status of treatment: pending, in_progress, completed, cancelled',
+    allowedOperators: ['equals', 'not_equals', 'in', 'not_in']
+  },
+  {
+    key: 'treatment_completion_date',
+    label: 'Treatment Completion Date',
+    dataType: 'date',
+    table: 'api.treatments',
+    column: 'completed_at',
+    description: 'Date when treatment was completed',
+    allowedOperators: ['equals', 'greater_than', 'less_than', 'between']
+  },
+
+  // ===============================================
+  // FDI TOOTH CHART (5 filters) - VERIFIED DATA
+  // ===============================================
+  {
+    key: 'tooth_primary_diagnosis',
+    label: 'Primary Diagnosis (FDI Chart)',
+    dataType: 'string',
+    table: 'api.tooth_diagnoses',
+    column: 'primary_diagnosis',
+    description: 'Primary diagnosis from FDI tooth chart (tooth-specific diagnosis)',
+    allowedOperators: ['equals', 'contains', 'not_contains', 'in', 'not_in']
+  },
+  {
+    key: 'tooth_status',
+    label: 'Tooth Status (FDI Chart)',
+    dataType: 'string',
+    table: 'api.tooth_diagnoses',
+    column: 'status',
+    description: 'Status of tooth from FDI chart',
+    allowedOperators: ['equals', 'in', 'not_in'],
     options: [
-      { value: 'amalgam', label: 'Amalgam Filling' },
-      { value: 'composite', label: 'Composite Filling' },
+      { value: 'healthy', label: 'Healthy' },
+      { value: 'caries', label: 'Caries' },
+      { value: 'filled', label: 'Filled' },
       { value: 'crown', label: 'Crown' },
-      { value: 'bridge', label: 'Bridge' },
-      { value: 'implant', label: 'Implant' },
-      { value: 'veneer', label: 'Veneer' },
-      { value: 'inlay', label: 'Inlay/Onlay' }
+      { value: 'missing', label: 'Missing' },
+      { value: 'attention', label: 'Needs Attention' },
+      { value: 'root_canal', label: 'Root Canal' },
+      { value: 'extraction_needed', label: 'Extraction Needed' },
+      { value: 'implant', label: 'Implant' }
     ]
   },
-
-  // Risk Factors and Comorbidities
   {
-    key: 'diabetes_status',
-    label: 'Diabetes Status',
+    key: 'tooth_recommended_treatment',
+    label: 'Recommended Treatment (FDI Chart)',
     dataType: 'string',
-    table: 'api.patients',
-    column: 'medical_history_summary',
-    description: 'Diabetes management status',
-    allowedOperators: ['contains', 'not_contains', 'is_null', 'is_not_null'],
-    options: [
-      { value: 'controlled', label: 'Well Controlled' },
-      { value: 'uncontrolled', label: 'Poorly Controlled' },
-      { value: 'type1', label: 'Type 1 Diabetes' },
-      { value: 'type2', label: 'Type 2 Diabetes' }
-    ]
+    table: 'api.tooth_diagnoses',
+    column: 'recommended_treatment',
+    description: 'Recommended treatment for specific tooth',
+    allowedOperators: ['equals', 'contains', 'not_contains', 'in']
   },
   {
-    key: 'smoking_status',
-    label: 'Smoking Status',
+    key: 'tooth_treatment_priority',
+    label: 'Treatment Priority (FDI Chart)',
     dataType: 'string',
-    table: 'api.patients',
-    column: 'smoking_status',
-    description: 'Patient smoking habits',
-    allowedOperators: ['equals', 'not_equals', 'in', 'not_in'],
+    table: 'api.tooth_diagnoses',
+    column: 'treatment_priority',
+    description: 'Priority level of tooth treatment',
+    allowedOperators: ['equals', 'in', 'not_in'],
     options: [
-      { value: 'never', label: 'Never Smoked' },
-      { value: 'former', label: 'Former Smoker' },
-      { value: 'current', label: 'Current Smoker' },
-      { value: 'unknown', label: 'Unknown' }
+      { value: 'urgent', label: 'Urgent' },
+      { value: 'high', label: 'High' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'low', label: 'Low' },
+      { value: 'routine', label: 'Routine' }
     ]
   },
   {
-    key: 'medication_interactions',
-    label: 'Medication Interactions',
-    dataType: 'boolean',
-    table: 'api.patients',
-    column: 'drug_interactions',
-    description: 'Has potential medication interactions',
-    allowedOperators: ['equals', 'not_equals']
-  },
-
-  // Quality Metrics
-  {
-    key: 'patient_satisfaction',
-    label: 'Patient Satisfaction Score',
-    dataType: 'number',
-    table: 'api.appointments',
-    column: 'satisfaction_rating',
-    description: 'Patient satisfaction rating (1-5)',
-    allowedOperators: ['equals', 'greater_than', 'less_than', 'between', 'greater_than_or_equal', 'less_than_or_equal']
-  },
-  {
-    key: 'referral_source',
-    label: 'Referral Source',
+    key: 'tooth_number',
+    label: 'Tooth Number (FDI)',
     dataType: 'string',
-    table: 'api.patients',
-    column: 'referral_source',
-    description: 'How patient was referred to clinic',
-    allowedOperators: ['equals', 'not_equals', 'contains', 'in', 'not_in'],
-    options: [
-      { value: 'self_referral', label: 'Self Referral' },
-      { value: 'dentist_referral', label: 'Dentist Referral' },
-      { value: 'physician_referral', label: 'Physician Referral' },
-      { value: 'insurance', label: 'Insurance Network' },
-      { value: 'online', label: 'Online Search' },
-      { value: 'word_of_mouth', label: 'Word of Mouth' }
-    ]
+    table: 'api.tooth_diagnoses',
+    column: 'tooth_number',
+    description: 'Specific tooth number (FDI notation)',
+    allowedOperators: ['equals', 'in', 'not_in']
   }
 ]
 

@@ -1237,6 +1237,16 @@ export interface ResearchAnalyticsData {
   totalPatients: number;
   averageAge: number;
   activeStudies: number;
+  ageStats: {
+    mean: number;
+    mode: number;
+    sd: number;
+    ci95Lower: number;
+    ci95Upper: number;
+    min: number;
+    max: number;
+  };
+  ageDistribution: Array<{ range: string; count: number; fill: string }>;
   genderDistribution: Array<{ name: string; value: number; fill: string }>;
   conditionDistribution: Array<{ name: string; value: number; fill: string }>;
   outcomeDistribution: Array<{ name: string; value: number; fill: string }>;
@@ -1561,6 +1571,225 @@ export async function findMatchingPatients(filterCriteria: FilterRule[]): Promis
             });
             return hasMatchingPrognosis || false;
 
+          case 'pain_intensity':
+            const hasMatchingPainIntensity = patient.consultations?.some(consultation => {
+              try {
+                const painData = consultation.pain_assessment
+                  ? (typeof consultation.pain_assessment === 'string' 
+                      ? JSON.parse(consultation.pain_assessment) 
+                      : consultation.pain_assessment)
+                  : null;
+                const intensity = painData?.intensity || 0;
+                const filterValue = parseFloat(filter.value) || 0;
+
+                switch (filter.operator) {
+                  case 'equals':
+                    return intensity === filterValue;
+                  case 'greater_than':
+                    return intensity > filterValue;
+                  case 'less_than':
+                    return intensity < filterValue;
+                  case 'greater_than_or_equal':
+                    return intensity >= filterValue;
+                  case 'less_than_or_equal':
+                    return intensity <= filterValue;
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingPainIntensity || false;
+
+          case 'diagnosis_primary':
+            const hasMatchingPrimaryDiagnosis = patient.consultations?.some(consultation => {
+              try {
+                const diagnosisData = consultation.diagnosis
+                  ? (typeof consultation.diagnosis === 'string' 
+                      ? JSON.parse(consultation.diagnosis) 
+                      : consultation.diagnosis)
+                  : null;
+                const primary = diagnosisData?.primary || '';
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return primary.toLowerCase().includes(filterValue);
+                  case 'equals':
+                    return primary.toLowerCase() === filterValue;
+                  case 'not_contains':
+                    return !primary.toLowerCase().includes(filterValue);
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingPrimaryDiagnosis || false;
+
+          case 'pain_location':
+            const hasMatchingPainLocation = patient.consultations?.some(consultation => {
+              try {
+                const painData = consultation.pain_assessment
+                  ? (typeof consultation.pain_assessment === 'string' 
+                      ? JSON.parse(consultation.pain_assessment) 
+                      : consultation.pain_assessment)
+                  : null;
+                const location = painData?.location || '';
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return location.toLowerCase().includes(filterValue);
+                  case 'equals':
+                    return location.toLowerCase() === filterValue;
+                  case 'not_contains':
+                    return !location.toLowerCase().includes(filterValue);
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingPainLocation || false;
+
+          case 'pain_duration':
+            const hasMatchingPainDuration = patient.consultations?.some(consultation => {
+              try {
+                const painData = consultation.pain_assessment
+                  ? (typeof consultation.pain_assessment === 'string' 
+                      ? JSON.parse(consultation.pain_assessment) 
+                      : consultation.pain_assessment)
+                  : null;
+                const duration = painData?.duration || '';
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return duration.toLowerCase().includes(filterValue);
+                  case 'equals':
+                    return duration.toLowerCase() === filterValue;
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingPainDuration || false;
+
+          case 'pain_character':
+            const hasMatchingPainCharacter = patient.consultations?.some(consultation => {
+              try {
+                const painData = consultation.pain_assessment
+                  ? (typeof consultation.pain_assessment === 'string' 
+                      ? JSON.parse(consultation.pain_assessment) 
+                      : consultation.pain_assessment)
+                  : null;
+                const character = painData?.character || '';
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return character.toLowerCase().includes(filterValue);
+                  case 'equals':
+                    return character.toLowerCase() === filterValue;
+                  case 'in':
+                    const characterOptions = filter.value.split(',').map(v => v.trim().toLowerCase());
+                    return characterOptions.includes(character.toLowerCase());
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingPainCharacter || false;
+
+          case 'diagnosis_final':
+            const hasMatchingFinalDiagnosis = patient.consultations?.some(consultation => {
+              try {
+                const diagnosisData = consultation.diagnosis
+                  ? (typeof consultation.diagnosis === 'string' 
+                      ? JSON.parse(consultation.diagnosis) 
+                      : consultation.diagnosis)
+                  : null;
+                const finalDiag = Array.isArray(diagnosisData?.final) 
+                  ? diagnosisData.final.join(' ') 
+                  : (diagnosisData?.final || '');
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return finalDiag.toLowerCase().includes(filterValue);
+                  case 'not_contains':
+                    return !finalDiag.toLowerCase().includes(filterValue);
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingFinalDiagnosis || false;
+
+          case 'diagnosis_provisional':
+            const hasMatchingProvisionalDiagnosis = patient.consultations?.some(consultation => {
+              try {
+                const diagnosisData = consultation.diagnosis
+                  ? (typeof consultation.diagnosis === 'string' 
+                      ? JSON.parse(consultation.diagnosis) 
+                      : consultation.diagnosis)
+                  : null;
+                const provisionalDiag = Array.isArray(diagnosisData?.provisional) 
+                  ? diagnosisData.provisional.join(' ') 
+                  : (diagnosisData?.provisional || '');
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return provisionalDiag.toLowerCase().includes(filterValue);
+                  case 'not_contains':
+                    return !provisionalDiag.toLowerCase().includes(filterValue);
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingProvisionalDiagnosis || false;
+
+          case 'treatment_procedures':
+            const hasMatchingTreatmentProcedures = patient.consultations?.some(consultation => {
+              try {
+                const treatmentData = consultation.treatment_plan
+                  ? (typeof consultation.treatment_plan === 'string' 
+                      ? JSON.parse(consultation.treatment_plan) 
+                      : consultation.treatment_plan)
+                  : null;
+                const procedures = Array.isArray(treatmentData?.plan) 
+                  ? treatmentData.plan.join(' ') 
+                  : (treatmentData?.plan || '');
+                const filterValue = (filter.value || '').toLowerCase();
+
+                switch (filter.operator) {
+                  case 'contains':
+                    return procedures.toLowerCase().includes(filterValue);
+                  case 'not_contains':
+                    return !procedures.toLowerCase().includes(filterValue);
+                  default:
+                    return true;
+                }
+              } catch (e) {
+                return false;
+              }
+            });
+            return hasMatchingTreatmentProcedures || false;
+
           case 'total_visits':
             const totalVisits = patient.appointments?.length || 0;
             switch (filter.operator) {
@@ -1696,6 +1925,72 @@ export async function getResearchProjectAnalytics(projectId: string): Promise<Re
       ? Math.round(cohortPatients.reduce((sum, p) => sum + p.age, 0) / totalPatients * 10) / 10
       : 0;
 
+    // Calculate comprehensive age statistics
+    const ages = cohortPatients.map(p => p.age);
+    let ageStats = {
+      mean: 0,
+      mode: 0,
+      sd: 0,
+      ci95Lower: 0,
+      ci95Upper: 0,
+      min: 0,
+      max: 0
+    };
+
+    if (totalPatients > 0) {
+      // Mean
+      const mean = ages.reduce((sum, age) => sum + age, 0) / ages.length;
+
+      // Mode (most frequent age)
+      const frequency: { [key: number]: number } = {};
+      ages.forEach(age => {
+        frequency[age] = (frequency[age] || 0) + 1;
+      });
+      const mode = parseInt(Object.entries(frequency).reduce((a, b) => a[1] > b[1] ? a : b)[0]);
+
+      // Standard Deviation
+      const variance = ages.reduce((sum, age) => sum + Math.pow(age - mean, 2), 0) / ages.length;
+      const sd = Math.sqrt(variance);
+
+      // 95% Confidence Interval
+      const standardError = sd / Math.sqrt(ages.length);
+      const ci95Lower = mean - (1.96 * standardError);
+      const ci95Upper = mean + (1.96 * standardError);
+
+      // Min and Max
+      const min = Math.min(...ages);
+      const max = Math.max(...ages);
+
+      ageStats = {
+        mean: Math.round(mean * 10) / 10,
+        mode,
+        sd: Math.round(sd * 10) / 10,
+        ci95Lower: Math.round(ci95Lower * 10) / 10,
+        ci95Upper: Math.round(ci95Upper * 10) / 10,
+        min,
+        max
+      };
+    }
+
+    // Age distribution (histogram data)
+    const ageRanges = [
+      { range: '0-20', min: 0, max: 20 },
+      { range: '21-30', min: 21, max: 30 },
+      { range: '31-40', min: 31, max: 40 },
+      { range: '41-50', min: 41, max: 50 },
+      { range: '51-60', min: 51, max: 60 },
+      { range: '61+', min: 61, max: 999 }
+    ];
+
+    const ageDistribution = ageRanges.map((range, index) => {
+      const count = ages.filter(age => age >= range.min && age <= range.max).length;
+      return {
+        range: range.range,
+        count,
+        fill: ['#009688', '#00796B', '#00695C', '#004D40', '#005A9C', '#003D7A'][index]
+      };
+    }).filter(item => item.count > 0);
+
     // Gender distribution (mock data for now)
     const genderDistribution = [
       { name: 'Female', value: Math.round(totalPatients * 0.58), fill: '#009688' },
@@ -1743,6 +2038,8 @@ export async function getResearchProjectAnalytics(projectId: string): Promise<Re
       totalPatients,
       averageAge,
       activeStudies: 1, // Current project
+      ageStats,
+      ageDistribution,
       genderDistribution,
       conditionDistribution,
       outcomeDistribution,

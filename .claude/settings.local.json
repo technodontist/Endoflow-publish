@@ -1,8 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://pxpfbeqlqqrjpkiqlxmi.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4cGZiZXFscXFyanBraXFseG1pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzE3ODQyNywiZXhwIjoyMDcyNzU0NDI3fQ.8dOLsTfkiflfl8xprKTfTCxku0wvuvkpbDOIWc8oNkU\" node test-follow-up-server-action.js)",
-      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://pxpfbeqlqqrjpkiqlxmi.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4cGZiZXFscXFyanBraXFseG1pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzE3ODQyNywiZXhwIjoyMDcyNzU0NDI3fQ.8dOLsTfkiflfl8xprKTfTCxku0wvuvkpbDOIWc8oNkU\" node test-complete-follow-up-overview.js)"
+      "Bash([ -f \"d:\\endoflow\\Endoflow-publish\\test-follow-up-server-action.js\" ])",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://pxpfbeqlqqrjpkiqlxmi.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4cGZiZXFscXFyanBraXFseG1pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzE3ODQyNywiZXhwIjoyMDcyNzU0NDI3fQ.8dOLsTfkiflfl8xprKTfTCxku0wvuvkpbDOIWc8oNkU\" node test-add-to-cohort.js)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://pxpfbeqlqqrjpkiqlxmi.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4cGZiZXFscXFyanBraXFseG1pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzE3ODQyNywiZXhwIjoyMDcyNzU0NDI3fQ.8dOLsTfkiflfl8xprKTfTCxku0wvuvkpbDOIWc8oNkU\" node check-cohorts-schema.js)",
+      "Bash(npm run dev:*)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://pxpfbeqlqqrjpkiqlxmi.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4cGZiZXFscXFyanBraXFseG1pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzE3ODQyNywiZXhwIjoyMDcyNzU0NDI3fQ.8dOLsTfkiflfl8xprKTfTCxku0wvuvkpbDOIWc8oNkU\" node check-research-data.js)",
+      "Bash(PGPASSWORD=\"$SUPABASE_SERVICE_ROLE_KEY\" psql -h db.pxpfbeqlqqrjpkiqlxmi.supabase.co -U postgres -d postgres -f \"lib/db/migrations/add_research_ai_conversations.sql\")",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://pxpfbeqlqqrjpkiqlxmi.supabase.co\" SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4cGZiZXFscXFyanBraXFseG1pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzE3ODQyNywiZXhwIjoyMDcyNzU0NDI3fQ.8dOLsTfkiflfl8xprKTfTCxku0wvuvkpbDOIWc8oNkU\" node run-research-ai-migration.js)",
+      "Read(//c/Users/Nisarg/Downloads/**)",
+      "Bash(node:*)",
+      "Bash(cat:*)",
+      "Bash(curl -s -X POST \"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=AIzaSyDWpUU2GkXSMNxrn-CanK0Si4Gq3Ko2ZM4\" -H 'Content-Type: application/json' -d '{\"\"\"\"content\"\"\"\":{\"\"\"\"parts\"\"\"\":[{\"\"\"\"text\"\"\"\":\"\"\"\"Test\"\"\"\"}]},\"\"\"\"taskType\"\"\"\":\"\"\"\"RETRIEVAL_DOCUMENT\"\"\"\",\"\"\"\"outputDimensionality\"\"\"\":768}')",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyDWpUU2GkXSMNxrn-CanK0Si4Gq3Ko2ZM4\")",
+      "Read(//d/endoflow/endoflow3-main/app/**)"
     ],
     "deny": [],
     "ask": []

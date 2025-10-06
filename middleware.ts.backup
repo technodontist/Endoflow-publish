@@ -1,0 +1,39 @@
+import { NextResponse, type NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  try {
+    const { pathname } = request.nextUrl
+
+    // Define route patterns
+    const isPublicRoute = pathname === '/' || pathname === '/signup'
+    const isProtectedRoute = pathname.startsWith('/patient') ||
+                             pathname.startsWith('/assistant') ||
+                             pathname.startsWith('/dentist')
+
+    // Check for authentication cookie
+    const authCookie = request.cookies.get('sb-access-token') ||
+                      request.cookies.get('supabase-auth-token') ||
+                      request.cookies.get('sb-auth-token')
+
+    // If accessing protected route without auth cookie, redirect to login
+    if (isProtectedRoute && !authCookie) {
+      const redirectUrl = new URL('/', request.url)
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // For now, we'll handle role-based redirection client-side
+    // This avoids the eval() error from Supabase SSR in edge runtime
+    return NextResponse.next()
+  } catch (error) {
+    // Fail safely - allow request to proceed
+    return NextResponse.next()
+  }
+}
+
+export const config = {
+  matcher: [
+    '/patient/:path*',
+    '/assistant/:path*',
+    '/dentist/:path*'
+  ],
+}

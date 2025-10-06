@@ -340,6 +340,9 @@ export const researchCohorts = apiSchema.table('research_cohorts', {
   inclusionDate: timestamp('inclusion_date').defaultNow().notNull(),
   status: text('status', { enum: ['included', 'excluded', 'withdrawn', 'completed'] }).notNull().default('included'),
 
+  // Group assignment for comparative studies (Control, Treatment A, Treatment B, etc.)
+  groupName: text('group_name').notNull().default('Control'), // e.g., "Control", "Treatment A", "Treatment B"
+
   // Anonymous research identifier
   anonymousId: text('anonymous_id').notNull(), // e.g., "P001", "E002"
 
@@ -430,6 +433,29 @@ export const researchExports = apiSchema.table('research_exports', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// Research AI Conversations - Store AI chat history for research projects
+export const researchAIConversations = apiSchema.table('research_ai_conversations', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  projectId: uuid('project_id'), // References research_projects.id (nullable for temp analysis)
+  dentistId: uuid('dentist_id').notNull(), // References auth.users.id
+
+  // Message content
+  userQuery: text('user_query').notNull(),
+  aiResponse: text('ai_response').notNull(),
+  analysisType: text('analysis_type'), // 'analyze_cohort', 'compare_treatments', etc.
+
+  // Context and metadata
+  cohortSize: integer('cohort_size'), // Number of patients in analysis
+  metadata: text('metadata'), // JSON string for additional data
+  source: text('source').notNull().default('langflow'), // 'langflow', 'n8n', 'fallback'
+
+  // Response quality
+  confidence: text('confidence'), // 'high', 'medium', 'low'
+  processingTime: integer('processing_time'), // milliseconds
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // Export type definitions
 export type ResearchProject = typeof researchProjects.$inferSelect;
 export type NewResearchProject = typeof researchProjects.$inferInsert;
@@ -441,6 +467,8 @@ export type ResearchAnalytics = typeof researchAnalytics.$inferSelect;
 export type NewResearchAnalytics = typeof researchAnalytics.$inferInsert;
 export type ResearchExport = typeof researchExports.$inferSelect;
 export type NewResearchExport = typeof researchExports.$inferInsert;
+export type ResearchAIConversation = typeof researchAIConversations.$inferSelect;
+export type NewResearchAIConversation = typeof researchAIConversations.$inferInsert;
 
 // ===============================================
 // PATIENT DASHBOARD NEW FEATURES SCHEMA

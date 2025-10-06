@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertCircle, Search, Save, Plus, Loader2 } from "lucide-react"
 import { saveToothDiagnosis, type ToothDiagnosisData } from "@/lib/actions/tooth-diagnoses"
+import EndoAICopilotLive from "./endo-ai-copilot-live"
 
 interface ToothDiagnosisDialogProps {
   isOpen: boolean
@@ -106,6 +107,45 @@ export function ToothDiagnosisDialog({
       "Fractured Restoration",
       "Worn Restoration",
     ],
+    "Developmental Anomalies": [
+      "Enamel Hypoplasia",
+      "Dentinogenesis Imperfecta",
+      "Amelogenesis Imperfecta",
+      "Taurodontism",
+      "Dens Invaginatus",
+      "Supernumerary Tooth",
+    ],
+    "Traumatic Injuries": [
+      "Crown Fracture (Enamel Only)",
+      "Crown Fracture (Enamel-Dentin)",
+      "Crown Fracture (Pulp Exposure)",
+      "Root Fracture",
+      "Luxation (Lateral)",
+      "Intrusive Luxation",
+      "Extrusive Luxation",
+      "Avulsion",
+    ],
+    "Wear & Erosion": [
+      "Attrition (Occlusal Wear)",
+      "Abrasion (Cervical Wear)",
+      "Erosion (Acid Wear)",
+      "Abfraction",
+      "Bruxism-Related Wear",
+    ],
+    "Tooth Resorption": [
+      "External Root Resorption",
+      "Internal Root Resorption",
+      "Cervical Resorption",
+      "Replacement Resorption",
+    ],
+    "Other Conditions": [
+      "Hypersensitivity",
+      "Tooth Discoloration",
+      "Cracked Tooth Syndrome",
+      "Fistula",
+      "Mobility (Grade I/II/III)",
+      "Impacted Tooth",
+    ],
   }
 
   const predefinedTreatments = {
@@ -114,6 +154,43 @@ export function ToothDiagnosisDialog({
     Endodontic: ["Pulp Capping", "Pulpotomy", "Root Canal Treatment", "Retreatment", "Apexification"],
     Surgical: ["Simple Extraction", "Surgical Extraction", "Apicoectomy", "Root Resection", "Hemisection"],
     Periodontal: ["Scaling & Root Planing", "Gingivectomy", "Flap Surgery", "Bone Grafting", "GTR Procedure"],
+    Prosthodontic: [
+      "Post & Core",
+      "Full Crown (PFM)",
+      "Full Crown (Zirconia)",
+      "Full Crown (E-max)",
+      "Veneer (Porcelain)",
+      "Veneer (Composite)",
+      "Inlay/Onlay (Ceramic)",
+    ],
+    Orthodontic: [
+      "Space Maintainer",
+      "Fixed Orthodontic Appliance",
+      "Removable Appliance",
+      "Interceptive Orthodontics",
+    ],
+    Pediatric: [
+      "Stainless Steel Crown",
+      "Strip Crown",
+      "Pulpectomy (Primary Tooth)",
+      "Space Regainer",
+      "Fluoride Varnish",
+    ],
+    "Emergency/Trauma": [
+      "Emergency Pain Relief",
+      "Splinting",
+      "Tooth Repositioning",
+      "Reimplantation",
+      "Temporary Restoration",
+    ],
+    Advanced: [
+      "Bone Grafting (Socket Preservation)",
+      "Sinus Lift",
+      "Ridge Augmentation",
+      "Implant Placement",
+      "Guided Bone Regeneration",
+      "Connective Tissue Graft",
+    ],
   }
 
   const statusOptions: { value: ToothDiagnosisData['status'], label: string }[] = [
@@ -158,6 +235,13 @@ export function ToothDiagnosisDialog({
     setSelectedTreatments((prev) =>
       prev.includes(treatment) ? prev.filter((t) => t !== treatment) : [...prev, treatment],
     )
+  }
+
+  const handleAcceptAISuggestion = (treatment: string) => {
+    // Add AI-suggested treatment to selected treatments if not already present
+    if (!selectedTreatments.includes(treatment)) {
+      setSelectedTreatments([...selectedTreatments, treatment])
+    }
   }
 
   const handleSave = async () => {
@@ -208,7 +292,8 @@ export function ToothDiagnosisDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
+        <div className="flex-shrink-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Clinical Record for Tooth #{toothNumber}
@@ -221,6 +306,50 @@ export function ToothDiagnosisDialog({
             </div>
           )}
         </DialogHeader>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto px-1">
+          {/* Debug info */}
+          <div className="text-xs text-gray-500 p-2 bg-yellow-50 border rounded mb-2">
+            Debug: Selected diagnoses: {selectedDiagnoses.length} - {selectedDiagnoses.join(', ')}
+          </div>
+          
+          {/* AI Co-Pilot Section - Always Visible When Diagnosis Selected */}
+          {selectedDiagnoses.length > 0 && (
+            <div className="mb-6 mx-2">
+              <div className="bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-xl shadow-lg p-1">
+                <div className="bg-white/80 backdrop-blur rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center w-10 h-10 bg-teal-500 rounded-full">
+                      <span className="text-2xl">🤖</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-teal-700">Endo AI Copilot</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs bg-teal-100 text-teal-600 px-2 py-1 rounded-full font-semibold">POWERED BY GEMINI</span>
+                        <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-medium">Diagnosis: {selectedDiagnoses[0]}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <EndoAICopilotLive
+                    diagnosis={selectedDiagnoses[0]}
+                    toothNumber={toothNumber}
+                    onAcceptSuggestion={handleAcceptAISuggestion}
+                    patientContext={{
+                      age: 35 // You can make this dynamic if you have patient age available
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Show message when no diagnosis selected */}
+          {selectedDiagnoses.length === 0 && (
+            <div className="mb-6 mx-2 p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+              <p className="text-gray-600">🔍 Select a diagnosis to activate AI Treatment Assistant</p>
+            </div>
+          )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 py-4">
           {/* Left Column - Diagnosis */}
@@ -450,23 +579,27 @@ export function ToothDiagnosisDialog({
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-4 mt-6">
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save Clinical Record
-              </>
-            )}
-          </Button>
+        </div>
+        
+        <div className="flex-shrink-0 p-4 border-t bg-white">
+          <div className="flex justify-end gap-4">
+            <Button variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Clinical Record
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
