@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, Upload, X, Loader2, CheckCircle2, AlertCircle, Plus } from 'lucide-react'
-import { uploadMedicalKnowledgeAction } from '@/lib/actions/medical-knowledge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { BookOpen, Upload, X, Loader2, CheckCircle2, AlertCircle, Plus, FileText } from 'lucide-react'
+import { uploadMedicalKnowledgeAction, uploadMedicalKnowledgeFromPDFAction } from '@/lib/actions/medical-knowledge'
 import { cn } from '@/lib/utils'
 
 interface MedicalKnowledgeUploaderProps {
@@ -17,6 +18,9 @@ interface MedicalKnowledgeUploaderProps {
 }
 
 export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKnowledgeUploaderProps) {
+  const [uploadMode, setUploadMode] = useState<'text' | 'pdf'>('pdf')
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [sourceType, setSourceType] = useState<'textbook' | 'research_paper' | 'clinical_protocol' | 'case_study' | 'guideline'>('research_paper')
@@ -36,6 +40,7 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [extractedText, setExtractedText] = useState('')
 
   const sourceTypeOptions = [
     { value: 'textbook', label: 'Textbook' },
@@ -80,6 +85,26 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
     }
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        setError('Please select a PDF file')
+        return
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setError('PDF file must be less than 10MB')
+        return
+      }
+      setPdfFile(file)
+      setError(null)
+      // Auto-set title from filename if empty
+      if (!title) {
+        setTitle(file.name.replace('.pdf', ''))
+      }
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -87,8 +112,15 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
     setSuccess(false)
 
     try {
-      // Validation
-      if (!title.trim() || !content.trim()) {
+      // Validation for PDF mode
+      if (uploadMode === 'pdf' && !pdfFile) {
+        setError('Please select a PDF file')
+        setLoading(false)
+        return
+      }
+
+      // Validation for text mode
+      if (uploadMode === 'text' && (!title.trim() || !content.trim())) {
         setError('Title and content are required')
         setLoading(false)
         return
@@ -100,27 +132,55 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
         return
       }
 
-      const result = await uploadMedicalKnowledgeAction({
-        title,
-        content,
-        sourceType,
-        specialty,
-        authors: authors || undefined,
-        publicationYear: publicationYear ? parseInt(publicationYear) : undefined,
-        journal: journal || undefined,
-        doi: doi || undefined,
-        url: url || undefined,
-        isbn: isbn || undefined,
-        topics,
-        diagnosisKeywords,
-        treatmentKeywords
-      })
+      let result
+      if (uploadMode === 'pdf' && pdfFile) {
+        result = await uploadMedicalKnowledgeFromPDFAction({
+          pdfFile,
+          title: title || pdfFile.name.replace('.pdf', ''),
+          sourceType,
+          specialty,
+          authors: authors || undefined,
+          publicationYear: publicationYear ? parseInt(publicationYear) : undefined,
+          journal: journal || undefined,
+          doi: doi || undefined,
+          url: url || undefined,
+          isbn: isbn || undefined,
+          topics,
+          diagnosisKeywords,
+          treatmentKeywords
+        })
+        
+        if (result.success && result.extractedText) {
+          setExtractedText(result.extractedText)
+        }
+      } else {
+        result = await uploadMedicalKnowledgeAction({
+          title,
+          content,
+          sourceType,
+          specialty,
+          authors: authors || undefined,
+          publicationYear: publicationYear ? parseInt(publicationYear) : undefined,
+          journal: journal || undefined,
+          doi: doi || undefined,
+          url: url || undefined,
+          isbn: isbn || undefined,
+          topics,
+          diagnosisKeywords,
+          treatmentKeywords
+        })
+      }
 
       if (result.success) {
         setSuccess(true)
         // Reset form
         setTitle('')
         setContent('')
+        setPdfFile(null)
+        setExtractedText('')
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
         setAuthors('')
         setPublicationYear('')
         setJournal('')
@@ -178,6 +238,96 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Upload Mode Selector */}
+          <Tabs value={uploadMode} onValueChange={(v) => setUploadMode(v as 'text' | 'pdf')} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="pdf" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Upload PDF
+              </TabsTrigger>
+              <TabsTrigger value="text" className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                Paste Text
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="pdf" className="space-y-4 mt-4">
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-teal-500 transition-colors">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="pdf-upload"
+                />
+                <label htmlFor="pdf-upload" className="cursor-pointer">
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload className="h-12 w-12 text-gray-400" />
+                    <div className="text-sm">
+                      {pdfFile ? (
+                        <div className="flex items-center gap-2 text-teal-600 font-medium">
+                          <FileText className="h-4 w-4" />
+                          {pdfFile.name}
+                          <span className="text-gray-500">({(pdfFile.size / 1024 / 1024).toFixed(2)} MB)</span>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-gray-600 font-medium">Click to upload PDF or drag and drop</p>
+                          <p className="text-gray-400 text-xs mt-1">Maximum file size: 10MB</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </label>
+                {pdfFile && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      setPdfFile(null)
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = ''
+                      }
+                    }}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Remove File
+                  </Button>
+                )}
+              </div>
+              {extractedText && (
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">Extracted Text Preview:</Label>
+                  <p className="text-xs text-gray-600 max-h-32 overflow-y-auto font-mono">
+                    {extractedText.substring(0, 500)}...
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">{extractedText.length} characters extracted</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="text" className="space-y-4 mt-4">
+              <div>
+                <Label htmlFor="content">Content / Abstract *</Label>
+                <Textarea
+                  id="content"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Paste the full text, abstract, or key findings from the medical source..."
+                  rows={8}
+                  required={uploadMode === 'text'}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {content.length} characters • More detailed content improves AI accuracy
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
+
           {/* Basic Information */}
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-700">Basic Information</h3>
@@ -227,21 +377,6 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="content">Content / Abstract *</Label>
-              <Textarea
-                id="content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Paste the full text, abstract, or key findings from the medical source..."
-                rows={8}
-                required
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {content.length} characters • More detailed content improves AI accuracy
-              </p>
-            </div>
           </div>
 
           {/* Publication Details */}

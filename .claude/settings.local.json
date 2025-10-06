@@ -15,7 +15,9 @@
       "Bash(cat:*)",
       "Bash(curl -s -X POST \"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=AIzaSyDWpUU2GkXSMNxrn-CanK0Si4Gq3Ko2ZM4\" -H 'Content-Type: application/json' -d '{\"\"\"\"content\"\"\"\":{\"\"\"\"parts\"\"\"\":[{\"\"\"\"text\"\"\"\":\"\"\"\"Test\"\"\"\"}]},\"\"\"\"taskType\"\"\"\":\"\"\"\"RETRIEVAL_DOCUMENT\"\"\"\",\"\"\"\"outputDimensionality\"\"\"\":768}')",
       "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyDWpUU2GkXSMNxrn-CanK0Si4Gq3Ko2ZM4\")",
-      "Read(//d/endoflow/endoflow3-main/app/**)"
+      "Read(//d/endoflow/endoflow3-main/app/**)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nFix Tailwind CSS v4 configuration and add AI features\n\n- Fix Tailwind CSS v4 setup with proper @import directive\n- Update globals.css with v4 theme configuration\n- Add AI research assistant and medical knowledge features\n- Add Gemini AI integration and embeddings\n- Add JSONB filtering and research projects\n- Add comprehensive documentation and test files\n- Fix PostCSS configuration for Tailwind v4\n- Add dental diagnosis and treatment filtering guides\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

@@ -35,6 +35,7 @@ import {
 } from "lucide-react"
 import {
   getAllAnalyticsDataAction,
+  getCompletePatientRecordsAction,
   type ClinicStatistics,
   type TreatmentDistribution,
   type PatientDemographics
@@ -194,6 +195,7 @@ function ClinicalResearchChat({ onSendMessage, messages, isLoading }: ClinicalRe
 
 export function ClinicAnalysis() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [patientRecords, setPatientRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: string }>>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -255,14 +257,27 @@ export function ClinicAnalysis() {
   const loadAnalyticsData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const result = await getAllAnalyticsDataAction();
+      
+      // Fetch both aggregate analytics AND complete patient records
+      const [analyticsResult, patientsResult] = await Promise.all([
+        getAllAnalyticsDataAction(),
+        getCompletePatientRecordsAction()
+      ]);
 
-      if (result.success && result.data) {
-        setAnalyticsData(result.data);
-        setLastRefreshTime(new Date());
+      if (analyticsResult.success && analyticsResult.data) {
+        setAnalyticsData(analyticsResult.data);
       } else {
-        console.error('Failed to load analytics data:', result.error);
+        console.error('Failed to load analytics data:', analyticsResult.error);
       }
+      
+      if (patientsResult.success && patientsResult.data) {
+        setPatientRecords(patientsResult.data);
+        console.log(`📈 [CLINIC-ANALYSIS] Loaded ${patientsResult.data.length} complete patient records`);
+      } else {
+        console.error('Failed to load patient records:', patientsResult.error);
+      }
+      
+      setLastRefreshTime(new Date());
     } catch (error) {
       console.error('Error loading analytics data:', error);
     } finally {
@@ -279,14 +294,17 @@ export function ClinicAnalysis() {
     setIsChatLoading(true);
 
     try {
-      // Call the clinical research API endpoint
-      const response = await fetch('/api/clinical-research', {
+      // Call the research AI query endpoint WITHOUT RAG (patient data only)
+      const response = await fetch('/api/research/ai-query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message,
+          query: message,
+          analysisType: 'clinic_analysis', // Different type to skip RAG
+          cohortData: patientRecords, // Send complete patient records with all clinical data
+          disableRAG: true, // Explicitly disable RAG
           context: {
             currentStats: memoizedAnalyticsData?.statistics,
             treatmentData: memoizedAnalyticsData?.treatmentDistribution,
@@ -303,9 +321,25 @@ export function ClinicAnalysis() {
       const responseTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       if (result.success && result.response) {
+        // Format response with citations if available
+        let responseContent = typeof result.response === 'string' 
+          ? result.response 
+          : result.response.summary || JSON.stringify(result.response, null, 2);
+        
+        // Add citations if evidence was found
+        if (result.hasEvidence && result.citations && result.citations.length > 0) {
+          responseContent += '\n\n**References:**\n';
+          result.citations.forEach((citation: any, index: number) => {
+            responseContent += `\n[${index + 1}] ${citation.title}${citation.authors ? ` - ${citation.authors}` : ''}${citation.year ? ` (${citation.year})` : ''}`;
+          });
+        }
+        
+        // Add source badge (no evidence badge for clinic analysis)
+        const sourceBadge = ' 📊 *Clinic data analysis*';
+        
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: result.response,
+          content: responseContent + sourceBadge,
           timestamp: responseTimestamp
         }]);
       } else {
@@ -326,7 +360,7 @@ export function ClinicAnalysis() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [memoizedAnalyticsData]);
+  }, [memoizedAnalyticsData, patientRecords]);
 
   // Real-time data refresh every 5 minutes
   useEffect(() => {

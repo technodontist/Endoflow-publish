@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    // Fix async cookies issue for Next.js 15
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    // Use proper cookie-aware client for auth
+    const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -14,8 +12,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify user is a dentist
-    const { data: profile } = await supabase
+    // Verify user is a dentist (use service client for DB query)
+    const serviceSupabase = await createServiceClient()
+    const { data: profile } = await serviceSupabase
       .from('profiles')
       .select('role, status')
       .eq('id', user.id)
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { projectId, query, cohortData, analysisType } = body
+    const { projectId, query, cohortData, analysisType, disableRAG } = body
 
     const startTime = Date.now()
 
@@ -34,29 +33,61 @@ export async function POST(request: NextRequest) {
       projectId,
       analysisType,
       query: query?.substring(0, 100) + '...',
-      cohortSize: cohortData?.length || 0
+      cohortSize: cohortData?.length || 0,
+      disableRAG: disableRAG || false
     })
 
-    // Use Google Gemini to analyze patient database
-    // Research AI should query actual patient data, NOT medical knowledge base
+    // Use Google Gemini with RAG to analyze patient database + medical knowledge
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-    let source: 'gemini' | 'fallback' = 'fallback'
+    let source: 'gemini' | 'gemini_rag' | 'fallback' = 'fallback'
     let aiResponse: any
+    let citations: any[] = []
 
     if (GEMINI_API_KEY) {
       try {
-        console.log('🧠 [AI-QUERY] Using Gemini to analyze patient database')
+        // Check if RAG should be disabled (for clinic analysis)
+        if (disableRAG || analysisType === 'clinic_analysis') {
+          console.log('📈 [AI-QUERY] Using Gemini for clinic data analysis (RAG disabled)')
+          
+          const { analyzePatientCohort } = await import('@/lib/services/gemini-ai')
+          
+          aiResponse = await analyzePatientCohort({
+            cohortData: cohortData || [],
+            query
+          })
+          
+          source = 'gemini'
+          console.log('✅ [AI-QUERY] Gemini clinic analysis completed')
+        } else {
+          console.log('🧠 [AI-QUERY] Using Gemini with RAG for evidence-based analysis')
 
-        // Import Gemini service
-        const { analyzePatientCohort } = await import('@/lib/services/gemini-ai')
+          // Import RAG service
+          const { enhancedRAGQuery } = await import('@/lib/services/rag-service')
+          const { analyzePatientCohortWithRAG } = await import('@/lib/services/gemini-ai')
 
-        aiResponse = await analyzePatientCohort({
-          cohortData: cohortData || [],
-          query
-        })
+          // Step 1: Perform RAG query to get relevant medical knowledge
+          const ragResult = await enhancedRAGQuery({
+            userQuery: query,
+            patientData: {
+              totalPatients: cohortData?.length || 0,
+              hasClinicalData: cohortData && cohortData.length > 0
+            }
+          })
 
-        source = 'gemini'
-        console.log('✅ [AI-QUERY] Gemini analysis completed')
+          console.log(`📚 [AI-QUERY] RAG search complete: ${ragResult.hasEvidence ? 'Evidence found' : 'No evidence'}, ${ragResult.citations.length} citations`)
+
+          // Step 2: Send query + RAG context + patient data to Gemini
+          aiResponse = await analyzePatientCohortWithRAG({
+            cohortData: cohortData || [],
+            query,
+            ragContext: ragResult.ragContext,
+            hasEvidence: ragResult.hasEvidence
+          })
+
+          citations = ragResult.citations
+          source = ragResult.hasEvidence ? 'gemini_rag' : 'gemini'
+          console.log('✅ [AI-QUERY] Gemini analysis with RAG completed')
+        }
       } catch (error) {
         console.error('❌ [AI-QUERY] Error calling Gemini:', error)
         // Fall through to fallback
@@ -80,6 +111,8 @@ export async function POST(request: NextRequest) {
       success: true,
       response: aiResponse.response || aiResponse.output || aiResponse,
       source,
+      citations: citations.length > 0 ? citations : undefined,
+      hasEvidence: citations.length > 0,
       processingTime,
       timestamp: new Date().toISOString()
     })

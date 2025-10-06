@@ -1,7 +1,8 @@
 'use server'
 
-import { createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient, createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { getCurrentUser } from './auth'
 
 /**
  * Upload medical knowledge entry with text content
@@ -23,23 +24,14 @@ export async function uploadMedicalKnowledgeAction(formData: {
   treatmentKeywords: string[]
 }) {
   try {
-    const supabase = await createServiceClient()
-
-    // Verify user is authenticated dentist
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return { success: false, error: 'Unauthorized' }
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, status')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || profile.role !== 'dentist' || profile.status !== 'active') {
+    // Get current user using proper auth pattern
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'dentist' || user.status !== 'active') {
       return { success: false, error: 'Only active dentists can upload medical knowledge' }
     }
+
+    // Use service client for database operations
+    const supabase = await createServiceClient()
 
     console.log('📚 [MEDICAL KNOWLEDGE] Uploading new knowledge entry:', {
       title: formData.title,
@@ -73,7 +65,8 @@ export async function uploadMedicalKnowledgeAction(formData: {
     }
 
     // Insert into database with embedding
-    const { data: knowledgeEntry, error: insertError } = await supabase
+    const { data: knowledgeEntry, error: insertError} = await supabase
+      .schema('api')
       .from('medical_knowledge')
       .insert({
         title: formData.title,
@@ -130,6 +123,7 @@ export async function getMedicalKnowledgeAction(filters?: {
     }
 
     let query = supabase
+      .schema('api')
       .from('medical_knowledge')
       .select('*')
       .order('created_at', { ascending: false })
@@ -176,6 +170,7 @@ export async function deleteMedicalKnowledgeAction(knowledgeId: string) {
 
     // Check if user is the uploader or admin
     const { data: knowledge } = await supabase
+      .schema('api')
       .from('medical_knowledge')
       .select('uploaded_by')
       .eq('id', knowledgeId)
@@ -186,6 +181,7 @@ export async function deleteMedicalKnowledgeAction(knowledgeId: string) {
     }
 
     const { error: deleteError } = await supabase
+      .schema('api')
       .from('medical_knowledge')
       .delete()
       .eq('id', knowledgeId)
@@ -220,6 +216,7 @@ export async function getKnowledgeStatsAction() {
     }
 
     const { data: allKnowledge } = await supabase
+      .schema('api')
       .from('medical_knowledge')
       .select('source_type, specialty, topics')
 
@@ -254,5 +251,134 @@ export async function getKnowledgeStatsAction() {
   } catch (error) {
     console.error('❌ [MEDICAL KNOWLEDGE] Stats error:', error)
     return { success: false, error: 'Failed to fetch statistics' }
+  }
+}
+
+/**
+ * Upload medical knowledge from PDF file
+ * Extracts text and generates embeddings automatically
+ */
+export async function uploadMedicalKnowledgeFromPDFAction(pdfData: {
+  pdfFile: File
+  title?: string
+  sourceType: 'textbook' | 'research_paper' | 'clinical_protocol' | 'case_study' | 'guideline'
+  specialty: 'endodontics' | 'periodontics' | 'prosthodontics' | 'oral_surgery' | 'general_dentistry'
+  authors?: string
+  publicationYear?: number
+  journal?: string
+  doi?: string
+  url?: string
+  isbn?: string
+  topics: string[]
+  diagnosisKeywords: string[]
+  treatmentKeywords: string[]
+}) {
+  try {
+    // Get current user using proper auth pattern
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'dentist' || user.status !== 'active') {
+      console.error('❌ [PDF UPLOAD] Auth error: User not authorized')
+      return { success: false, error: 'Only active dentists can upload medical knowledge' }
+    }
+
+    console.log('✅ [PDF UPLOAD] User authenticated:', user.id, user.role)
+
+    // Use service client for database operations
+    const supabase = await createServiceClient()
+
+    console.log('📄 [PDF UPLOAD] Starting PDF upload:', {
+      fileName: pdfData.pdfFile.name,
+      fileSize: pdfData.pdfFile.size,
+      uploadedBy: user.id,
+      userEmail: user.email
+    })
+
+    // Convert PDF to buffer
+    const arrayBuffer = await pdfData.pdfFile.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    console.log('📄 [PDF UPLOAD] Extracting text from PDF...')
+
+    // Extract text from PDF
+    const { extractPDFContent } = await import('@/lib/utils/pdf-extractor')
+    const pdfContent = await extractPDFContent(buffer)
+
+    console.log(`✅ [PDF UPLOAD] Extracted ${pdfContent.text.length} characters from ${pdfContent.pages} pages`)
+
+    // Use provided title or extract from PDF
+    const title = pdfData.title || pdfContent.title || pdfData.pdfFile.name.replace('.pdf', '')
+    const authors = pdfData.authors || pdfContent.author || undefined
+
+    // Generate embedding using Gemini
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+    if (!GEMINI_API_KEY) {
+      return { success: false, error: 'GEMINI_API_KEY not configured. Please add it to .env.local' }
+    }
+
+    // Limit content for embedding (first 8000 chars)
+    const embeddingText = `${title}\n\n${pdfContent.text.substring(0, 8000)}`
+
+    console.log('🔮 [PDF UPLOAD] Generating 768-dim embedding with Gemini...')
+
+    const { generateEmbedding } = await import('@/lib/services/gemini-ai')
+
+    let embedding: number[]
+    try {
+      embedding = await generateEmbedding(embeddingText, 'RETRIEVAL_DOCUMENT')
+      console.log('✅ [PDF UPLOAD] Gemini embedding generated, dimensions:', embedding.length)
+    } catch (error) {
+      console.error('❌ [PDF UPLOAD] Gemini embedding failed:', error)
+      return { success: false, error: 'Failed to generate embeddings with Gemini API' }
+    }
+
+    // Insert into database with embedding
+    const { data: knowledgeEntry, error: insertError } = await supabase
+      .schema('api')
+      .from('medical_knowledge')
+      .insert({
+        title,
+        content: pdfContent.text, // Store full extracted text
+        source_type: pdfData.sourceType,
+        specialty: pdfData.specialty,
+        authors: authors || null,
+        publication_year: pdfData.publicationYear || null,
+        journal: pdfData.journal || null,
+        doi: pdfData.doi || null,
+        url: pdfData.url || null,
+        isbn: pdfData.isbn || null,
+        embedding: embedding,
+        topics: pdfData.topics,
+        diagnosis_keywords: pdfData.diagnosisKeywords,
+        treatment_keywords: pdfData.treatmentKeywords,
+        uploaded_by: user.id,
+        metadata: JSON.stringify({
+          originalFileName: pdfData.pdfFile.name,
+          pdfPages: pdfContent.pages,
+          extractedAt: new Date().toISOString()
+        })
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('❌ [PDF UPLOAD] Database insert failed:', insertError)
+      return { success: false, error: insertError.message }
+    }
+
+    console.log('✅ [PDF UPLOAD] Successfully uploaded PDF:', knowledgeEntry.id)
+
+    revalidatePath('/dentist')
+    revalidatePath('/dentist/knowledge')
+
+    return {
+      success: true,
+      data: knowledgeEntry,
+      extractedText: pdfContent.text,
+      extractedPages: pdfContent.pages
+    }
+
+  } catch (error) {
+    console.error('❌ [PDF UPLOAD] Upload error:', error)
+    return { success: false, error: `Failed to upload PDF: ${error instanceof Error ? error.message : 'Unknown error'}` }
   }
 }

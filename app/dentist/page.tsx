@@ -41,6 +41,7 @@ import { ClinicAnalysis } from "@/components/dentist/clinic-analysis"
 import { ResearchProjects } from "@/components/dentist/research-projects"
 import { ResearchProjects as ResearchProjectsV2 } from "@/components/dentist/research-projects-v2"
 import ResearchAiAssistant from "@/components/dentist/research-ai-assistant"
+import MedicalKnowledgeUploader from "@/components/dentist/medical-knowledge-uploader"
 import { MessagesChatInterface } from "@/components/dentist/messages-chat-interface"
 import SimpleMessagingInterface from "@/components/dentist/simple-messaging-interface"
 import { getCurrentDentist, getTodaysAppointments, getWeekAppointments, getDentistAppointmentsAction } from "@/lib/actions/dentist"
@@ -76,6 +77,7 @@ const navigationTabs = [
   { id: "analysis", label: "Clinic Analysis", icon: TrendingUp },
   { id: "research", label: "Research Projects", icon: Search },
   { id: "research-v2", label: "Research V2 (Advanced)", icon: Search },
+  { id: "medical-knowledge", label: "Medical Knowledge", icon: FileText },
   { id: "messages", label: "Messages & Chat", icon: MessageSquare },
   { id: "templates", label: "Templates", icon: FileText },
   { id: "tasks", label: "Assistant Tasks", icon: CheckCircle },
@@ -489,6 +491,18 @@ function DentistDashboardContent() {
 
           {activeTab === "research-v2" && (
             <ResearchProjectsV2 />
+          )}
+
+          {activeTab === "medical-knowledge" && (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Medical Knowledge Base</h1>
+                  <p className="text-gray-500">Upload research papers and clinical protocols for AI-powered evidence-based analysis</p>
+                </div>
+              </div>
+              <MedicalKnowledgeUploader />
+            </div>
           )}
 
           {activeTab === "ai-assistant" && (
