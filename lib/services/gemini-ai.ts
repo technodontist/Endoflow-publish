@@ -766,3 +766,152 @@ export function cosineSimilarity(embedding1: number[], embedding2: number[]): nu
 
   return dotProduct / (norm1 * norm2)
 }
+
+/**
+ * Interpret statistical results using AI to provide clinical insights
+ * @param statisticalResults - Results from statistical analysis
+ * @param cohortContext - Information about the patient cohort
+ * @param query - Original research query
+ * @returns AI-generated interpretation with clinical insights
+ */
+export async function interpretStatisticalResults(params: {
+  statisticalResults: any
+  cohortContext: {
+    totalPatients: number
+    fields: string[]
+    analysisType: string
+  }
+  query?: string
+}): Promise<{
+  summary: string
+  clinicalInsights: string[]
+  recommendations: string[]
+  significance: string[]
+  limitations: string[]
+}> {
+  const { statisticalResults, cohortContext, query } = params
+
+  const systemInstruction = `You are a clinical research statistician specializing in endodontics.
+Your role is to interpret statistical analysis results and provide actionable clinical insights.
+
+Guidelines:
+1. Explain what the statistics mean in clinical terms
+2. Identify statistically significant patterns
+3. Provide evidence-based recommendations
+4. Note any limitations or concerns about the analysis
+5. Use medical terminology appropriately but keep explanations clear
+
+Always respond in JSON format:
+{
+  "summary": "Brief overview of the statistical findings",
+  "clinicalInsights": ["Insight 1", "Insight 2", ...],
+  "recommendations": ["Recommendation 1", "Recommendation 2", ...],
+  "significance": ["Significant finding 1", "Significant finding 2", ...],
+  "limitations": ["Limitation 1", "Limitation 2", ...]
+}`
+
+  const userPrompt = `Interpret the following statistical analysis results:
+
+ORIGINAL QUERY: ${query || 'General statistical analysis'}
+
+COHORT CONTEXT:
+- Total Patients: ${cohortContext.totalPatients}
+- Fields Analyzed: ${cohortContext.fields.join(', ')}
+- Analysis Type: ${cohortContext.analysisType}
+
+STATISTICAL RESULTS:
+${JSON.stringify(statisticalResults, null, 2)}
+
+Provide a clinical interpretation of these statistical findings, focusing on:
+1. What these numbers mean for patient care
+2. Any statistically significant patterns
+3. Clinical recommendations based on the findings
+4. Potential limitations of the analysis
+
+Be specific about which statistics support each insight and recommendation.`
+
+  const messages: GeminiChatMessage[] = [
+    {
+      role: 'user',
+      parts: [{ text: userPrompt }]
+    }
+  ]
+
+  const responseText = await generateChatCompletion(messages, {
+    model: 'gemini-2.0-flash',
+    temperature: 0.3,
+    systemInstruction,
+    responseFormat: 'json'
+  })
+
+  try {
+    const interpretation = JSON.parse(responseText)
+    return interpretation
+  } catch (parseError) {
+    console.error('❌ [GEMINI] Failed to parse statistical interpretation response:', responseText)
+    throw new Error('AI returned invalid JSON format for statistical interpretation')
+  }
+}
+
+/**
+ * Generate clinical insights from descriptive statistics
+ * @param stats - Descriptive statistics for a field
+ * @param fieldName - Name of the analyzed field
+ * @param dataType - Type of data (numerical or categorical)
+ * @returns Clinical interpretation
+ */
+export async function interpretFieldStatistics(params: {
+  stats: any
+  fieldName: string
+  dataType: 'numerical' | 'categorical'
+  sampleSize: number
+}): Promise<{
+  interpretation: string
+  clinicalRelevance: string
+  recommendations: string[]
+}> {
+  const { stats, fieldName, dataType, sampleSize } = params
+
+  const systemInstruction = `You are a clinical statistician interpreting medical research data.
+Provide clear, actionable insights about statistical findings.
+
+Respond in JSON format:
+{
+  "interpretation": "What the statistics show",
+  "clinicalRelevance": "Why this matters clinically",
+  "recommendations": ["Action 1", "Action 2", ...]
+}`
+
+  const userPrompt = `Interpret these ${dataType} statistics for the field "${fieldName}":
+
+Sample Size: ${sampleSize}
+Statistics:
+${JSON.stringify(stats, null, 2)}
+
+Provide:
+1. A clear interpretation of what these numbers mean
+2. The clinical relevance of these findings
+3. Specific recommendations based on the results`
+
+  const messages: GeminiChatMessage[] = [
+    {
+      role: 'user',
+      parts: [{ text: userPrompt }]
+    }
+  ]
+
+  const responseText = await generateChatCompletion(messages, {
+    model: 'gemini-2.0-flash',
+    temperature: 0.3,
+    systemInstruction,
+    responseFormat: 'json'
+  })
+
+  try {
+    const interpretation = JSON.parse(responseText)
+    return interpretation
+  } catch (parseError) {
+    console.error('❌ [GEMINI] Failed to parse field statistics interpretation:', responseText)
+    throw new Error('AI returned invalid JSON format for field statistics interpretation')
+  }
+}

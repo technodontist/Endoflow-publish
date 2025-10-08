@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { AlertCircle, Search, Save, Plus, Loader2, X } from "lucide-react"
+import { AlertCircle, Search, Save, Plus, Loader2, X, Sparkles, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { saveToothDiagnosis, type ToothDiagnosisData } from "@/lib/actions/tooth-diagnoses"
 import EndoAICopilotLive from "./endo-ai-copilot-live"
@@ -25,7 +25,7 @@ interface ToothDiagnosisDialogProps {
   onDataSaved?: () => void
 }
 
-export function ToothDiagnosisDialog({
+export function ToothDiagnosisDialogV2({
   isOpen,
   onClose,
   toothNumber,
@@ -34,9 +34,6 @@ export function ToothDiagnosisDialog({
   existingData,
   onDataSaved
 }: ToothDiagnosisDialogProps) {
-  // FORCE RENDER CHECK - This text MUST appear in UI
-  const UPDATED_VERSION_MARKER = "🚀 VERSION 2.0 - WIDE LAYOUT ACTIVE 🚀"
-  console.log('🔧 ToothDiagnosisDialog', UPDATED_VERSION_MARKER)
   const [selectedDiagnoses, setSelectedDiagnoses] = useState<string[]>([])
   const [selectedTreatments, setSelectedTreatments] = useState<string[]>([])
   const [diagnosisSearch, setDiagnosisSearch] = useState("")
@@ -299,23 +296,23 @@ export function ToothDiagnosisDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/80" />
-        <DialogPrimitive.Content className={cn(
-          "fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]",
-          "w-[95vw] max-w-[95vw] h-[95vh]",
-          "overflow-hidden flex flex-col p-0",
-          "border bg-background shadow-lg sm:rounded-lg"
-        )}>
-        <div className="flex-shrink-0 px-6 pt-6 pb-4 bg-gradient-to-r from-purple-100 to-pink-100 border-b-4 border-purple-500">
+        <DialogPrimitive.Content
+          data-radix-dialog-content
+          className={cn(
+            "tooth-diagnosis-wide-dialog",
+            "fixed left-[50%] top-[50%] z-50 translate-x-[-50%] translate-y-[-50%]",
+            "w-[95vw] max-w-[95vw] h-[95vh]",
+            "overflow-hidden flex flex-col p-0",
+            "border bg-background shadow-lg sm:rounded-lg"
+          )}>
+        <div className="flex-shrink-0 px-6 pt-6 pb-4 bg-gradient-to-r from-blue-50 to-teal-50 border-b">
         <DialogHeader>
-          <div className="bg-yellow-300 border-4 border-red-600 p-4 mb-4 text-center">
-            <p className="text-3xl font-black text-red-600">{UPDATED_VERSION_MARKER}</p>
-          </div>
           <DialogTitle className="flex items-center gap-2 text-2xl font-bold">
-            🦷 Clinical Record for Tooth #{toothNumber} - UPDATED UI 🚀
+            Clinical Record for Tooth #{toothNumber}
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           </DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1 font-semibold">
-            ⚡ NEW: 3-Column Layout with AI Co-pilot • Add diagnosis and treatment plan using evidence-based protocols
+          <p className="text-sm text-muted-foreground mt-1">
+            Add diagnosis and treatment plan using evidence-based protocols with AI assistance
           </p>
           {error && (
             <div className="flex items-center gap-2 text-red-600 text-sm mt-2">
@@ -327,17 +324,12 @@ export function ToothDiagnosisDialog({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-4">
-          {/* DEBUG BANNER */}
-          <div className="bg-yellow-200 border-2 border-yellow-600 p-2 mb-4 text-center font-bold">
-            ⚡ UPDATED: 3-Column Layout with AI Co-pilot ⚡
-          </div>
-
           <div className="grid grid-cols-3 gap-6 py-4">
           {/* Left Column - Diagnosis */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <span className="text-blue-600">🔍</span>
+                <Search className="h-5 w-5 text-blue-600" />
                 Diagnosis & Status
               </CardTitle>
             </CardHeader>
@@ -422,7 +414,7 @@ export function ToothDiagnosisDialog({
           <Card className="lg:row-span-2">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <span className="text-teal-600">🤖</span>
+                <Sparkles className="h-5 w-5 text-teal-600" />
                 Endo AI Co-pilot
               </CardTitle>
             </CardHeader>
@@ -432,7 +424,7 @@ export function ToothDiagnosisDialog({
                   <div className="bg-white/80 backdrop-blur rounded-lg p-4">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="flex items-center justify-center w-10 h-10 bg-teal-500 rounded-full">
-                        <span className="text-2xl">🤖</span>
+                        <Sparkles className="h-6 w-6 text-white" />
                       </div>
                       <div>
                         <h3 className="text-xl font-bold text-teal-700">AI Treatment Suggestions</h3>
@@ -455,7 +447,7 @@ export function ToothDiagnosisDialog({
               ) : (
                 <div className="h-full flex items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
                   <div>
-                    <div className="text-4xl mb-3">🔍</div>
+                    <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                     <p className="text-gray-600 font-medium">Select a diagnosis</p>
                     <p className="text-sm text-gray-500 mt-1">AI suggestions will appear here</p>
                   </div>
@@ -468,7 +460,7 @@ export function ToothDiagnosisDialog({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <span className="text-green-600">🔧</span>
+                <Settings className="h-5 w-5 text-green-600" />
                 Treatment Plan
               </CardTitle>
             </CardHeader>

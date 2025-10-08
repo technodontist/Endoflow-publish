@@ -1683,16 +1683,19 @@ export function ResearchProjects() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="ai-assistant" className="flex-1 overflow-hidden">
-                  <ResearchAIAssistant
-                    selectedProject={selectedProject}
-                    projectAnalytics={projectAnalytics}
-                    filterCriteria={filterCriteria}
-                    matchingPatients={matchingPatients}
-                    onAnalysisComplete={(analysis) => {
-                      console.log('🤖 AI Analysis completed:', analysis)
-                    }}
-                  />
+                <TabsContent value="ai-assistant" className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
+                  <div className="min-h-full p-4 pb-6">
+                    <ResearchAIAssistant
+                      key={`ai-assistant-${selectedProject || 'no-project'}`}
+                      selectedProject={selectedProject}
+                      projectAnalytics={projectAnalytics}
+                      filterCriteria={filterCriteria}
+                      matchingPatients={matchingPatients}
+                      onAnalysisComplete={(analysis) => {
+                        console.log('🤖 AI Analysis completed:', analysis)
+                      }}
+                    />
+                  </div>
                 </TabsContent>
               </Tabs>
             ) : (

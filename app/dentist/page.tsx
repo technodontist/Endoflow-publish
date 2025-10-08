@@ -36,6 +36,7 @@ import { DentistBookingInterface } from "@/components/dentist/booking-interface"
 import { ClinicalCockpit } from "@/components/dentist/clinical-cockpit"
 import { RealtimeAppointments } from "@/components/dentist/realtime-appointments"
 import { EnhancedNewConsultationV2 } from "@/components/dentist/enhanced-new-consultation-v2"
+import { EnhancedNewConsultationV3 } from "@/components/dentist/enhanced-new-consultation-v3"
 import { NotificationCenter } from "@/components/notifications/notification-center"
 import { ClinicAnalysis } from "@/components/dentist/clinic-analysis"
 import { ResearchProjects } from "@/components/dentist/research-projects"
@@ -73,6 +74,7 @@ const navigationTabs = [
   { id: "today", label: "Today's View", icon: Activity },
   { id: "patients", label: "Patients", icon: Users },
   { id: "consultation", label: "Enhanced Consultation", icon: FileText },
+  { id: "consultation-v3", label: "Enhanced Consultation V3 (Dev)", icon: FileText },
   { id: "organizer", label: "Appointment Organizer", icon: CalendarDays },
   { id: "analysis", label: "Clinic Analysis", icon: TrendingUp },
   { id: "research", label: "Research Projects", icon: Search },
@@ -455,6 +457,14 @@ function DentistDashboardContent() {
 
           {activeTab === "consultation" && (
             <EnhancedNewConsultationV2 
+              selectedPatientId={searchParams?.get('patientId') || undefined}
+              appointmentId={searchParams?.get('appointmentId') || undefined}
+              dentistId={dentistData.id}
+            />
+          )}
+
+          {activeTab === "consultation-v3" && (
+            <EnhancedNewConsultationV3 
               selectedPatientId={searchParams?.get('patientId') || undefined}
               appointmentId={searchParams?.get('appointmentId') || undefined}
               dentistId={dentistData.id}

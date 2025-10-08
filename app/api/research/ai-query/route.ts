@@ -37,6 +37,54 @@ export async function POST(request: NextRequest) {
       disableRAG: disableRAG || false
     })
 
+    // Detect if this is a statistical query
+    const isStatisticalQuery = detectStatisticalQuery(query)
+    if (isStatisticalQuery.isStatistical) {
+      console.log('📊 [AI-QUERY] Detected statistical query, routing to statistical analysis')
+      
+      try {
+        // Route to statistical analysis API
+        const statsResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/research/statistical-analysis`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId,
+            cohortData,
+            field: isStatisticalQuery.field,
+            analysisType: isStatisticalQuery.field ? 'single_field' : 'comprehensive',
+            formatForChat: true
+          })
+        })
+
+        const statsResult = await statsResponse.json()
+        
+        if (statsResult.success) {
+          const processingTime = Date.now() - startTime
+          
+          return NextResponse.json({
+            success: true,
+            response: statsResult.analysis.report,
+            source: 'statistical_analysis',
+            analysisType: 'statistical_query',
+            hasEvidence: false,
+            processingTime,
+            metadata: {
+              detectedQuery: isStatisticalQuery,
+              fieldsAnalyzed: statsResult.analysis.fieldsAnalyzed,
+              cohortSize: statsResult.analysis.cohortSize
+            },
+            timestamp: new Date().toISOString()
+          })
+        }
+        
+        // If statistical analysis failed, fall through to regular AI processing
+        console.log('⚠️ [AI-QUERY] Statistical analysis failed, falling back to regular AI processing')
+      } catch (error) {
+        console.error('❌ [AI-QUERY] Statistical analysis error:', error)
+        // Fall through to regular AI processing
+      }
+    }
+
     // Use Google Gemini with RAG to analyze patient database + medical knowledge
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY
     let source: 'gemini' | 'gemini_rag' | 'fallback' = 'fallback'
@@ -180,5 +228,83 @@ function generateFallbackResponse(analysisType: string, query: string, cohortDat
         confidence: 'Moderate',
         sources: ['Clinical database', 'Treatment outcomes', 'Patient demographics']
       }
+  }
+}
+
+/**
+ * Detect if a query is asking for statistical analysis
+ */
+function detectStatisticalQuery(query: string): {
+  isStatistical: boolean
+  type?: 'descriptive' | 'comparative' | 'specific_field'
+  field?: string
+  statistic?: string
+} {
+  if (!query) return { isStatistical: false }
+  
+  const lowerQuery = query.toLowerCase()
+  
+  // Statistical keywords that indicate statistical analysis is needed
+  const statisticalKeywords = [
+    'mean', 'average', 'median', 'mode', 'standard deviation', 'std dev',
+    'variance', 'quartile', 'percentile', 'range', 'min', 'max', 'minimum', 'maximum',
+    'frequency', 'distribution', 'histogram', 'correlation',
+    'descriptive statistics', 'summary statistics', 'statistical analysis',
+    'calculate', 'compute', 'what is the', 'show me the', 'analyze'
+  ]
+  
+  // Field-specific patterns (common medical/research fields)
+  const fieldPatterns = [
+    'age', 'gender', 'diagnosis', 'treatment', 'outcome', 'success', 'duration',
+    'pain score', 'satisfaction', 'cost', 'visits', 'complications'
+  ]
+  
+  // Check if query contains statistical keywords
+  const hasStatKeyword = statisticalKeywords.some(keyword => 
+    lowerQuery.includes(keyword)
+  )
+  
+  if (!hasStatKeyword) {
+    return { isStatistical: false }
+  }
+  
+  // Try to extract specific field being asked about
+  let detectedField: string | undefined
+  let detectedStatistic: string | undefined
+  
+  // Look for specific field mentions
+  fieldPatterns.forEach(field => {
+    if (lowerQuery.includes(field)) {
+      detectedField = field
+    }
+  })
+  
+  // Look for specific statistic mentions
+  if (lowerQuery.includes('mean') || lowerQuery.includes('average')) {
+    detectedStatistic = 'mean'
+  } else if (lowerQuery.includes('median')) {
+    detectedStatistic = 'median'
+  } else if (lowerQuery.includes('mode')) {
+    detectedStatistic = 'mode'
+  } else if (lowerQuery.includes('standard deviation')) {
+    detectedStatistic = 'standard_deviation'
+  } else if (lowerQuery.includes('range')) {
+    detectedStatistic = 'range'
+  }
+  
+  // Determine query type
+  let queryType: 'descriptive' | 'comparative' | 'specific_field' = 'descriptive'
+  
+  if (detectedField && detectedStatistic) {
+    queryType = 'specific_field'
+  } else if (lowerQuery.includes('compare') || lowerQuery.includes('vs') || lowerQuery.includes('versus')) {
+    queryType = 'comparative'
+  }
+  
+  return {
+    isStatistical: true,
+    type: queryType,
+    field: detectedField,
+    statistic: detectedStatistic
   }
 }

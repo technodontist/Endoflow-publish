@@ -31,7 +31,7 @@ import { TreatmentPlanTab } from '@/components/consultation/tabs/TreatmentPlanTa
 import { TreatmentOverviewTab } from '@/components/consultation/tabs/TreatmentOverviewTab'
 import { TreatmentOverviewTabLive } from '@/components/consultation/tabs/TreatmentOverviewTabLive'
 import { GlobalVoiceRecorder } from '@/components/consultation/GlobalVoiceRecorder'
-import { SimpleToothInterface } from '@/components/consultation/SimpleToothInterface'
+import { ToothDiagnosisDialogV2 } from './tooth-diagnosis-dialog-v2'
 import { saveCompleteConsultationAction, loadPatientConsultationAction, saveConsultationSectionAction, finalizeConsultationFromDraftAction } from '@/lib/actions/consultation'
 import { AppointmentRequestDialog } from '@/components/consultation/AppointmentRequestDialog'
 
@@ -131,8 +131,9 @@ interface EnhancedNewConsultationProps {
   onPatientSelect?: (patient: Patient) => void
 }
 
-// DUPLICATE COPY: Enhanced Consultation V2
-export function EnhancedNewConsultationV2({ selectedPatientId, appointmentId, dentistId, onPatientSelect }: EnhancedNewConsultationProps) {
+// 🚀 VERSION 3: Working Copy for Updates (V2 remains stable)
+// DO NOT modify enhanced-new-consultation-v2.tsx - that's the stable version
+export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, dentistId, onPatientSelect }: EnhancedNewConsultationProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
@@ -1181,7 +1182,7 @@ export function EnhancedNewConsultationV2({ selectedPatientId, appointmentId, de
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">New Consultation (V2)</h1>
+          <h1 className="text-2xl font-bold text-gray-900">New Consultation (V3)</h1>
           <p className="text-gray-600">Search and select a patient to begin consultation</p>
         </div>
         <Card>
@@ -2128,50 +2129,25 @@ export function EnhancedNewConsultationV2({ selectedPatientId, appointmentId, de
         </DialogContent>
       </Dialog>
 
-      {showToothInterface && selectedTooth && (
-        <SimpleToothInterface
-          toothNumber={selectedTooth}
-          existingData={toothData[selectedTooth]}
-          onClose={() => {
+      <ToothDiagnosisDialogV2
+        isOpen={showToothInterface}
+        onClose={() => {
+          setShowToothInterface(false)
+          setSelectedTooth(null)
+        }}
+        toothNumber={selectedTooth || ''}
+        patientId={selectedPatient?.id}
+        consultationId={savedConsultationId || undefined}
+        existingData={toothData[selectedTooth || '']}
+        onDataSaved={() => {
+          console.log('💾 Tooth diagnosis saved for tooth', selectedTooth)
+          // Reload tooth data after saving
+          if (selectedPatient?.id) {
+            // You might want to refresh the tooth data here
             setShowToothInterface(false)
-            setSelectedTooth(null)
-          }}
-          onSave={(data) => {
-            console.log('💾 Saving tooth data for tooth', selectedTooth, ':', data)
-
-            const preserveStatusMerge = (prevTooth: any, newData: any) => {
-              const merged = { ...(prevTooth || {}), ...(newData || {}) }
-              const prevStatus = prevTooth?.currentStatus
-              const nextStatus = newData?.currentStatus
-              // If the dialog did not explicitly change status (undefined), keep the previous one
-              if (nextStatus === undefined && prevStatus) {
-                merged.currentStatus = prevStatus
-              }
-              return merged
-            }
-
-            if (typeof data === 'object' && !Array.isArray(data)) {
-              const isMultiToothData = Object.keys(data).some(key => /^\d+$/.test(key))
-              if (isMultiToothData) {
-                console.log('🔄 Multi-tooth save detected. Updating multiple teeth:', Object.keys(data))
-                setToothData(prev => {
-                  const next = { ...prev }
-                  for (const [tooth, newVal] of Object.entries<any>(data)) {
-                    next[tooth] = preserveStatusMerge(prev[tooth], newVal)
-                  }
-                  return next
-                })
-              } else {
-                setToothData(prev => ({
-                  ...prev,
-                  [selectedTooth as string]: preserveStatusMerge(prev[selectedTooth as string], data)
-                }))
-              }
-            }
-            setShowToothInterface(false)
-          }}
-        />
-      )}
+          }
+        }}
+      />
     </div>
   )
 }

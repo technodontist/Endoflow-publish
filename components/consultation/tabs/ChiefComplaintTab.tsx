@@ -7,6 +7,41 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import { Sparkles, Clock } from "lucide-react"
+
+// Helper function to map AI pain quality keywords to checkbox-compatible symptom names
+function mapPainQualityToSymptoms(painQuality: string, painCharacteristics: any, associatedSymptoms: string[]): string[] {
+  const symptoms: string[] = []
+  const qualityLower = (painQuality || '').toLowerCase()
+  const charQuality = (painCharacteristics?.quality || '').toLowerCase()
+  const combinedQuality = `${qualityLower} ${charQuality}`.toLowerCase()
+
+  // Map AI keywords to exact checkbox labels
+  if (combinedQuality.includes('sharp') || combinedQuality.includes('stabbing') || combinedQuality.includes('shooting')) {
+    symptoms.push('Sharp pain')
+  }
+  if (combinedQuality.includes('dull') || combinedQuality.includes('aching') || combinedQuality.includes('ache')) {
+    symptoms.push('Dull ache')
+  }
+  if (combinedQuality.includes('throb') || combinedQuality.includes('pulsating')) {
+    symptoms.push('Throbbing')
+  }
+
+  // Check associated symptoms for additional conditions
+  const symptomsLower = associatedSymptoms.map(s => s.toLowerCase()).join(' ')
+  if (combinedQuality.includes('swell') || symptomsLower.includes('swell')) {
+    symptoms.push('Swelling')
+  }
+  if (combinedQuality.includes('hot') || symptomsLower.includes('hot') || symptomsLower.includes('heat')) {
+    symptoms.push('Sensitivity to hot')
+  }
+  if (combinedQuality.includes('cold') || symptomsLower.includes('cold') || symptomsLower.includes('ice')) {
+    symptoms.push('Sensitivity to cold')
+  }
+
+  return symptoms
+}
 
 export function ChiefComplaintTab({ data, onChange, isReadOnly = false, onSave }: any) {
   // Local state management - initialize with stable defaults to prevent controlled/uncontrolled switches
@@ -17,10 +52,36 @@ export function ChiefComplaintTab({ data, onChange, isReadOnly = false, onSave }
 
   // Update local state when data prop changes - ensure stable defaults
   useEffect(() => {
+    console.log('🔍 [CHIEF COMPLAINT TAB] useEffect triggered with data:', {
+      primary_complaint: data?.primary_complaint,
+      pain_scale: data?.pain_scale,
+      pain_quality: data?.pain_quality,
+      pain_characteristics: data?.pain_characteristics,
+      associated_symptoms: data?.associated_symptoms,
+      auto_extracted: data?.auto_extracted
+    })
+
     setComplaint(data?.primary_complaint || '')
     setDescription(data?.patient_description || '')
     setPainScale(data?.pain_scale || 0)
-    setSymptoms(data?.associated_symptoms || [])
+
+    // Map AI-extracted pain quality to symptoms checkboxes
+    const extractedSymptoms = mapPainQualityToSymptoms(
+      data?.pain_quality || '',
+      data?.pain_characteristics,
+      data?.associated_symptoms || []
+    )
+
+    console.log('🎯 [CHIEF COMPLAINT TAB] Mapped symptoms:', {
+      input_pain_quality: data?.pain_quality,
+      input_pain_characteristics: data?.pain_characteristics,
+      input_associated_symptoms: data?.associated_symptoms,
+      extracted_symptoms: extractedSymptoms
+    })
+
+    const finalSymptoms = extractedSymptoms.length > 0 ? extractedSymptoms : (data?.associated_symptoms || [])
+    console.log('✅ [CHIEF COMPLAINT TAB] Setting symptoms to:', finalSymptoms)
+    setSymptoms(finalSymptoms)
   }, [data])
 
   // Event handlers
@@ -101,12 +162,45 @@ export function ChiefComplaintTab({ data, onChange, isReadOnly = false, onSave }
 
   return (
     <div className="space-y-6">
+      {/* AI Auto-Fill Indicator */}
+      {data?.auto_extracted && (
+        <div className="p-4 bg-gradient-to-r from-blue-50 via-teal-50 to-blue-50 rounded-lg border-2 border-blue-200 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0">
+                <Sparkles className="h-5 w-5 text-teal-600 animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge className="bg-gradient-to-r from-blue-600 to-teal-600 text-white border-0">
+                    🤖 AI Auto-Filled from Voice Recording
+                  </Badge>
+                  <Badge variant="outline" className="bg-white text-blue-700 border-blue-300">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Confidence: {data.confidence || 85}%
+                  </Badge>
+                </div>
+                <p className="text-sm text-gray-700 mt-1">
+                  Chief complaint extracted using Gemini AI. Review and edit as needed.
+                </p>
+                {data.extraction_timestamp && (
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Extracted: {new Date(data.extraction_timestamp).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-teal-600">Chief Complaint</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          
+
           {/* Primary Complaint */}
           <div>
             <Label htmlFor="primary-complaint">Primary Complaint</Label>

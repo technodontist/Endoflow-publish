@@ -251,3 +251,18 @@
 .animate-accordion-up {
   animation: accordion-up 0.2s ease-out;
 }
+
+/* NUCLEAR FIX: Force tooth diagnosis dialog to be wide - Override all cached CSS */
+@layer components {
+  /* Target Radix Dialog Content when used in tooth diagnosis */
+  [data-radix-dialog-content] {
+    max-width: none !important;
+  }
+
+  /* Specific override for tooth diagnosis dialog */
+  .tooth-diagnosis-wide-dialog {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    height: 95vh !important;
+  }
+}

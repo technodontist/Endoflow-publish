@@ -1,6 +1,7 @@
 'use server'
 
 import { createServiceClient } from '@/lib/supabase/server'
+import { getCurrentUser } from './auth'
 import { revalidatePath } from 'next/cache'
 
 export interface AISuggestion {
@@ -31,23 +32,17 @@ export async function getAITreatmentSuggestionAction(params: {
   }
 }) {
   try {
-    const supabase = await createServiceClient()
-
     // Verify user is authenticated dentist
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const user = await getCurrentUser()
+    if (!user) {
       return { success: false, error: 'Unauthorized' }
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, status')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || profile.role !== 'dentist' || profile.status !== 'active') {
+    if (user.role !== 'dentist' || user.status !== 'active') {
       return { success: false, error: 'Access denied' }
     }
+
+    const supabase = await createServiceClient()
 
     console.log('🤖 [AI TREATMENT] Generating suggestion for:', {
       diagnosis: params.diagnosis,
@@ -242,12 +237,12 @@ export async function getAITreatmentSuggestionAction(params: {
  */
 export async function clearAISuggestionCacheAction(diagnosis?: string) {
   try {
-    const supabase = await createServiceClient()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const user = await getCurrentUser()
+    if (!user) {
       return { success: false, error: 'Unauthorized' }
     }
+
+    const supabase = await createServiceClient()
 
     let query = supabase.from('ai_suggestion_cache').delete()
 
@@ -281,12 +276,12 @@ export async function clearAISuggestionCacheAction(diagnosis?: string) {
  */
 export async function getAICacheStatsAction() {
   try {
-    const supabase = await createServiceClient()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const user = await getCurrentUser()
+    if (!user) {
       return { success: false, error: 'Unauthorized' }
     }
+
+    const supabase = await createServiceClient()
 
     const { data: cacheEntries } = await supabase
       .from('ai_suggestion_cache')

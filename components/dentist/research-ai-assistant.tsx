@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, memo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,7 +19,8 @@ import {
   MessageSquare,
   RefreshCw,
   Sparkles,
-  Lightbulb
+  Lightbulb,
+  ChevronDown
 } from 'lucide-react'
 import { saveResearchConversationAction, getProjectConversationsAction } from '@/lib/actions/research-ai'
 
@@ -51,6 +52,13 @@ const ANALYSIS_TYPES = [
     color: '#009688'
   },
   {
+    id: 'statistical_analysis',
+    label: 'Statistical Analysis',
+    icon: BarChart3,
+    description: 'Calculate mean, median, mode, and descriptive statistics',
+    color: '#2E86AB'
+  },
+  {
     id: 'compare_treatments',
     label: 'Compare Treatments',
     icon: BarChart3,
@@ -80,7 +88,7 @@ const ANALYSIS_TYPES = [
   }
 ]
 
-export default function ResearchAIAssistant({
+const ResearchAIAssistant = memo(function ResearchAIAssistant({
   selectedProject,
   projectAnalytics,
   filterCriteria = [],
@@ -92,15 +100,51 @@ export default function ResearchAIAssistant({
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<string | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [showScrollButton, setShowScrollButton] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // Debug: Log component initialization only on mount
+  useEffect(() => {
+    console.log('🎯 [RESEARCH AI ASSISTANT] Component mounted with updated UI changes!')
+  }, [])
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      })
+    }
+  }
+
+  // Handle scroll detection for scroll-to-bottom button
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const container = messagesContainerRef.current
+      const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50
+      setShowScrollButton(!isNearBottom && messages.length > 5)
+    }
   }
 
   useEffect(() => {
-    scrollToBottom()
+    // Add a small delay to ensure DOM is updated
+    const timeoutId = setTimeout(() => {
+      scrollToBottom()
+    }, 100)
+    
+    return () => clearTimeout(timeoutId)
   }, [messages])
+
+  // Add scroll listener
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (container) {
+      container.addEventListener('scroll', handleScroll)
+      return () => container.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
 
   // Load conversation history when project changes
   useEffect(() => {
@@ -204,6 +248,16 @@ export default function ResearchAIAssistant({
             projectId: selectedProject || 'temp-analysis', // Use temp ID if no project
             cohortData: matchingPatients,
             analysisType: 'comprehensive'
+          }
+          break
+
+        case 'statistical_analysis':
+          endpoint = '/api/research/statistical-analysis'
+          payload = {
+            projectId: selectedProject || 'temp-analysis',
+            cohortData: matchingPatients,
+            analysisType: 'comprehensive',
+            formatForChat: true
           }
           break
 
@@ -349,6 +403,27 @@ export default function ResearchAIAssistant({
         }
         break
 
+      case 'statistical_analysis':
+        if (data.report) {
+          let report = data.report
+          
+          // Add summary information if available
+          if (data.summary) {
+            report = `**${data.summary.overview}**\n\n` + report
+            
+            if (data.summary.keyFindings && data.summary.keyFindings.length > 0) {
+              report += `\n\n**🔍 Key Findings:**\n${data.summary.keyFindings.map(f => `• ${f}`).join('\n')}`
+            }
+            
+            if (data.summary.recommendations && data.summary.recommendations.length > 0) {
+              report += `\n\n**📋 Recommendations:**\n${data.summary.recommendations.map(r => `• ${r}`).join('\n')}`
+            }
+          }
+          
+          return report
+        }
+        break
+
       case 'predict_outcomes':
         if (data.prediction) {
           return `**Treatment Success Prediction**\n\n` +
@@ -417,6 +492,28 @@ export default function ResearchAIAssistant({
           }
         }
 
+      case 'statistical_analysis':
+        return {
+          analysis: {
+            type: 'statistical_analysis',
+            report: `# 📊 Statistical Analysis Results\n\n## Patient Cohort Overview\n**Sample Size:** ${patientCount} patients\n\n## Key Statistics\n• **Mean Age:** ${Math.round(35 + Math.random() * 20)} years\n• **Age Range:** ${Math.round(20 + Math.random() * 10)} - ${Math.round(65 + Math.random() * 15)} years\n• **Success Rate:** ${Math.round(75 + Math.random() * 20)}%\n\n## Distribution Analysis\n• **Primary Diagnosis:** Pulpitis (${Math.round(30 + Math.random() * 30)}%)\n• **Treatment Duration:** ${Math.round(30 + Math.random() * 30)} days average\n• **Follow-up Rate:** ${Math.round(80 + Math.random() * 15)}%\n\n---\n\n*Note: This is a simulated analysis. For production use, please ensure the statistical analysis API is properly configured.*`,
+            summary: {
+              overview: `Statistical analysis of ${patientCount} patient records`,
+              keyFindings: [
+                'Normal age distribution observed',
+                `High treatment success rate (${Math.round(75 + Math.random() * 20)}%)`,
+                'Good follow-up compliance'
+              ],
+              recommendations: [
+                'Data appears suitable for further statistical testing',
+                'Consider collecting additional variables for multivariate analysis'
+              ]
+            },
+            cohortSize: patientCount,
+            fieldsAnalyzed: 3
+          }
+        }
+
       case 'predict_outcomes':
         return {
           response: {
@@ -452,17 +549,21 @@ export default function ResearchAIAssistant({
   // Removed the conditional return that required selectedProject
 
   return (
-    <div className="h-full flex flex-col space-y-4 pb-4">
+    <div 
+      className="flex flex-col space-y-3 relative" 
+      data-component="research-ai-assistant-updated"
+      style={{ minHeight: '600px' }}
+    >
       {/* Header - Enhanced */}
-      <Card className="border-teal-200 bg-gradient-to-r from-teal-50 to-white">
+      <Card className="border-teal-200 bg-gradient-to-r from-teal-50 to-white flex-shrink-0">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center">
-                <Bot className="w-6 h-6 text-white" />
+              <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-teal-900">EndoAI Co-Pilot</h3>
+                <h3 className="text-base font-bold text-teal-900">EndoAI Co-Pilot</h3>
                 <p className="text-xs text-teal-600">AI-Powered Research Assistant</p>
               </div>
             </div>
@@ -475,162 +576,250 @@ export default function ResearchAIAssistant({
       </Card>
 
       {/* Quick Analysis Buttons - Enhanced */}
-      <Card className="border-gray-200">
-        <CardHeader className="pb-3">
+      <Card className="border-gray-200 flex-shrink-0">
+        <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-gray-700">Quick Analysis</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-2">
-            {ANALYSIS_TYPES.map((analysis) => {
-              const Icon = analysis.icon
-              return (
-                <Button
-                  key={analysis.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleQuickAnalysis(analysis.id)}
-                  disabled={isProcessing}
-                  className="h-auto p-3 flex items-center space-x-2 justify-start hover:bg-gray-50 border-gray-200 transition-all hover:border-teal-300 hover:shadow-sm"
-                  style={{
-                    borderLeftWidth: '3px',
-                    borderLeftColor: analysis.color
-                  }}
-                >
-                  <Icon
-                    className="w-4 h-4 flex-shrink-0"
-                    style={{ color: analysis.color }}
-                  />
-                  <div className="flex-1 text-left">
-                    <div className="text-xs font-medium text-gray-900">{analysis.label}</div>
-                  </div>
-                </Button>
-              )
-            })}
+          <div className="space-y-3">
+            {/* Demo Messages Button for Testing */}
+            {messages.length === 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  addMessage('Show me a demo of the chat interface', 'user')
+                  setTimeout(() => {
+                    addMessage('Welcome to the EndoAI Co-Pilot! I\'ve analyzed your research project and found some interesting insights:\n\n**Key Findings:**\n• Average patient age: 42 years\n• Success rate: 89%\n• Most common diagnosis: Pulpitis\n\nWould you like me to perform a detailed analysis of your patient cohort?', 'ai', 'demo', {}, 'fallback')
+                  }, 1000)
+                }}
+                disabled={isProcessing}
+                className="w-full mb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-700 hover:from-blue-100 hover:to-indigo-100"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Try Demo Chat
+              </Button>
+            )}
+            
+            <div className="grid grid-cols-2 gap-2">
+              {ANALYSIS_TYPES.map((analysis) => {
+                const Icon = analysis.icon
+                return (
+                  <Button
+                    key={analysis.id}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleQuickAnalysis(analysis.id)}
+                    disabled={isProcessing}
+                    className="h-auto p-3 flex items-center space-x-2 justify-start hover:bg-gray-50 border-gray-200 transition-all hover:border-teal-300 hover:shadow-sm"
+                    style={{
+                      borderLeftWidth: '3px',
+                      borderLeftColor: analysis.color
+                    }}
+                  >
+                    <Icon
+                      className="w-4 h-4 flex-shrink-0"
+                      style={{ color: analysis.color }}
+                    />
+                    <div className="flex-1 text-left">
+                      <div className="text-xs font-medium text-gray-900">{analysis.label}</div>
+                    </div>
+                  </Button>
+                )
+              })}
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Chat Messages - Enhanced */}
-      <Card className="flex-1 flex flex-col min-h-0 border-gray-200 shadow-sm">
-        <CardHeader className="pb-3 border-b bg-gradient-to-r from-gray-50 to-white">
+      <Card className="flex flex-col border-gray-200 shadow-sm" style={{ height: '500px' }}>
+        <CardHeader className="py-2 border-b bg-gradient-to-r from-gray-50 to-white flex-shrink-0">
           <CardTitle className="text-sm font-semibold text-gray-700 flex items-center">
             <MessageSquare className="w-4 h-4 mr-2 text-teal-600" />
             Research Conversation
+            {loadingHistory && (
+              <RefreshCw className="w-3 h-3 ml-2 animate-spin text-gray-400" />
+            )}
+            <div className="ml-auto flex items-center space-x-2">
+              {messages.length > 0 && (
+                <>
+                  <Badge variant="outline" className="text-xs">
+                    {messages.filter(m => m.type === 'user').length} messages
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMessages([])}
+                    className="h-5 w-5 p-0 text-gray-400 hover:text-gray-600"
+                    title="Clear conversation"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </Button>
+                </>
+              )}
+            </div>
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 flex flex-col min-h-0 bg-gray-50/30 p-4">
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-4">
-              {messages.length === 0 && (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-100 to-teal-50 flex items-center justify-center mx-auto mb-4">
-                    <Brain className="w-8 h-8 text-teal-600" />
-                  </div>
-                  <p className="text-sm font-medium text-gray-700 mb-1">
-                    No messages yet
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Start by clicking an analysis button above or ask a custom question below
-                  </p>
-                </div>
-              )}
-
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`flex items-start space-x-3 max-w-[85%]`}>
-                    {message.type === 'ai' && (
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-600 to-teal-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                        <Bot className="w-5 h-5 text-white" />
-                      </div>
-                    )}
-                    <div
-                      className={`rounded-xl px-4 py-3 shadow-sm ${
-                        message.type === 'user'
-                          ? 'bg-gradient-to-br from-teal-600 to-teal-500 text-white'
-                          : 'bg-white border border-gray-200 text-gray-900'
-                      }`}
-                    >
-                      <div className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
-                        {message.content}
-                      </div>
-                      <div className={`text-xs mt-2 ${message.type === 'user' ? 'text-teal-100' : 'text-gray-400'}`}>
-                        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                    {message.type === 'user' && (
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-300 to-gray-200 flex items-center justify-center flex-shrink-0 shadow-sm">
-                        <User className="w-5 h-5 text-gray-700" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {isProcessing && (
-                <div className="flex justify-start">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-600 to-teal-500 flex items-center justify-center shadow-sm">
-                      <Bot className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-                      <div className="flex items-center space-x-2">
-                        <RefreshCw className="w-4 h-4 animate-spin text-teal-600" />
-                        <span className="text-sm text-gray-700 font-medium">
-                          {selectedAnalysisType
-                            ? `Running ${ANALYSIS_TYPES.find(t => t.id === selectedAnalysisType)?.label}...`
-                            : 'Analyzing your query...'
-                          }
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
-
-      {/* Input Area - Enhanced */}
-      <Card className="border-gray-200 shadow-sm">
-        <CardContent className="p-4 space-y-3">
-          <Textarea
-            placeholder="Ask about treatment outcomes, patient patterns, statistical analysis, or clinical insights..."
-            value={currentQuery}
-            onChange={(e) => setCurrentQuery(e.target.value)}
-            onKeyPress={handleKeyPress}
-            rows={3}
-            className="resize-none border-gray-300 focus:border-teal-500 focus:ring-teal-500 bg-white"
-            disabled={isProcessing}
-          />
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              Press <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to send
-            </p>
-            <Button
-              onClick={handleCustomQuery}
-              disabled={!currentQuery.trim() || isProcessing}
-              className="bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white shadow-sm"
+        <CardContent className="flex-1 flex flex-col min-h-0 p-0">
+          {/* Messages Container - Expanded Height with Better Scroll */}
+          <div className="flex-1 min-h-0 relative overflow-hidden">
+            <div 
+              ref={messagesContainerRef}
+              className="absolute inset-0 overflow-y-auto overflow-x-hidden px-3 py-3 scroll-smooth"
             >
-              {isProcessing ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Query
-                </>
-              )}
-            </Button>
+              <div className="space-y-3 pb-4">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="flex items-center space-x-2 text-gray-500">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Loading conversation history...</span>
+                    </div>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-100 to-teal-50 flex items-center justify-center mx-auto mb-4">
+                        <Brain className="w-8 h-8 text-teal-600" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-700 mb-1">
+                        No messages yet
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Start by clicking an analysis button above or ask a custom question below
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  // Messages List
+                  messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'} mb-3`}
+                    >
+                      <div className={`flex items-start space-x-2 max-w-[90%] ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                        {/* Avatar */}
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
+                          message.type === 'ai'
+                            ? 'bg-gradient-to-br from-teal-600 to-teal-500'
+                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                        }`}>
+                          {message.type === 'ai' ? (
+                            <Bot className="w-3 h-3 text-white" />
+                          ) : (
+                            <User className="w-3 h-3 text-white" />
+                          )}
+                        </div>
+                        
+                        {/* Message Bubble */}
+                        <div className="flex flex-col flex-1">
+                          <div
+                            className={`rounded-xl px-3 py-2 shadow-sm border ${
+                              message.type === 'user'
+                                ? 'bg-gradient-to-br from-teal-600 to-teal-500 text-white border-teal-500'
+                                : 'bg-white text-gray-900 border-gray-200'
+                            }`}
+                          >
+                            <div className="text-sm leading-normal whitespace-pre-wrap break-words">
+                              {message.content}
+                            </div>
+                            
+                            {/* Message metadata */}
+                            <div className={`flex items-center justify-between mt-1 text-xs ${
+                              message.type === 'user' ? 'text-teal-100' : 'text-gray-400'
+                            }`}>
+                              <span>
+                                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {message.source && message.type === 'ai' && (
+                                <Badge variant="outline" className="ml-1 text-xs bg-gray-50 border-gray-200">
+                                  {message.source}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {/* Loading indicator */}
+                {isProcessing && (
+                  <div className="flex justify-start mb-3">
+                    <div className="flex items-start space-x-2">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-teal-600 to-teal-500 flex items-center justify-center shadow-sm">
+                        <Bot className="w-3 h-3 text-white" />
+                      </div>
+                      <div className="bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+                        <div className="flex items-center space-x-2">
+                          <RefreshCw className="w-3 h-3 animate-spin text-teal-600" />
+                          <span className="text-sm text-gray-700">
+                            {selectedAnalysisType
+                              ? `Running ${ANALYSIS_TYPES.find(t => t.id === selectedAnalysisType)?.label}...`
+                              : 'Analyzing your query...'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Scroll anchor */}
+                <div ref={messagesEndRef} className="h-2" />
+              </div>
+            </div>
+            
+            {/* Floating Scroll to Bottom Button */}
+            {showScrollButton && (
+              <div className="absolute bottom-4 right-4 z-10">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={scrollToBottom}
+                  className="h-8 w-8 p-0 rounded-full bg-white shadow-lg border-teal-200 hover:border-teal-400 hover:bg-teal-50"
+                >
+                  <ChevronDown className="w-4 h-4 text-teal-600" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Input Area - Compact */}
+      <div className="border-t bg-white p-2">
+        <div className="flex space-x-2">
+          <Textarea
+            placeholder="Ask about treatment outcomes, patient patterns, statistical analysis..."
+            value={currentQuery}
+            onChange={(e) => setCurrentQuery(e.target.value)}
+            onKeyPress={handleKeyPress}
+            rows={1}
+            className="flex-1 resize-none border-gray-300 focus:border-teal-500 focus:ring-teal-500 bg-white text-sm py-2 px-3 min-h-[40px] max-h-[80px]"
+            disabled={isProcessing}
+            style={{ height: '40px' }}
+          />
+          <Button
+            onClick={handleCustomQuery}
+            disabled={!currentQuery.trim() || isProcessing}
+            size="sm"
+            className="bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white shadow-sm px-4 h-[40px]"
+          >
+            {isProcessing ? (
+              <RefreshCw className="w-3 h-3 animate-spin" />
+            ) : (
+              <Send className="w-3 h-3" />
+            )}
+          </Button>
+        </div>
+        <p className="text-xs text-gray-500 mt-1 px-1">
+          Press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to send
+        </p>
+      </div>
     </div>
   )
-}
+})
+
+export default ResearchAIAssistant

@@ -4,7 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Mic, MicOff, Square, Play, Pause, Volume2, AlertCircle } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Mic, MicOff, Square, Play, Pause, Volume2, AlertCircle, Sparkles, Activity } from "lucide-react"
+import { detectKeywords, analyzeConversationCompleteness } from '@/lib/services/medical-conversation-parser'
 
 interface VoiceRecording {
   isRecording: boolean
@@ -58,6 +60,8 @@ export function GlobalVoiceRecorder({
   const streamRef = useRef<MediaStream | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const recognitionRef = useRef<any>(null)
+  const transcriptRef = useRef<string>('') // Track latest transcript value
+  const finalTranscriptRef = useRef<string>('') // Track only final results
 
   useEffect(() => {
     checkMicrophonePermissions()
@@ -93,20 +97,26 @@ export function GlobalVoiceRecorder({
 
       recognitionRef.current.onresult = (event: any) => {
         let interimTranscript = ''
-        let finalTranscript = ''
 
+        // Process only the new results
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript
           if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' '
+            // Add final result to our permanent transcript
+            finalTranscriptRef.current += transcript + ' '
           } else {
+            // Interim results are temporary - they replace previous interim
             interimTranscript += transcript
           }
         }
 
+        // Combine final (permanent) + interim (temporary)
+        const fullTranscript = finalTranscriptRef.current + interimTranscript
+        transcriptRef.current = fullTranscript // Update ref with latest transcript
+
         setRecording(prev => ({
           ...prev,
-          transcript: prev.transcript + finalTranscript + interimTranscript
+          transcript: fullTranscript
         }))
       }
 
@@ -144,6 +154,9 @@ export function GlobalVoiceRecorder({
     try {
       setError(null)
       setIsProcessing(false)
+      transcriptRef.current = '' // Reset transcript ref
+      finalTranscriptRef.current = '' // Reset final transcript ref
+      console.log('🎙️ [START] Starting new recording session...')
 
       const stream = await requestMicrophoneAccess()
       if (!stream) return
@@ -167,8 +180,9 @@ export function GlobalVoiceRecorder({
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         setRecording(prev => ({ ...prev, audioBlob }))
 
-        // Process the recording
-        await processRecording(audioBlob, recording.transcript)
+        // Process the recording using the ref to get latest transcript
+        console.log('🎤 [STOP] Processing recording with transcript length:', transcriptRef.current.length)
+        await processRecording(audioBlob, transcriptRef.current)
       }
 
       // Start recording
@@ -294,20 +308,41 @@ export function GlobalVoiceRecorder({
       })
 
       if (!response.ok) {
-        throw new Error('Failed to start voice session')
+        const errorData = await response.json().catch(() => ({}))
+        console.warn('⚠️ Voice session start failed (non-critical):', errorData)
+        return // Don't throw - this is optional functionality
       }
 
       console.log('✅ Voice session started successfully')
     } catch (error) {
-      console.error('❌ Error starting voice session:', error)
+      console.warn('⚠️ Error starting voice session (non-critical):', error)
+      // Don't propagate error - recording should still work
     }
   }
 
   const processRecording = async (audioBlob: Blob, transcript: string) => {
-    if (!consultationId || !transcript.trim()) return
+    console.log('🎤 [PROCESS] Called with:', {
+      consultationId,
+      transcriptLength: transcript.length,
+      transcriptPreview: transcript.substring(0, 100),
+      audioBlobSize: audioBlob.size
+    })
+
+    if (!consultationId) {
+      console.error('❌ [PROCESS] No consultationId provided!')
+      setError('Cannot process recording: No consultation ID')
+      return
+    }
+
+    if (!transcript.trim()) {
+      console.error('❌ [PROCESS] Empty transcript!')
+      setError('Cannot process recording: No transcript captured')
+      return
+    }
 
     try {
       setIsProcessing(true)
+      console.log('🚀 [PROCESS] Sending to AI processing endpoint...')
 
       // Send to N8N for AI processing
       const formData = new FormData()
@@ -320,6 +355,8 @@ export function GlobalVoiceRecorder({
         method: 'POST',
         body: formData
       })
+
+      console.log('📡 [PROCESS] Response status:', response.status)
 
       if (!response.ok) {
         throw new Error('Failed to process recording')
@@ -463,11 +500,51 @@ export function GlobalVoiceRecorder({
         </div>
 
         {recording.transcript && (
-          <div className="mt-3 p-3 bg-white rounded border">
-            <Label className="text-xs text-gray-500 uppercase tracking-wide">Live Transcript</Label>
-            <p className="text-sm text-gray-700 mt-1 max-h-20 overflow-y-auto">
+          <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg border-2 border-blue-200">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-xs text-blue-700 font-semibold uppercase tracking-wide flex items-center gap-1">
+                <Activity className="h-3 w-3" />
+                🤖 AI Processing Live Transcript
+              </Label>
+              <Badge className="bg-gradient-to-r from-blue-600 to-teal-600 text-white text-xs border-0">
+                <Sparkles className="h-3 w-3 mr-1" />
+                Gemini AI
+              </Badge>
+            </div>
+            <p className="text-sm text-gray-700 mt-1 max-h-20 overflow-y-auto bg-white p-2 rounded border border-blue-100">
               {recording.transcript}
             </p>
+
+            {/* Real-time AI Detection Indicators */}
+            {(() => {
+              const analysis = analyzeConversationCompleteness(recording.transcript)
+              return (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {analysis.hasChiefComplaint && (
+                    <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-300">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Chief Complaint Detected
+                    </Badge>
+                  )}
+                  {analysis.hasHOPI && (
+                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-300">
+                      <Activity className="h-3 w-3 mr-1" />
+                      HOPI Details Found
+                    </Badge>
+                  )}
+                  {analysis.hasPainDescription && (
+                    <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-300">
+                      ⚡ Pain Descriptors Found
+                    </Badge>
+                  )}
+                  {analysis.estimatedConfidence > 0 && (
+                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
+                      📊 Confidence: ~{analysis.estimatedConfidence}%
+                    </Badge>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { analyzeMedicalConversation } from '@/lib/services/medical-conversation-parser'
 
 // This endpoint processes the global voice recording and distributes content to appropriate tabs
 export async function POST(request: NextRequest) {
@@ -67,61 +68,92 @@ export async function POST(request: NextRequest) {
 }
 
 async function processTranscriptWithAI(transcript: string) {
-  console.log('🔍 [AI] Analyzing transcript for medical content...')
-
-  // Initialize content structure
-  const processedContent = {
-    chiefComplaint: {},
-    hopi: {},
-    medicalHistory: {},
-    personalHistory: {},
-    clinicalExamination: {},
-    investigations: {},
-    diagnosis: {},
-    treatmentPlan: {},
-    confidence: 0
-  }
+  console.log('🔍 [GEMINI AI] Analyzing transcript for medical content...')
 
   try {
-    // Basic keyword-based content distribution
-    // In production, this would use a more sophisticated AI model
+    // Use Gemini AI to analyze the medical conversation
+    console.log('🚀 [GEMINI AI] Calling medical conversation parser...')
+    const geminiAnalysis = await analyzeMedicalConversation(transcript)
 
-    const lowerTranscript = transcript.toLowerCase()
+    console.log(`✅ [GEMINI AI] Analysis complete with ${geminiAnalysis.confidence}% confidence`)
+    console.log('🎯 [GEMINI AI] Extracted Chief Complaint:', geminiAnalysis.chiefComplaint.primary_complaint)
+    console.log('🎯 [GEMINI AI] Extracted Pain Quality:', geminiAnalysis.hopi.pain_characteristics.quality)
 
-    // Chief Complaint Detection
-    processedContent.chiefComplaint = extractChiefComplaint(lowerTranscript)
-
-    // HOPI (History of Present Illness) Detection
-    processedContent.hopi = extractHOPI(lowerTranscript)
-
-    // Medical History Detection
-    processedContent.medicalHistory = extractMedicalHistory(lowerTranscript)
-
-    // Personal History Detection
-    processedContent.personalHistory = extractPersonalHistory(lowerTranscript)
-
-    // Clinical Examination Detection
-    processedContent.clinicalExamination = extractClinicalExamination(lowerTranscript)
-
-    // Investigations Detection
-    processedContent.investigations = extractInvestigations(lowerTranscript)
-
-    // Diagnosis Detection
-    processedContent.diagnosis = extractDiagnosis(lowerTranscript)
-
-    // Treatment Plan Detection
-    processedContent.treatmentPlan = extractTreatmentPlan(lowerTranscript)
-
-    // Calculate confidence based on content found
-    processedContent.confidence = calculateConfidence(processedContent)
-
-    console.log(`✅ [AI] Processed content with ${processedContent.confidence}% confidence`)
+    // Map Gemini analysis to existing format for backward compatibility
+    const processedContent = {
+      chiefComplaint: {
+        primary_complaint: geminiAnalysis.chiefComplaint.primary_complaint,
+        patient_description: geminiAnalysis.chiefComplaint.patient_description,
+        pain_scale: geminiAnalysis.chiefComplaint.pain_scale,
+        location_detail: geminiAnalysis.chiefComplaint.location_detail,
+        onset_duration: geminiAnalysis.chiefComplaint.onset_duration,
+        associated_symptoms: geminiAnalysis.chiefComplaint.associated_symptoms || [],
+        triggers: geminiAnalysis.chiefComplaint.triggers || [],
+        // Additional fields for compatibility
+        onset_type: geminiAnalysis.hopi.onset_details.how_started || '',
+        severity_scale: geminiAnalysis.chiefComplaint.pain_scale,
+        frequency: geminiAnalysis.hopi.pain_characteristics.frequency || '',
+        auto_extracted: geminiAnalysis.auto_extracted,
+        extraction_timestamp: geminiAnalysis.extraction_timestamp
+      },
+      hopi: {
+        pain_characteristics: geminiAnalysis.hopi.pain_characteristics,
+        onset_details: geminiAnalysis.hopi.onset_details,
+        aggravating_factors: geminiAnalysis.hopi.aggravating_factors || [],
+        relieving_factors: geminiAnalysis.hopi.relieving_factors || [],
+        associated_symptoms: geminiAnalysis.hopi.associated_symptoms || [],
+        previous_episodes: geminiAnalysis.hopi.previous_episodes || '',
+        pattern_changes: geminiAnalysis.hopi.pattern_changes || '',
+        // Additional fields for compatibility
+        previous_treatments: [],
+        response_to_treatment: '',
+        chronology: geminiAnalysis.hopi.onset_details.when_started || '',
+        impact_on_daily_life: [],
+        auto_extracted: geminiAnalysis.auto_extracted,
+        extraction_timestamp: geminiAnalysis.extraction_timestamp
+      },
+      // Placeholder for other sections (can be extracted later if needed)
+      medicalHistory: extractMedicalHistory(transcript.toLowerCase()),
+      personalHistory: extractPersonalHistory(transcript.toLowerCase()),
+      clinicalExamination: extractClinicalExamination(transcript.toLowerCase()),
+      investigations: extractInvestigations(transcript.toLowerCase()),
+      diagnosis: extractDiagnosis(transcript.toLowerCase()),
+      treatmentPlan: extractTreatmentPlan(transcript.toLowerCase()),
+      // Overall confidence from Gemini
+      confidence: geminiAnalysis.confidence
+    }
 
     return processedContent
 
   } catch (error) {
-    console.error('❌ [AI] Error processing transcript:', error)
-    return processedContent
+    console.error('❌ [GEMINI AI] Analysis failed, using keyword extraction fallback:', error)
+
+    // Fallback to basic keyword extraction if Gemini fails
+    const lowerTranscript = transcript.toLowerCase()
+
+    const fallbackContent = {
+      chiefComplaint: extractChiefComplaint(lowerTranscript),
+      hopi: extractHOPI(lowerTranscript),
+      medicalHistory: extractMedicalHistory(lowerTranscript),
+      personalHistory: extractPersonalHistory(lowerTranscript),
+      clinicalExamination: extractClinicalExamination(lowerTranscript),
+      investigations: extractInvestigations(lowerTranscript),
+      diagnosis: extractDiagnosis(lowerTranscript),
+      treatmentPlan: extractTreatmentPlan(lowerTranscript),
+      confidence: calculateConfidence({
+        chiefComplaint: extractChiefComplaint(lowerTranscript),
+        hopi: extractHOPI(lowerTranscript),
+        medicalHistory: extractMedicalHistory(lowerTranscript),
+        personalHistory: extractPersonalHistory(lowerTranscript),
+        clinicalExamination: extractClinicalExamination(lowerTranscript),
+        investigations: extractInvestigations(lowerTranscript),
+        diagnosis: extractDiagnosis(lowerTranscript),
+        treatmentPlan: extractTreatmentPlan(lowerTranscript)
+      })
+    }
+
+    console.log(`⚠️ [FALLBACK] Using keyword extraction with ${fallbackContent.confidence}% confidence`)
+    return fallbackContent
   }
 }
 

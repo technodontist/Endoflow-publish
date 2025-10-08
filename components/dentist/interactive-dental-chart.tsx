@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { createClient } from '@/lib/supabase/client'
 import { getPatientToothDiagnoses, getPatientLatestToothDiagnoses, saveToothDiagnosis, type ToothDiagnosisData, type ToothChartData } from "@/lib/actions/tooth-diagnoses"
 import { mapInitialStatusFromDiagnosis } from "@/lib/utils/toothStatus"
-import { ToothDiagnosisDialog } from "./tooth-diagnosis-dialog"
+import { ToothDiagnosisDialogV2 } from "./tooth-diagnosis-dialog-v2"
 import { PrescriptionManagement } from "./prescription-management"
 import { FollowUpManagement } from "./follow-up-management"
 
@@ -1471,8 +1471,9 @@ export function InteractiveDentalChart({
         </DialogContent>
       </Dialog>
 
-      {/* Tooth Diagnosis Dialog */}
-      <ToothDiagnosisDialog
+      {/* Tooth Diagnosis Dialog V2 - FORCE FRESH RENDER WITH KEY */}
+      <ToothDiagnosisDialogV2
+        key={`tooth-dialog-${selectedTooth}-${Date.now()}`}
         isOpen={isDialogOpen}
         onClose={() => {
           setIsDialogOpen(false)

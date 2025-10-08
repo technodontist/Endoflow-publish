@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Sparkles, AlertCircle, Clock, Activity } from "lucide-react"
 
 export function HOPITab({ data, onChange, isReadOnly = false, onSave }: any) {
   // Local state management - initialize with stable defaults to prevent controlled/uncontrolled switches
@@ -20,12 +23,30 @@ export function HOPITab({ data, onChange, isReadOnly = false, onSave }: any) {
 
   // Update local state when data prop changes - ensure stable defaults
   useEffect(() => {
+    console.log('🔍 [HOPI TAB] useEffect triggered with data:', {
+      onset_details: data?.onset_details,
+      duration: data?.duration,
+      aggravating_factors: data?.aggravating_factors,
+      relieving_factors: data?.relieving_factors,
+      pain_characteristics: data?.pain_characteristics,
+      associated_symptoms: data?.associated_symptoms,
+      previous_episodes: data?.previous_episodes,
+      auto_extracted: data?.auto_extracted
+    })
+
     setOnsetDetails(data?.onset_details || '')
     setDuration(data?.duration || '')
     setAggravatingFactors(data?.aggravating_factors || [])
     setRelievingFactors(data?.relieving_factors || [])
     setPreviousEpisodes(data?.previous_episodes || '')
     setPreviousTreatments(data?.previous_treatments || [])
+
+    console.log('✅ [HOPI TAB] Local state updated:', {
+      onsetDetails: data?.onset_details || '',
+      duration: data?.duration || '',
+      aggravatingFactors: data?.aggravating_factors || [],
+      relievingFactors: data?.relieving_factors || []
+    })
   }, [data])
 
 
@@ -141,12 +162,40 @@ export function HOPITab({ data, onChange, isReadOnly = false, onSave }: any) {
 
   return (
     <div className="space-y-6">
+      {/* AI Auto-Fill Indicator */}
+      {data?.auto_extracted && (
+        <Alert className="bg-gradient-to-r from-purple-50 via-blue-50 to-purple-50 border-2 border-purple-200 shadow-sm">
+          <div className="flex items-start gap-3">
+            <Activity className="h-5 w-5 text-purple-600 animate-pulse mt-0.5" />
+            <div className="flex-1">
+              <AlertTitle className="text-purple-900 font-semibold flex items-center gap-2">
+                🤖 AI-Extracted History
+                <Badge variant="outline" className="bg-white text-purple-700 border-purple-300">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Confidence: {data.confidence || 85}%
+                </Badge>
+              </AlertTitle>
+              <AlertDescription className="text-purple-700 text-sm mt-1">
+                Pain characteristics and timeline extracted from voice recording using Gemini AI.
+                Please verify accuracy before saving.
+              </AlertDescription>
+              {data.extraction_timestamp && (
+                <p className="text-xs text-purple-600 mt-2 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Extracted: {new Date(data.extraction_timestamp).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-teal-600">History of Present Illness (HOPI)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          
+
           {/* Onset Details */}
           <div>
             <Label htmlFor="onset-details">How did the problem start?</Label>
