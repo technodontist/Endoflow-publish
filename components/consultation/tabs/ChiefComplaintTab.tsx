@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Sparkles, Clock } from "lucide-react"
+import { Sparkles, Clock, CheckCircle2 } from "lucide-react"
 
 // Helper function to map AI pain quality keywords to checkbox-compatible symptom names
 function mapPainQualityToSymptoms(painQuality: string, painCharacteristics: any, associatedSymptoms: string[]): string[] {
@@ -52,7 +52,8 @@ export function ChiefComplaintTab({ data, onChange, isReadOnly = false, onSave }
 
   // Update local state when data prop changes - ensure stable defaults
   useEffect(() => {
-    console.log('🔍 [CHIEF COMPLAINT TAB] useEffect triggered with data:', {
+    console.log('🔍 [CHIEF COMPLAINT TAB] useEffect triggered with FULL data object:', data)
+    console.log('🔍 [CHIEF COMPLAINT TAB] Specific fields:', {
       primary_complaint: data?.primary_complaint,
       pain_scale: data?.pain_scale,
       pain_quality: data?.pain_quality,
@@ -199,24 +200,42 @@ export function ChiefComplaintTab({ data, onChange, isReadOnly = false, onSave }
         <CardHeader>
           <CardTitle className="text-teal-600">Chief Complaint</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-
-          {/* Primary Complaint */}
+        <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="primary-complaint">Primary Complaint</Label>
-            <Input
+            <div className="flex items-center justify-between mb-2">
+              <Label htmlFor="primary-complaint">Primary Complaint *</Label>
+              {data?.auto_extracted && complaint && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 text-xs">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  AI Filled
+                </Badge>
+              )}
+            </div>
+            <Textarea
               id="primary-complaint"
+              placeholder="What is the patient's main concern?"
               value={complaint}
               onChange={(e) => handleComplaintChange(e.target.value)}
-              placeholder="What is the patient's main concern?"
               disabled={isReadOnly}
-              className="mt-2"
+              className={`min-h-[80px] ${
+                data?.auto_extracted && complaint 
+                  ? 'border-green-300 bg-green-50 focus:border-green-400 focus:ring-green-400' 
+                  : ''
+              }`}
             />
           </div>
 
           {/* Detailed Description */}
           <div>
-            <Label htmlFor="description">Detailed Description</Label>
+            <div className="flex items-center justify-between mb-2">
+              <Label htmlFor="description">Detailed Description</Label>
+              {data?.auto_extracted && description && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 text-xs">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  AI Filled
+                </Badge>
+              )}
+            </div>
             <Textarea
               id="description"
               value={description}
@@ -224,13 +243,25 @@ export function ChiefComplaintTab({ data, onChange, isReadOnly = false, onSave }
               placeholder="Describe the problem in detail, including onset, duration, and patient's own words..."
               rows={4}
               disabled={isReadOnly}
-              className="mt-2"
+              className={`mt-2 ${
+                data?.auto_extracted && description 
+                  ? 'border-green-300 bg-green-50 focus:border-green-400 focus:ring-green-400' 
+                  : ''
+              }`}
             />
           </div>
 
           {/* Pain Scale */}
           <div>
-            <Label htmlFor="pain-scale">Pain Level: {painScale}/10</Label>
+            <div className="flex items-center justify-between mb-2">
+              <Label htmlFor="pain-scale">Pain Level: {painScale}/10</Label>
+              {data?.auto_extracted && painScale > 0 && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 text-xs">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  AI Filled
+                </Badge>
+              )}
+            </div>
             <input
               id="pain-scale"
               type="range"

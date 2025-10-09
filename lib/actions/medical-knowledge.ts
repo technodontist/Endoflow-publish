@@ -255,6 +255,104 @@ export async function getKnowledgeStatsAction() {
 }
 
 /**
+ * Analyze a PDF and suggest topics, diagnosis, and treatment keywords using Gemini.
+ * Returns suggestions without saving anything to the database.
+ */
+export async function analyzeMedicalKeywordsFromPDFAction(params: {
+  pdfFile: File
+  specialty?: 'endodontics' | 'periodontics' | 'prosthodontics' | 'oral_surgery' | 'general_dentistry'
+}) {
+  try {
+    // Ensure only authenticated active dentists can analyze
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'dentist' || user.status !== 'active') {
+      return { success: false, error: 'Only active dentists can analyze keywords' }
+    }
+
+    // Convert PDF to buffer and extract text
+    const arrayBuffer = await params.pdfFile.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    const { extractPDFContent, extractKeywords } = await import('@/lib/utils/pdf-extractor')
+    const pdfContent = await extractPDFContent(buffer)
+
+    const textForAnalysis = pdfContent.text.substring(0, 8000)
+
+    // Heuristic baseline (fallback)
+    const heuristic = extractKeywords(textForAnalysis)
+
+    // Try Gemini JSON extraction
+    let aiTopics: string[] | undefined
+    let aiDiagnoses: string[] | undefined
+    let aiTreatments: string[] | undefined
+
+    try {
+      const { generateChatCompletion } = await import('@/lib/services/gemini-ai')
+
+      const systemInstruction = `You are a dental NLP tagger. Extract concise, domain-relevant tags from the provided text.
+Return ONLY valid JSON with these keys and arrays of snake_case strings (lowercase, words separated by underscores):
+{
+  "topics": ["..."],
+  "diagnosis_keywords": ["..."],
+  "treatment_keywords": ["..."]
+}
+- Maximum 8 per list.
+- Prefer endodontic terminology.
+- Use abbreviations where standard (e.g., rct).
+- Do not include explanations or any text outside JSON.`
+
+      const userPrompt = `Analyze the following text and extract tags in JSON as specified.\n\n${textForAnalysis}`
+
+      const responseText = await generateChatCompletion(
+        [
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        { model: 'gemini-2.0-flash', temperature: 0.1, responseFormat: 'json', systemInstruction }
+      )
+
+      const parsed = JSON.parse(responseText || '{}')
+      aiTopics = parsed.topics || parsed.topic_tags || parsed.topics_list
+      aiDiagnoses = parsed.diagnosis_keywords || parsed.diagnoses
+      aiTreatments = parsed.treatment_keywords || parsed.treatments
+    } catch (e) {
+      // If Gemini fails or returns invalid JSON, we will fall back to heuristics below
+    }
+
+    const slugify = (s: string) =>
+      s
+        .toString()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .replace(/_+/g, '_')
+
+    const unique = (arr: string[]) => Array.from(new Set(arr.filter(Boolean)))
+
+    const topics = unique(
+      (aiTopics && aiTopics.length > 0 ? aiTopics : heuristic.topics).map(slugify)
+    ).slice(0, 8)
+
+    const diagnosisKeywords = unique(
+      (aiDiagnoses && aiDiagnoses.length > 0 ? aiDiagnoses : heuristic.diagnoses).map(slugify)
+    ).slice(0, 8)
+
+    const treatmentKeywords = unique(
+      (aiTreatments && aiTreatments.length > 0 ? aiTreatments : heuristic.treatments).map(slugify)
+    ).slice(0, 8)
+
+    return {
+      success: true,
+      data: { topics, diagnosisKeywords, treatmentKeywords },
+      extractedText: textForAnalysis,
+      extractedPages: pdfContent.pages
+    }
+  } catch (error) {
+    console.error('❌ [PDF KEYWORDS] Analysis error:', error)
+    return { success: false, error: 'Failed to analyze keywords from PDF' }
+  }
+}
+
+/**
  * Upload medical knowledge from PDF file
  * Extracts text and generates embeddings automatically
  */

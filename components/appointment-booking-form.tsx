@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils"
 import { confirmAppointmentAction } from "@/lib/actions/appointments"
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { AppointmentVoiceRecorder } from '@/components/appointment/AppointmentVoiceRecorder'
+import type { AppointmentExtraction } from '@/lib/services/appointment-conversation-parser'
 
 interface AppointmentBookingFormProps {
   requestId: string
@@ -57,6 +59,48 @@ export function AppointmentBookingForm({
     durationMinutes: 60,
     notes: ''
   })
+
+  // Handle voice-extracted appointment data
+  const handleVoiceDataExtracted = (data: AppointmentExtraction) => {
+    console.log('📋 [VOICE AUTO-FILL] Extracted appointment data:', data)
+    
+    // Auto-fill date
+    if (data.preferredDate) {
+      try {
+        const voiceDate = new Date(data.preferredDate)
+        if (!isNaN(voiceDate.getTime())) {
+          setSelectedDate(voiceDate)
+          console.log('✅ [VOICE AUTO-FILL] Date set to:', data.preferredDate)
+        }
+      } catch (error) {
+        console.error('Error parsing voice date:', error)
+      }
+    }
+
+    // Auto-fill time
+    if (data.preferredTime) {
+      setFormData(prev => ({ ...prev, scheduledTime: data.preferredTime }))
+      console.log('✅ [VOICE AUTO-FILL] Time set to:', data.preferredTime)
+    }
+
+    // Auto-fill duration
+    if (data.durationMinutes) {
+      setFormData(prev => ({ ...prev, durationMinutes: data.durationMinutes }))
+      console.log('✅ [VOICE AUTO-FILL] Duration set to:', data.durationMinutes)
+    }
+
+    // Auto-fill notes
+    if (data.reasonForVisit || data.additionalNotes) {
+      const notes = [data.reasonForVisit, data.additionalNotes].filter(Boolean).join('. ')
+      setFormData(prev => ({ ...prev, notes }))
+      console.log('✅ [VOICE AUTO-FILL] Notes set')
+    }
+
+    // Show success toast
+    toast.success(`AI extracted appointment details with ${data.confidence}% confidence!`, {
+      description: `${data.appointmentType} on ${format(new Date(data.preferredDate), 'PPP')} at ${data.preferredTime}`
+    })
+  }
 
   // Generate time slots (9 AM to 5 PM, 30-minute intervals)
   const timeSlots = []
@@ -102,6 +146,12 @@ export function AppointmentBookingForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Voice Recorder for AI Scheduling */}
+      <AppointmentVoiceRecorder
+        onAppointmentDataExtracted={handleVoiceDataExtracted}
+        isEnabled={true}
+      />
+
       {isUrgent && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
           <div className="flex items-center gap-2 text-red-800 text-sm font-medium">

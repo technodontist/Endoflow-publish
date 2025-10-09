@@ -11,6 +11,7 @@
 
 import { createServiceClient } from '@/lib/supabase/server'
 import { generateEmbedding } from './gemini-ai'
+import type { PatientMedicalContext } from '@/lib/actions/patient-context'
 
 export interface RAGDocument {
   id: string
@@ -34,12 +35,14 @@ export interface RAGQueryParams {
   specialtyFilter?: string
   matchThreshold?: number
   matchCount?: number
+  patientMedicalContext?: PatientMedicalContext // NEW: Optional patient context
 }
 
 export interface RAGResult {
   documents: RAGDocument[]
   queryEmbedding: number[]
   totalMatches: number
+  patientContextIncluded?: boolean // NEW: Flag indicating patient context was used
 }
 
 /**
@@ -91,10 +94,16 @@ export async function performRAGQuery(params: RAGQueryParams): Promise<RAGResult
 
     console.log(`✅ [RAG] Found ${documents?.length || 0} relevant documents`)
 
+    // Log if patient context was included
+    if (params.patientMedicalContext) {
+      console.log(`👤 [RAG] Patient medical context included for: ${params.patientMedicalContext.patientName}`)
+    }
+
     return {
       documents: documents || [],
       queryEmbedding,
-      totalMatches: documents?.length || 0
+      totalMatches: documents?.length || 0,
+      patientContextIncluded: !!params.patientMedicalContext
     }
 
   } catch (error) {
@@ -106,31 +115,55 @@ export async function performRAGQuery(params: RAGQueryParams): Promise<RAGResult
 /**
  * Format retrieved documents into context for AI prompts
  * @param documents - Retrieved RAG documents
- * @returns Formatted string with numbered sources
+ * @param patientContext - Optional patient medical context to include
+ * @returns Formatted string with numbered sources and patient context
  */
-export function formatRAGContext(documents: RAGDocument[]): string {
-  if (!documents || documents.length === 0) {
-    return 'No relevant medical literature found in the knowledge base.'
+export function formatRAGContext(
+  documents: RAGDocument[],
+  patientContext?: PatientMedicalContext
+): string {
+  const sections: string[] = []
+
+  // Add patient medical context first if provided (most important for AI)
+  if (patientContext) {
+    const { formatPatientMedicalContext } = require('@/lib/actions/patient-context')
+    sections.push(formatPatientMedicalContext(patientContext))
+    sections.push('\n\n')
   }
 
-  const formattedDocs = documents.map((doc, index) => {
-    const source = [
-      doc.journal,
-      doc.publication_year ? `(${doc.publication_year})` : null,
-      doc.authors
-    ].filter(Boolean).join(' ')
+  // Add medical literature
+  if (!documents || documents.length === 0) {
+    sections.push('═══════════════════════════════════════════════════════════')
+    sections.push('MEDICAL LITERATURE')
+    sections.push('═══════════════════════════════════════════════════════════')
+    sections.push('No relevant medical literature found in the knowledge base.')
+  } else {
+    sections.push('═══════════════════════════════════════════════════════════')
+    sections.push('MEDICAL LITERATURE & RESEARCH EVIDENCE')
+    sections.push('═══════════════════════════════════════════════════════════')
+    sections.push('')
+    
+    const formattedDocs = documents.map((doc, index) => {
+      const source = [
+        doc.journal,
+        doc.publication_year ? `(${doc.publication_year})` : null,
+        doc.authors
+      ].filter(Boolean).join(' ')
 
-    return `[Source ${index + 1}]\n` +
-           `Title: ${doc.title}\n` +
-           `Type: ${doc.source_type}\n` +
-           `Source: ${source || 'N/A'}\n` +
-           `Similarity: ${(doc.similarity * 100).toFixed(1)}%\n` +
-           `Content: ${doc.content.substring(0, 800)}...\n` +
-           (doc.doi ? `DOI: ${doc.doi}\n` : '') +
-           `---`
-  }).join('\n\n')
+      return `[Source ${index + 1}]\n` +
+             `Title: ${doc.title}\n` +
+             `Type: ${doc.source_type}\n` +
+             `Source: ${source || 'N/A'}\n` +
+             `Similarity: ${(doc.similarity * 100).toFixed(1)}%\n` +
+             `Content: ${doc.content.substring(0, 800)}...\n` +
+             (doc.doi ? `DOI: ${doc.doi}\n` : '') +
+             `---`
+    }).join('\n\n')
+    
+    sections.push(formattedDocs)
+  }
 
-  return formattedDocs
+  return sections.join('\n')
 }
 
 /**

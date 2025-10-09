@@ -25,9 +25,11 @@ function validateContext(input: CreateContextualAppointmentInput) {
   const t = input.appointmentType;
   if (!t) throw new Error('appointmentType is required');
 
-  // For treatment or follow-up, a consultation context must exist
+  // For treatment or follow-up, a consultation context should exist
+  // But we'll allow it to be missing for AI-scheduled appointments
   if ((t === 'treatment' || t === 'follow_up') && !input.consultationId) {
-    throw new Error('consultationId is required for Treatment or Follow-up');
+    console.warn(`[CTX_APPT] Creating ${t} appointment without consultation context`);
+    // Don't throw error - let it proceed
   }
   // Note: treatmentId is optional. If provided, we will update the treatment status.
 }
@@ -69,20 +71,22 @@ export async function createContextualAppointment(input: CreateContextualAppoint
     return { success: false, error: 'Failed to create contextual appointment' };
   }
 
-  // 2) If Treatment: move treatment to In Progress in both planned and legacy flows
+  // 2) If Treatment: keep treatment as Planned (will be moved to In Progress when appointment starts)
+  // Don't auto-start treatment just because appointment is scheduled
   if (appointmentType === 'treatment' && treatmentId) {
     const { error: treatErr } = await supabase
       .schema('api')
       .from('treatments')
       .update({
-        planned_status: 'In Progress',
-        status: 'in_progress',
-        started_at: new Date().toISOString()
+        planned_status: 'Planned',
+        status: 'planned',
+        // Don't set started_at until appointment actually starts
+        updated_at: new Date().toISOString()
       })
       .eq('id', treatmentId);
 
     if (treatErr) {
-      console.warn('[CTX_APPT] Could not bump treatment to In Progress:', treatErr);
+      console.warn('[CTX_APPT] Could not update treatment status:', treatErr);
     }
   }
 

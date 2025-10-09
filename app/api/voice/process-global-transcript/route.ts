@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { analyzeMedicalConversation } from '@/lib/services/medical-conversation-parser'
+import type { ToothDiagnosisData } from '@/lib/actions/tooth-diagnoses'
 
 // This endpoint processes the global voice recording and distributes content to appropriate tabs
 export async function POST(request: NextRequest) {
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Extract tooth-specific diagnoses (but don't save yet - only save when consultation is saved)
+    const toothDiagnoses = await extractToothDiagnosesFromTranscript(transcript, consultationId, processedContent)
+
     // Send to N8N for further processing (optional)
     if (process.env.N8N_WEBHOOK_URL) {
       await sendToN8N(transcript, consultationId, sessionId)
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       processedContent,
+      toothDiagnoses,
       message: 'Global transcript processed successfully'
     })
 
@@ -112,35 +117,60 @@ async function processTranscriptWithAI(transcript: string) {
         auto_extracted: geminiAnalysis.auto_extracted,
         extraction_timestamp: geminiAnalysis.extraction_timestamp
       },
-      // Placeholder for other sections (can be extracted later if needed)
-      medicalHistory: extractMedicalHistory(transcript.toLowerCase()),
-      personalHistory: extractPersonalHistory(transcript.toLowerCase()),
-      clinicalExamination: extractClinicalExamination(transcript.toLowerCase()),
+      // Use AI-extracted data if available, otherwise fallback to keyword extraction
+      medicalHistory: geminiAnalysis.medicalHistory || extractMedicalHistory(transcript.toLowerCase()),
+      personalHistory: geminiAnalysis.personalHistory || extractPersonalHistory(transcript.toLowerCase()),
+      clinicalExamination: geminiAnalysis.clinicalExamination || extractClinicalExamination(transcript.toLowerCase()),
       investigations: extractInvestigations(transcript.toLowerCase()),
       diagnosis: extractDiagnosis(transcript.toLowerCase()),
       treatmentPlan: extractTreatmentPlan(transcript.toLowerCase()),
       // Overall confidence from Gemini
       confidence: geminiAnalysis.confidence
     }
+    
+    // Log what was extracted
+    if (geminiAnalysis.medicalHistory) {
+      console.log('✅ [AI EXTRACTION] Medical History extracted from voice')
+    }
+    if (geminiAnalysis.personalHistory) {
+      console.log('✅ [AI EXTRACTION] Personal History extracted from voice')
+    }
+    if (geminiAnalysis.clinicalExamination) {
+      console.log('✅ [AI EXTRACTION] Clinical Examination extracted from voice')
+    }
 
     return processedContent
 
   } catch (error) {
-    console.error('❌ [GEMINI AI] Analysis failed, using keyword extraction fallback:', error)
+    console.error('❌ [GEMINI AI] Primary analysis failed, using simplified Gemini fallback:', error)
 
-    // Fallback to basic keyword extraction if Gemini fails
-    const lowerTranscript = transcript.toLowerCase()
+    // Try simplified Gemini extraction as fallback
+    try {
+      console.log('🔄 [FALLBACK] Attempting simplified AI extraction...')
+      const simplifiedAnalysis = await analyzeMedicalConversation(transcript)
+      
+      // Mark as lower confidence since it's fallback
+      const fallbackContent = {
+        chiefComplaint: simplifiedAnalysis.chiefComplaint,
+        hopi: simplifiedAnalysis.hopi,
+        medicalHistory: extractMedicalHistory(transcript.toLowerCase()),
+        personalHistory: extractPersonalHistory(transcript.toLowerCase()),
+        clinicalExamination: extractClinicalExamination(transcript.toLowerCase()),
+        investigations: extractInvestigations(transcript.toLowerCase()),
+        diagnosis: extractDiagnosis(transcript.toLowerCase()),
+        treatmentPlan: extractTreatmentPlan(transcript.toLowerCase()),
+        confidence: Math.max(30, simplifiedAnalysis.confidence - 20) // Reduce confidence for fallback
+      }
 
-    const fallbackContent = {
-      chiefComplaint: extractChiefComplaint(lowerTranscript),
-      hopi: extractHOPI(lowerTranscript),
-      medicalHistory: extractMedicalHistory(lowerTranscript),
-      personalHistory: extractPersonalHistory(lowerTranscript),
-      clinicalExamination: extractClinicalExamination(lowerTranscript),
-      investigations: extractInvestigations(lowerTranscript),
-      diagnosis: extractDiagnosis(lowerTranscript),
-      treatmentPlan: extractTreatmentPlan(lowerTranscript),
-      confidence: calculateConfidence({
+      console.log(`✅ [FALLBACK] Simplified AI extraction succeeded with ${fallbackContent.confidence}% confidence`)
+      return fallbackContent
+      
+    } catch (fallbackError) {
+      console.error('❌ [FALLBACK] Simplified AI also failed, using basic keyword extraction:', fallbackError)
+      
+      // Last resort: basic keyword extraction
+      const lowerTranscript = transcript.toLowerCase()
+      const fallbackContent = {
         chiefComplaint: extractChiefComplaint(lowerTranscript),
         hopi: extractHOPI(lowerTranscript),
         medicalHistory: extractMedicalHistory(lowerTranscript),
@@ -148,12 +178,13 @@ async function processTranscriptWithAI(transcript: string) {
         clinicalExamination: extractClinicalExamination(lowerTranscript),
         investigations: extractInvestigations(lowerTranscript),
         diagnosis: extractDiagnosis(lowerTranscript),
-        treatmentPlan: extractTreatmentPlan(lowerTranscript)
-      })
-    }
+        treatmentPlan: extractTreatmentPlan(lowerTranscript),
+        confidence: 25 // Very low confidence for keyword extraction
+      }
 
-    console.log(`⚠️ [FALLBACK] Using keyword extraction with ${fallbackContent.confidence}% confidence`)
-    return fallbackContent
+      console.log(`⚠️ [FALLBACK] Using basic keyword extraction with ${fallbackContent.confidence}% confidence`)
+      return fallbackContent
+    }
   }
 }
 
@@ -194,12 +225,14 @@ function extractHOPI(transcript: string) {
   const painKeywords = ['sharp', 'dull', 'throbbing', 'aching', 'burning', 'shooting']
   const durationKeywords = ['hours', 'days', 'weeks', 'months', 'yesterday', 'last week']
   const triggerKeywords = ['cold', 'hot', 'sweet', 'pressure', 'chewing', 'biting']
+  const treatmentKeywords = ['ibuprofen', 'painkiller', 'antibiotic', 'filling', 'root canal', 'extraction']
 
   let content = {
     pain_characteristics: {},
     aggravating_factors: [],
     relieving_factors: [],
-    associated_symptoms: []
+    associated_symptoms: [],
+    previous_treatments: []
   }
 
   // Extract pain quality
@@ -224,6 +257,13 @@ function extractHOPI(transcript: string) {
   for (const trigger of triggerKeywords) {
     if (transcript.includes(trigger)) {
       content.aggravating_factors.push(trigger)
+    }
+  }
+
+  // Extract previous treatments
+  for (const treatment of treatmentKeywords) {
+    if (transcript.includes(treatment)) {
+      content.previous_treatments.push(treatment)
     }
   }
 
@@ -466,6 +506,196 @@ function calculateDuration(transcript: string): number {
   const wordsPerMinute = 150
   const wordCount = transcript.split(' ').length
   return Math.round((wordCount / wordsPerMinute) * 60) // return seconds
+}
+
+async function extractToothDiagnosesFromTranscript(
+  transcript: string,
+  consultationId: string,
+  processedContent: any
+) {
+  console.log('🦷 [TOOTH EXTRACTION] Starting tooth diagnosis extraction from transcript...')
+  
+  try {
+    // Get patient ID from consultation
+    const supabase = await createServiceClient()
+    const { data: consultation, error: consultationError } = await supabase
+      .schema('api')
+      .from('consultations')
+      .select('patient_id')
+      .eq('id', consultationId)
+      .single()
+
+    if (consultationError || !consultation) {
+      console.error('❌ [TOOTH EXTRACTION] Failed to get patient ID:', consultationError)
+      return []
+    }
+
+    const patientId = consultation.patient_id
+    const toothDiagnosesData: any[] = []
+
+    // Pattern to match tooth numbers and their conditions
+    // Matches patterns like "tooth 44", "tooth number 44", "#44", "number 44"
+    const toothPattern = /(?:tooth\s*(?:number|#)?\s*(\d{1,2})|#(\d{1,2})|number\s+(\d{1,2}))/gi
+    const matches = [...transcript.matchAll(toothPattern)]
+
+    for (const match of matches) {
+      const toothNumber = match[1] || match[2] || match[3]
+      if (!toothNumber) continue
+
+      // Extract context around the tooth mention (100 chars before and after)
+      const matchIndex = match.index || 0
+      const contextStart = Math.max(0, matchIndex - 100)
+      const contextEnd = Math.min(transcript.length, matchIndex + match[0].length + 100)
+      const context = transcript.substring(contextStart, contextEnd).toLowerCase()
+
+      console.log(`🦷 [TOOTH EXTRACTION] Found tooth ${toothNumber} with context: "${context}"`)
+
+      // Determine tooth status and diagnosis from context
+      let status: ToothDiagnosisData['status'] = 'healthy'
+      let primaryDiagnosis = ''
+      let symptoms: string[] = []
+      let recommendedTreatment = ''
+      let treatmentPriority: ToothDiagnosisData['treatmentPriority'] = 'medium'
+
+      // Check for various dental conditions
+      if (context.includes('caries') || context.includes('cavity') || context.includes('carries')) {
+        status = 'caries'
+        primaryDiagnosis = 'Dental caries'
+        
+        if (context.includes('deep') || context.includes('internal')) {
+          primaryDiagnosis = 'Deep dental caries'
+          recommendedTreatment = 'Root canal treatment may be required'
+          treatmentPriority = 'high'
+        } else {
+          recommendedTreatment = 'Composite filling'
+          treatmentPriority = 'medium'
+        }
+      } else if (context.includes('abscess')) {
+        status = 'attention'
+        primaryDiagnosis = 'Periapical abscess'
+        recommendedTreatment = 'Root canal treatment or extraction'
+        treatmentPriority = 'urgent'
+      } else if (context.includes('fracture') || context.includes('broken')) {
+        status = 'attention'
+        primaryDiagnosis = 'Tooth fracture'
+        recommendedTreatment = 'Crown or composite restoration'
+        treatmentPriority = 'high'
+      } else if (context.includes('extraction') || context.includes('remove')) {
+        status = 'extraction_needed'
+        primaryDiagnosis = 'Non-restorable tooth'
+        recommendedTreatment = 'Extraction'
+        treatmentPriority = 'high'
+      } else if (context.includes('root canal') || context.includes('endodontic')) {
+        status = 'root_canal'
+        primaryDiagnosis = 'Pulpal involvement'
+        recommendedTreatment = 'Root canal treatment'
+        treatmentPriority = 'high'
+      } else if (context.includes('filling')) {
+        status = 'filled'
+        primaryDiagnosis = 'Previously restored tooth'
+        recommendedTreatment = 'Monitor'
+        treatmentPriority = 'routine'
+      } else if (context.includes('crown')) {
+        status = 'crown'
+        primaryDiagnosis = 'Crowned tooth'
+        recommendedTreatment = 'Monitor'
+        treatmentPriority = 'routine'
+      } else if (context.includes('missing')) {
+        status = 'missing'
+        primaryDiagnosis = 'Missing tooth'
+        recommendedTreatment = 'Consider implant or bridge'
+        treatmentPriority = 'low'
+      } else if (context.includes('pain') || context.includes('sensitive') || context.includes('hurt')) {
+        status = 'attention'
+        primaryDiagnosis = 'Symptomatic tooth'
+        symptoms = ['Pain', 'Sensitivity']
+        recommendedTreatment = 'Further investigation required'
+        treatmentPriority = 'high'
+      }
+
+      // Extract symptoms from context
+      if (context.includes('pain')) symptoms.push('Pain')
+      if (context.includes('sensitive') || context.includes('sensitivity')) symptoms.push('Sensitivity')
+      if (context.includes('swelling')) symptoms.push('Swelling')
+      if (context.includes('bleeding')) symptoms.push('Bleeding')
+      if (context.includes('mobile') || context.includes('loose')) symptoms.push('Mobility')
+
+      // Remove duplicates from symptoms
+      symptoms = [...new Set(symptoms)]
+
+      // Only save if we found a meaningful diagnosis
+      if (primaryDiagnosis) {
+        const toothDiagnosisData: ToothDiagnosisData = {
+          consultationId,
+          patientId,
+          toothNumber,
+          status,
+          primaryDiagnosis,
+          diagnosisDetails: `Extracted from voice transcript: "${context.substring(0, 200)}"`,
+          symptoms,
+          recommendedTreatment,
+          treatmentPriority,
+          examinationDate: new Date().toISOString().split('T')[0],
+          notes: 'Auto-extracted from voice recording'
+        }
+
+        console.log(`📋 [TOOTH EXTRACTION] Extracted diagnosis for tooth ${toothNumber}:`, {
+          status,
+          diagnosis: primaryDiagnosis,
+          treatment: recommendedTreatment
+        })
+
+        // Add to temporary list (will be saved when consultation is saved)
+        toothDiagnosesData.push(toothDiagnosisData)
+        console.log(`✅ [TOOTH EXTRACTION] Added tooth ${toothNumber} diagnosis to temporary list`)
+      }
+    }
+
+    // Also check if chief complaint mentions specific teeth
+    if (processedContent?.chiefComplaint?.location_detail) {
+      const locationDetail = processedContent.chiefComplaint.location_detail.toLowerCase()
+      const toothMentions = locationDetail.match(/\d{1,2}/g)
+      
+      if (toothMentions && processedContent.chiefComplaint.primary_complaint) {
+        for (const toothNum of toothMentions) {
+          // Check if we already processed this tooth
+          if (!toothDiagnosesData.find(td => td.toothNumber === toothNum)) {
+            let status: ToothDiagnosisData['status'] = 'attention'
+            const complaint = processedContent.chiefComplaint.primary_complaint.toLowerCase()
+            
+            if (complaint.includes('caries') || complaint.includes('cavity')) {
+              status = 'caries'
+            } else if (complaint.includes('pain')) {
+              status = 'attention'
+            }
+
+            const toothDiagnosisData: ToothDiagnosisData = {
+              consultationId,
+              patientId,
+              toothNumber: toothNum,
+              status,
+              primaryDiagnosis: processedContent.chiefComplaint.primary_complaint,
+              diagnosisDetails: processedContent.chiefComplaint.patient_description,
+              symptoms: processedContent.chiefComplaint.associated_symptoms || [],
+              treatmentPriority: 'medium',
+              examinationDate: new Date().toISOString().split('T')[0],
+              notes: 'Extracted from chief complaint'
+            }
+
+            toothDiagnosesData.push(toothDiagnosisData)
+            console.log(`✅ [TOOTH EXTRACTION] Added tooth ${toothNum} from chief complaint to temporary list`)
+          }
+        }
+      }
+    }
+
+    console.log(`🦷 [TOOTH EXTRACTION] Completed extraction. Found ${toothDiagnosesData.length} tooth diagnoses (temporary)`)
+    return toothDiagnosesData
+
+  } catch (error) {
+    console.error('❌ [TOOTH EXTRACTION] Error extracting tooth diagnoses:', error)
+    return []
+  }
 }
 
 async function sendToN8N(transcript: string, consultationId: string, sessionId: string) {

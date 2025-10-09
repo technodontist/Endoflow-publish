@@ -232,19 +232,88 @@ async function updateToothStatusForAppointmentStatus(
   consultationId?: string,
   patientId?: string
 ): Promise<void> {
-  const treatmentType = treatment?.treatment_type
+  // Try to get treatment type from multiple sources
+  let treatmentType = treatment?.treatment_type
   
-  // First, try to get the current diagnosis status if available
+  // If treatment type is generic, try to get more specific info from the diagnosis
+  if (!treatmentType || treatmentType.toLowerCase() === 'treatment') {
+    // Try to get the original diagnosis to infer treatment type
+    if (treatment.tooth_diagnosis_id) {
+      const { data: diagnosis } = await supabase
+        .schema('api')
+        .from('tooth_diagnoses')
+        .select('primary_diagnosis, recommended_treatment')
+        .eq('id', treatment.tooth_diagnosis_id)
+        .single()
+      
+      if (diagnosis) {
+        // Use recommended treatment if available, otherwise infer from diagnosis
+        treatmentType = diagnosis.recommended_treatment || diagnosis.primary_diagnosis
+        console.log(`  ℹ️ Inferred treatment type from diagnosis: ${treatmentType}`)
+      }
+    }
+    
+    // Try to get from appointment notes or description
+    if (!treatmentType || treatmentType.toLowerCase() === 'treatment') {
+      const { data: appointment } = await supabase
+        .schema('api')
+        .from('appointments')
+        .select('appointment_type, notes')
+        .eq('id', appointmentId)
+        .single()
+      
+      if (appointment && appointment.notes) {
+        // Try to extract treatment type from notes
+        const notes = appointment.notes.toLowerCase()
+        
+        // Common patterns in AI-scheduled appointment notes
+        if (notes.includes('root canal') || notes.includes(' rct ')) {
+          treatmentType = 'Root Canal Treatment'
+        } else if (notes.includes('filling') || notes.includes('restoration')) {
+          treatmentType = 'Composite Filling'
+        } else if (notes.includes('crown') || notes.includes('cap')) {
+          treatmentType = 'Crown Preparation'
+        } else if (notes.includes('extraction') || notes.includes('remove')) {
+          treatmentType = 'Extraction'
+        } else if (notes.includes('pulpotomy') || notes.includes('pulpectomy')) {
+          treatmentType = 'Pulpotomy'
+        } else {
+          // Use the full notes as treatment type
+          treatmentType = appointment.notes
+        }
+        
+        console.log(`  📝 Extracted from notes: "${treatmentType}"`)
+      } else if (appointment) {
+        treatmentType = appointment.appointment_type
+        console.log(`  ℹ️ Using appointment type: ${treatmentType}`)
+      }
+    }
+  }
+  
+  // Get the current diagnosis status and info
   let currentDiagnosisStatus: ToothStatus | undefined
+  let diagnosisInfo: any = null
   
   if (treatment.tooth_diagnosis_id) {
     const { data: currentDiagnosis } = await supabase
       .schema('api')
       .from('tooth_diagnoses')
-      .select('status')
+      .select('status, primary_diagnosis, recommended_treatment')
       .eq('id', treatment.tooth_diagnosis_id)
       .single()
-    currentDiagnosisStatus = currentDiagnosis?.status as ToothStatus
+    
+    if (currentDiagnosis) {
+      currentDiagnosisStatus = currentDiagnosis.status as ToothStatus
+      diagnosisInfo = currentDiagnosis
+      
+      // If treatment type is still generic and we're completing treatment,
+      // use the recommended treatment from diagnosis
+      if (appointmentStatus === 'completed' && 
+          (!treatmentType || treatmentType.toLowerCase() === 'treatment')) {
+        treatmentType = currentDiagnosis.recommended_treatment || currentDiagnosis.primary_diagnosis
+        console.log(`  🔍 Using diagnosis info as treatment type: ${treatmentType}`)
+      }
+    }
   }
   
   // Map appointment status to tooth status using our enhanced function
@@ -265,7 +334,33 @@ async function updateToothStatusForAppointmentStatus(
     color_code: colorCode
   }
   
-  console.log(`[TREATMENTS] Updating tooth status: ${appointmentStatus} -> ${newToothStatus} for treatment ${treatmentType}`)
+  // Try to extract tooth number from notes if not linked
+  let toothNumber = treatment.tooth_number
+  if (!toothNumber) {
+    const { data: appointment } = await supabase
+      .schema('api')
+      .from('appointments')
+      .select('notes')
+      .eq('id', appointmentId)
+      .single()
+    
+    if (appointment && appointment.notes) {
+      // Extract tooth number from notes (e.g., "tooth number 46", "tooth 46", "#46")
+      const toothMatch = appointment.notes.match(/(?:tooth\s*(?:number\s*)?|#)(\d{1,2})/i)
+      if (toothMatch) {
+        toothNumber = toothMatch[1]
+        console.log(`  🦷 Extracted tooth number from notes: ${toothNumber}`)
+      }
+    }
+  }
+  
+  console.log(`🦷 [TREATMENTS] Starting tooth status update:`)  
+  console.log(`  📅 Appointment Status: ${appointmentStatus}`)  
+  console.log(`  🔧 Treatment Type: ${treatmentType}`)  
+  console.log(`  🦷 Current Diagnosis Status: ${currentDiagnosisStatus}`)  
+  console.log(`  🎯 New Tooth Status: ${newToothStatus}`)  
+  console.log(`  🎨 Color Code: ${colorCode}`)  
+  console.log(`  🦷 Target Tooth: ${toothNumber || 'N/A'}`)
   
   let updatedTooth = false
   
@@ -285,18 +380,47 @@ async function updateToothStatusForAppointmentStatus(
   }
   
   // Try via consultation_id + tooth_number
-  if (!updatedTooth && treatment.consultation_id && treatment.tooth_number) {
+  if (!updatedTooth && treatment.consultation_id && toothNumber) {
     const { error } = await supabase
       .schema('api')
       .from('tooth_diagnoses')
       .update(updateData)
       .eq('consultation_id', treatment.consultation_id)
-      .eq('tooth_number', treatment.tooth_number)
+      .eq('tooth_number', toothNumber)
     
     if (!error) {
       updatedTooth = true
+      console.log(`  ✅ Updated via consultation_id + tooth_number`)
     } else {
       console.warn('[TREATMENTS] Consultation+tooth update failed:', error)
+    }
+  }
+  
+  // Try via patient_id + tooth_number (latest diagnosis)
+  if (!updatedTooth && patientId && toothNumber) {
+    const { data: latestDiagnoses } = await supabase
+      .schema('api')
+      .from('tooth_diagnoses')
+      .select('id')
+      .eq('patient_id', patientId)
+      .eq('tooth_number', toothNumber)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+    
+    const latestId = latestDiagnoses?.[0]?.id
+    if (latestId) {
+      const { error } = await supabase
+        .schema('api')
+        .from('tooth_diagnoses')
+        .update(updateData)
+        .eq('id', latestId)
+      
+      if (!error) {
+        updatedTooth = true
+        console.log(`  ✅ Updated via patient_id + tooth_number (latest)`)
+      } else {
+        console.warn('[TREATMENTS] Patient+tooth update failed:', error)
+      }
     }
   }
   

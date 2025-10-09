@@ -9,8 +9,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BookOpen, Upload, X, Loader2, CheckCircle2, AlertCircle, Plus, FileText } from 'lucide-react'
-import { uploadMedicalKnowledgeAction, uploadMedicalKnowledgeFromPDFAction } from '@/lib/actions/medical-knowledge'
+import { BookOpen, Upload, X, Loader2, CheckCircle2, AlertCircle, Plus, FileText, Wand2 } from 'lucide-react'
+import { uploadMedicalKnowledgeAction, uploadMedicalKnowledgeFromPDFAction, analyzeMedicalKeywordsFromPDFAction } from '@/lib/actions/medical-knowledge'
 import { cn } from '@/lib/utils'
 
 interface MedicalKnowledgeUploaderProps {
@@ -37,10 +37,11 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
   const [topics, setTopics] = useState<string[]>([])
   const [diagnosisKeywords, setDiagnosisKeywords] = useState<string[]>([])
   const [treatmentKeywords, setTreatmentKeywords] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
+const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [extractedText, setExtractedText] = useState('')
+  const [analyzingKeywords, setAnalyzingKeywords] = useState(false)
 
   const sourceTypeOptions = [
     { value: 'textbook', label: 'Textbook' },
@@ -85,7 +86,7 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       if (file.type !== 'application/pdf') {
@@ -102,6 +103,8 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
       if (!title) {
         setTitle(file.name.replace('.pdf', ''))
       }
+      // Auto-analyze keywords using Gemini
+      await analyzeFromPDF(file)
     }
   }
 
@@ -207,6 +210,27 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Analyze keywords helper
+  const analyzeFromPDF = async (file: File) => {
+    try {
+      setAnalyzingKeywords(true)
+      const result = await analyzeMedicalKeywordsFromPDFAction({ pdfFile: file, specialty })
+      if (result.success && result.data) {
+        if (result.extractedText) setExtractedText(result.extractedText)
+        if (result.data.topics?.length) setTopics(result.data.topics)
+        if (result.data.diagnosisKeywords?.length) setDiagnosisKeywords(result.data.diagnosisKeywords)
+        if (result.data.treatmentKeywords?.length) setTreatmentKeywords(result.data.treatmentKeywords)
+      } else if (!result.success && result.error) {
+        // Non-fatal: allow manual entry if analysis fails
+        setError(result.error)
+      }
+    } catch (err) {
+      setError('Failed to analyze keywords from PDF')
+    } finally {
+      setAnalyzingKeywords(false)
     }
   }
 
@@ -456,7 +480,22 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
 
           {/* Keywords & Tags */}
           <div className="space-y-4">
-            <h3 className="font-semibold text-gray-700">Keywords & Tags (Required for AI matching)</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-700">Keywords & Tags (Required for AI matching)</h3>
+              {uploadMode === 'pdf' && pdfFile && (
+                <Button type="button" variant="secondary" size="sm" onClick={() => analyzeFromPDF(pdfFile)} disabled={analyzingKeywords}>
+                  {analyzingKeywords ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="h-4 w-4 mr-2" /> Auto-fill from PDF
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
 
             {/* Topics */}
             <div>
@@ -612,7 +651,8 @@ export default function MedicalKnowledgeUploader({ onUploadComplete }: MedicalKn
           <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg border border-blue-200">
             <p className="font-medium text-blue-700 mb-1">💡 How it works:</p>
             <ol className="list-decimal list-inside space-y-1 text-blue-600">
-              <li>Your content is processed with OpenAI embeddings (1536-dimensional vectors)</li>
+              <li>PDF uploads are automatically analyzed by Gemini AI to extract topics, diagnosis, and treatment keywords</li>
+              <li>Your content is processed with Gemini embeddings (768-dimensional vectors)</li>
               <li>Stored in Supabase pgvector for fast semantic search</li>
               <li>AI Co-Pilot uses this knowledge to provide evidence-based treatment suggestions</li>
             </ol>

@@ -46,13 +46,44 @@ export function mapInitialStatusFromDiagnosis(
 export function mapFinalStatusFromTreatment(treatment?: string | null): ToothStatus | null {
   const t = norm(treatment)
   if (!t) return null
-  if (t.includes('root canal') || t.includes('rct')) return 'root_canal'
-  if (t.includes('filling') || t.includes('restoration') || t.includes('composite') || t.includes('amalgam')) return 'filled'
-  if (t.includes('crown') || t.includes('onlay') || t.includes('cap')) return 'crown'
-  if (t.includes('extraction')) return 'missing'
+  
+  // Root Canal Treatments - Check for various ways RCT might be mentioned
+  if (t.includes('root canal') || t.includes('rct') || t.includes('endodontic') || 
+      t.includes('pulpitis') || t.includes('root treatment')) return 'root_canal'
+  
+  // Restorative Treatments
+  if (t.includes('filling') || t.includes('restoration') || t.includes('composite') || 
+      t.includes('amalgam') || t.includes('restore')) return 'filled'
+  if (t.includes('crown') || t.includes('onlay') || t.includes('cap') || 
+      t.includes('veneer') || t.includes('jacket')) return 'crown'
+  
+  // Surgical Treatments
+  if (t.includes('extraction') || t.includes('removed') || t.includes('pulled') || 
+      t.includes('extract')) return 'missing'
   if (t.includes('implant')) return 'implant'
-  if (t.includes('scaling') || t.includes('polishing')) return 'healthy'
-  if (t.includes('periodontal')) return 'attention'
+  
+  // Preventive/Maintenance
+  if (t.includes('scaling') || t.includes('polishing') || t.includes('cleaning') || 
+      t.includes('prophylaxis')) return 'healthy'
+  if (t.includes('periodontal') || t.includes('gum treatment') || t.includes('perio')) return 'healthy'
+  
+  // Additional treatment types
+  if (t.includes('pulpotomy') || t.includes('pulp cap') || t.includes('pulpectomy')) return 'filled'
+  if (t.includes('bridge')) return 'crown'
+  
+  // Diagnosis-based inference (when treatment mentions the diagnosis)
+  // If it mentions deep caries or severe infection, likely RCT
+  if ((t.includes('deep') || t.includes('severe') || t.includes('irreversible')) && 
+      (t.includes('caries') || t.includes('cavity') || t.includes('decay') || t.includes('pulp'))) {
+    return 'root_canal'
+  }
+  
+  // If it mentions moderate/shallow caries, likely filling
+  if ((t.includes('moderate') || t.includes('shallow') || t.includes('small') || t.includes('incipient')) && 
+      (t.includes('caries') || t.includes('cavity') || t.includes('decay'))) {
+    return 'filled'
+  }
+  
   return null
 }
 
@@ -117,14 +148,14 @@ export function getStatusColorCode(status: ToothStatus): string {
     case 'filled':
       return '#3b82f6' // Blue
     case 'crown':
-      return '#eab308' // Yellow
+      return '#a855f7' // Purple
     case 'missing':
       return '#6b7280' // Gray
     case 'attention':
     case 'extraction_needed':
       return '#f97316' // Orange
     case 'root_canal':
-      return '#8b5cf6' // Purple
+      return '#f97316' // Orange (different from purple crown)
     case 'implant':
       return '#06b6d4' // Cyan
     default:

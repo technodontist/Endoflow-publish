@@ -70,6 +70,9 @@ import {
 import { JSONB_FILTER_CATEGORIES, isJSONBField } from '@/lib/utils/jsonb-query-builder'
 import ResearchAIAssistant from './research-ai-assistant'
 import { GroupSelectorDialog } from './group-selector-dialog'
+import { AIInsightsPanel } from './ai-insights-panel'
+import { generateEnhancedAnalytics, type EnhancedAnalytics } from '@/lib/services/ai-enhanced-analytics'
+import { NLFilterInput } from './nl-filter-input'
 
 interface ResearchProject {
   id: string
@@ -154,6 +157,8 @@ export function ResearchProjects() {
   // Analytics State
   const [projectAnalytics, setProjectAnalytics] = useState<ProjectAnalytics | null>(null)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+  const [enhancedAnalytics, setEnhancedAnalytics] = useState<EnhancedAnalytics | null>(null)
+  const [isLoadingEnhancedAnalytics, setIsLoadingEnhancedAnalytics] = useState(false)
 
   // Cohort Members State
   const [cohortPatients, setCohortPatients] = useState<any[]>([])
@@ -211,6 +216,29 @@ export function ResearchProjects() {
       console.error('Failed to load analytics:', error)
     } finally {
       setIsLoadingAnalytics(false)
+    }
+  }, [])
+
+  const loadEnhancedAnalytics = useCallback(async (projectId: string) => {
+    setIsLoadingEnhancedAnalytics(true)
+    try {
+      console.log('🤖 [RESEARCH UI] Loading AI-enhanced analytics for project:', projectId)
+      // Get cohort patients for analysis
+      const cohortResult = await getCohortPatientsAction(projectId)
+      if (cohortResult.success && cohortResult.patients && cohortResult.patients.length > 0) {
+        console.log(`🤖 [RESEARCH UI] Generating AI insights for ${cohortResult.patients.length} patients`)
+        const analytics = await generateEnhancedAnalytics(cohortResult.patients, projectId)
+        setEnhancedAnalytics(analytics)
+        console.log('✅ [RESEARCH UI] AI-enhanced analytics generated successfully')
+      } else {
+        console.log('⚠️ [RESEARCH UI] No cohort data available for AI analysis')
+        setEnhancedAnalytics(null)
+      }
+    } catch (error) {
+      console.error('❌ [RESEARCH UI] Failed to load enhanced analytics:', error)
+      setEnhancedAnalytics(null)
+    } finally {
+      setIsLoadingEnhancedAnalytics(false)
     }
   }, [])
 
@@ -285,8 +313,9 @@ export function ResearchProjects() {
     if (selectedProject && !isCreatingProject && !isEditingProject) {
       loadProjectAnalytics(selectedProject)
       loadCohortPatients(selectedProject)
+      loadEnhancedAnalytics(selectedProject)
     }
-  }, [selectedProject, isCreatingProject, isEditingProject, loadProjectAnalytics, loadCohortPatients])
+  }, [selectedProject, isCreatingProject, isEditingProject, loadProjectAnalytics, loadCohortPatients, loadEnhancedAnalytics])
 
   const handleCreateProject = useCallback(() => {
     setIsCreatingProject(true)
@@ -942,6 +971,23 @@ export function ResearchProjects() {
                     Create filter criteria to automatically identify patients for your research cohort
                   </p>
 
+                  {/* Natural Language Filter Input */}
+                  <NLFilterInput
+                    onFiltersExtracted={(filters) => {
+                      console.log('🎯 [RESEARCH] NL Filters extracted:', filters)
+                      // Replace existing filters with AI-extracted ones
+                      setFilterCriteria(filters)
+                    }}
+                    disabled={false}
+                  />
+
+                  {/* Manual Filter Option */}
+                  <div className="flex items-center gap-2 pt-2">
+                    <div className="flex-1 border-t border-gray-200"></div>
+                    <span className="text-xs text-gray-500 px-2">OR CREATE FILTERS MANUALLY</span>
+                    <div className="flex-1 border-t border-gray-200"></div>
+                  </div>
+
                   <div className="space-y-3">
                     {filterCriteria.map((criteria, index) => (
                       <div key={index} className="grid grid-cols-12 gap-2 items-end">
@@ -1452,6 +1498,22 @@ export function ResearchProjects() {
                     <h3 className="text-lg font-semibold" style={{ color: COLORS.primary }}>
                       Cohort Analysis
                     </h3>
+
+                    {/* AI-Enhanced Insights Panel */}
+                    {isLoadingEnhancedAnalytics ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="text-center space-y-2">
+                          <RefreshCw className="w-8 h-8 animate-spin text-[#009688] mx-auto" />
+                          <p className="text-sm text-gray-600">Generating AI-powered insights...</p>
+                        </div>
+                      </div>
+                    ) : enhancedAnalytics ? (
+                      <AIInsightsPanel
+                        insights={enhancedAnalytics.insights}
+                        dataQuality={enhancedAnalytics.metadata.dataQuality}
+                        cohortSize={enhancedAnalytics.metadata.sampleSize}
+                      />
+                    ) : null}
 
                     {isLoadingAnalytics ? (
                       <div className="flex items-center justify-center h-32">

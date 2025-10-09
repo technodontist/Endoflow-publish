@@ -28,7 +28,7 @@ import { TreatmentPlanTab } from '@/components/consultation/tabs/TreatmentPlanTa
 import { TreatmentOverviewTab } from '@/components/consultation/tabs/TreatmentOverviewTab'
 import { GlobalVoiceRecorder } from '@/components/consultation/GlobalVoiceRecorder'
 import { SimpleToothInterface } from '@/components/consultation/SimpleToothInterface'
-import { saveCompleteConsultationAction, loadPatientConsultationAction } from '@/lib/actions/consultation'
+import { saveCompleteConsultationAction, loadPatientConsultationAction, saveConsultationSectionAction } from '@/lib/actions/consultation'
 import { AppointmentRequestDialog } from '@/components/consultation/AppointmentRequestDialog'
 
 interface Patient {
@@ -726,6 +726,25 @@ export function EnhancedNewConsultation({ selectedPatientId, onPatientSelect }: 
 
     // Load previous consultation data
     await loadPreviousConsultationData(patient.id)
+    
+    // Auto-create a draft consultation to enable voice recording
+    if (!savedConsultationId) {
+      console.log('🎤 [AUTO-DRAFT] Creating draft consultation for voice recording...')
+      try {
+        const result = await saveConsultationSectionAction({
+          patientId: patient.id,
+          consultationId: undefined,
+          sectionId: 'initial',
+          sectionData: { patientId: patient.id, created_at: new Date().toISOString() }
+        })
+        if (result.success && result.consultationId) {
+          setSavedConsultationId(result.consultationId)
+          console.log('✅ [AUTO-DRAFT] Draft consultation created:', result.consultationId)
+        }
+      } catch (error) {
+        console.error('❌ [AUTO-DRAFT] Failed to create draft consultation:', error)
+      }
+    }
   }
 
   const handleSaveConsultation = async (status: 'draft' | 'completed' = 'draft') => {
@@ -1419,12 +1438,20 @@ export function EnhancedNewConsultation({ selectedPatientId, onPatientSelect }: 
 
       {/* Global Voice Recorder */}
       <GlobalVoiceRecorder
-        consultationId={selectedPatient.id}
+        consultationId={savedConsultationId || ''}
         onContentProcessed={(content) => {
           console.log('🎤 Processed voice content:', content)
           distributeContentToTabs(content)
         }}
-        isEnabled={true}
+        onToothDiagnosisSaved={async () => {
+          console.log('🦷 [REFRESH] Reloading tooth data after voice diagnosis...')
+          // Force re-render to update FDI chart
+          if (selectedPatient?.id) {
+            await loadPreviousConsultationData(selectedPatient.id)
+            console.log('✅ [REFRESH] Tooth data reloaded')
+          }
+        }}
+        isEnabled={!!savedConsultationId}
       />
 
       {/* Consultation Sections Grid */}

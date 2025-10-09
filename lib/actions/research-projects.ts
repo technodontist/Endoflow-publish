@@ -308,7 +308,9 @@ async function findPatientsWithClinicalData(db: any, criteria: FilterCriteria[])
 
     const needsTreatments = criteria.some(c => [
       'treatment_type', 'treatment_outcome', 'treatment_duration_days', 'endodontic_treatment',
-      'restoration_type'
+      'restoration_type',
+      // ✅ NEW: Treatment filters from api.treatments table
+      'completed_treatment_type', 'treatment_status', 'treatment_completion_date'
     ].includes(c.field))
 
     const needsToothDiagnoses = criteria.some(c => [
@@ -1110,13 +1112,51 @@ function applyClinicalFilterInMemory(patient: any, filter: FilterCriteria): bool
   }
 
   // ===============================================
-  // COMPLETED TREATMENTS FILTERS - treatments table
+  // TREATMENT FILTERS - treatments table
   // ===============================================
+  
+  // ✅ NEW: All treatments regardless of status
+  if (field === 'treatment_type') {
+    const treatments = patient.treatments || []
+    console.log(`🔍 [treatment_type] Patient ${patient.id} has ${treatments.length} treatments:`, 
+      treatments.map(t => ({ type: t.treatment_type, status: t.status })))
+
+    for (const treatment of treatments) {
+      const treatmentType = treatment.treatment_type || ''
+      console.log(`  Checking treatment: "${treatmentType}" against value: "${value}" with operator: ${operator}`)
+
+      if (operator === 'equals') {
+        if (treatmentType.toLowerCase() === String(value).toLowerCase()) return true
+      } else if (operator === 'contains') {
+        if (treatmentType.toLowerCase().includes(String(value).toLowerCase())) return true
+      } else if (operator === 'not_contains') {
+        if (!treatmentType.toLowerCase().includes(String(value).toLowerCase())) continue
+        return false
+      } else if (operator === 'in') {
+        const values = String(value).split(',').map(v => v.trim().toLowerCase())
+        if (values.includes(treatmentType.toLowerCase())) return true
+      } else if (operator === 'not_in') {
+        const values = String(value).split(',').map(v => v.trim().toLowerCase())
+        if (values.includes(treatmentType.toLowerCase())) return false
+      }
+    }
+
+    return operator === 'not_contains' || operator === 'not_in' ? true : false
+  }
+
+  // ✅ COMPLETED TREATMENTS - Automatically restricts to status = 'completed'
   if (field === 'completed_treatment_type') {
     const treatments = patient.treatments || []
+    console.log(`💚 [completed_treatment_type] Patient ${patient.id} has ${treatments.length} total treatments`)
 
-    // Search across all treatments for matching treatment type
-    for (const treatment of treatments) {
+    // ✅ ONLY search across COMPLETED treatments (status = 'completed')
+    const completedTreatments = treatments.filter(t => 
+      (t.status || '').toLowerCase() === 'completed'
+    )
+    console.log(`  ✔️ Filtered to ${completedTreatments.length} completed treatments:`, 
+      completedTreatments.map(t => ({ type: t.treatment_type, status: t.status })))
+
+    for (const treatment of completedTreatments) {
       const treatmentType = treatment.treatment_type || ''
 
       if (operator === 'equals') {

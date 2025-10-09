@@ -195,15 +195,24 @@ export const PATIENT_FILTER_FIELDS: FilterField[] = [
   },
 
   // ===============================================
-  // COMPLETED TREATMENTS (3 filters) - ACTUAL TREATMENTS DONE
+  // ACTUAL TREATMENTS (4 filters) - TREATMENTS TABLE
   // ===============================================
+  {
+    key: 'treatment_type',
+    label: 'Treatment Type (All)',
+    dataType: 'string',
+    table: 'api.treatments',
+    column: 'treatment_type',
+    description: 'All actual treatments from treatments table (any status)',
+    allowedOperators: ['equals', 'contains', 'not_contains', 'in', 'not_in']
+  },
   {
     key: 'completed_treatment_type',
     label: 'Completed Treatment Type',
     dataType: 'string',
     table: 'api.treatments',
     column: 'treatment_type',
-    description: 'Actual treatments that were completed (from treatments table)',
+    description: 'Only treatments with status = completed',
     allowedOperators: ['equals', 'contains', 'not_contains', 'in', 'not_in']
   },
   {

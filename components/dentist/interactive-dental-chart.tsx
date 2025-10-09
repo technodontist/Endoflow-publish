@@ -128,18 +128,21 @@ export function InteractiveDentalChart({
     const result: Record<string, ToothData> = {}
     for (const [toothNumber, info] of Object.entries(ext)) {
       if (!info) continue
-      const status = (info as any).status || (info as any).currentStatus || 'healthy'
+      // CRITICAL: Parent passes currentStatus, not status! Must check currentStatus FIRST
+      const status = (info as any).currentStatus || (info as any).status || 'healthy'
       const diagnosis = (info as any).primaryDiagnosis || (info as any).diagnosis || ((info as any).selectedDiagnoses?.[0]) || ''
-      const treatment = (info as any).recommendedTreatment || (info as any).treatment || ((info as any).selectedTreatments?.[0]) || ''
-      const date = (info as any).examinationDate || (info as any).date || undefined
+      const recommendedTreatment = (info as any).recommendedTreatment || (info as any).treatment || ((info as any).selectedTreatments?.[0]) || ''
+      const date = (info as any).examinationDate || (info as any).date || (info as any).updated_at || undefined
       const notes = (info as any).notes || (info as any).diagnosticNotes || (info as any).treatmentNotes || undefined
+      const colorCode = (info as any).colorCode || undefined
       result[toothNumber] = {
         number: toothNumber,
         status,
         diagnosis,
-        treatment,
+        treatment: recommendedTreatment,  // Map to 'treatment' field for UI compatibility
         date,
-        notes
+        notes,
+        colorCode
       }
     }
     return result
@@ -162,22 +165,20 @@ export function InteractiveDentalChart({
     : internalToothData
   const toothData = useMemo(() => {
     const overlay = normalizedExternal && Object.keys(normalizedExternal).length > 0 ? normalizedExternal : {}
-    // Merge per tooth: DB/base status wins for color correctness; keep external notes/fields
-    const merged: Record<string, ToothData> = { ...baseToothData }
-    Object.entries(overlay).forEach(([toothNumber, ext]) => {
-      const base = baseToothData[toothNumber] || { number: String(toothNumber), status: (ext as any)?.status || 'healthy' }
-      merged[toothNumber] = {
-        number: String(toothNumber),
-        // Prefer DB/base status for immediate visual correctness
-        status: base.status || (ext as any)?.status || 'healthy',
-        // Preserve external descriptive fields if present; fallback to base
-        diagnosis: (ext as any)?.diagnosis ?? base.diagnosis,
-        treatment: (ext as any)?.treatment ?? base.treatment,
-        date: (ext as any)?.date ?? base.date,
-        notes: (ext as any)?.notes ?? base.notes,
-      }
-    })
-    return merged
+    // If we have external data, prefer it completely (parent state is source of truth)
+    // Otherwise use base (DB) data
+    if (Object.keys(overlay).length > 0) {
+      // Parent is providing data - use it as-is
+      console.log('🎯 [DENTAL-CHART] Using external toothData from parent')
+      console.log('🎯 [DENTAL-CHART] Sample tooth #18 from overlay:', overlay['18'])
+      console.log('🎯 [DENTAL-CHART] Sample tooth #17 from overlay:', overlay['17'])
+      return overlay
+    } else {
+      // No external data, use DB data
+      console.log('🎯 [DENTAL-CHART] Using baseToothData from DB')
+      console.log('🎯 [DENTAL-CHART] Sample tooth #18 from baseToothData:', baseToothData['18'])
+      return baseToothData
+    }
   }, [baseToothData, normalizedExternal])
     
   // Debug logging with color update information
@@ -820,7 +821,21 @@ export function InteractiveDentalChart({
   }
 
   const renderTooth = (toothNumber: string, isUpper = true) => {
-    const tooth = toothData[toothNumber] || { number: toothNumber, status: "healthy" }
+    const rawTooth = toothData[toothNumber]
+    
+    // CRITICAL FIX: If tooth exists but status is undefined, use currentStatus
+    const tooth = rawTooth ? {
+      ...rawTooth,
+      status: rawTooth.status || (rawTooth as any).currentStatus || 'healthy'
+    } : { number: toothNumber, status: "healthy" }
+    
+    // CRITICAL DEBUG: Log what we actually have
+    if (toothNumber === '18' || toothNumber === '17') {
+      console.log(`🔍 [RENDER-TOOTH-${toothNumber}] Raw tooth data:`, rawTooth)
+      console.log(`🔍 [RENDER-TOOTH-${toothNumber}] Final tooth.status = '${tooth.status}'`)
+      console.log(`🔍 [RENDER-TOOTH-${toothNumber}] tooth.colorCode = '${tooth.colorCode}'`)
+    }
+    
     const colorClass = getToothColor(tooth.status, tooth.colorCode)
     
     // Apply dynamic background color if we have a custom color code

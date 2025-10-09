@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Cigarette, Wine, Coffee, Utensils, Sparkles, User, Activity } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Cigarette, Wine, Coffee, Utensils, Sparkles, User, Activity, Clock } from "lucide-react"
 
 interface SmokingHistory {
   status: 'never' | 'current' | 'former'
@@ -162,6 +163,34 @@ export function PersonalHistoryTab({ data, onChange, isReadOnly = false }: Perso
 
   return (
     <div className="space-y-6">
+      {/* AI Auto-Fill Indicator */}
+      {(data as any)?.auto_extracted && (
+        <Alert className="bg-gradient-to-r from-purple-50 via-blue-50 to-purple-50 border-2 border-purple-200 shadow-sm">
+          <div className="flex items-start gap-3">
+            <Activity className="h-5 w-5 text-purple-600 animate-pulse mt-0.5" />
+            <div className="flex-1">
+              <AlertTitle className="text-purple-900 font-semibold flex items-center gap-2">
+                🤖 AI-Extracted Personal History
+                <Badge variant="outline" className="bg-white text-purple-700 border-purple-300">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Confidence: {(data as any).confidence || 85}%
+                </Badge>
+              </AlertTitle>
+              <AlertDescription className="text-purple-700 text-sm mt-1">
+                Personal history and lifestyle information extracted from voice recording using Gemini AI.
+                Please verify accuracy before saving.
+              </AlertDescription>
+              {(data as any).extraction_timestamp && (
+                <p className="text-xs text-purple-600 mt-2 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Extracted: {new Date((data as any).extraction_timestamp).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        </Alert>
+      )}
+      
       {/* Header */}
       <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
         <div className="flex items-center gap-2 mb-2">

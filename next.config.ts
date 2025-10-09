@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     cssChunking: 'strict',
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
 };
 

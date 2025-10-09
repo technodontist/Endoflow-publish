@@ -33,12 +33,14 @@ interface ProcessedContent {
 interface GlobalVoiceRecorderProps {
   consultationId?: string
   onContentProcessed?: (content: ProcessedContent) => void
+  onToothDiagnosesExtracted?: (toothDiagnoses: any[]) => void
   isEnabled?: boolean
 }
 
 export function GlobalVoiceRecorder({
   consultationId,
   onContentProcessed,
+  onToothDiagnosesExtracted,
   isEnabled = true
 }: GlobalVoiceRecorderProps) {
   const [recording, setRecording] = useState<VoiceRecording>({
@@ -122,7 +124,28 @@ export function GlobalVoiceRecorder({
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error)
+        // Don't show errors for common non-critical issues
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          return
+        }
         setError(`Speech recognition error: ${event.error}`)
+      }
+
+      recognitionRef.current.onend = () => {
+        console.log('🛑 [GLOBAL VOICE] Speech recognition ended')
+        // Add 100ms buffer to prevent word loss during restart
+        if (recording.isRecording) {
+          setTimeout(() => {
+            if (recording.isRecording && recognitionRef.current) {
+              try {
+                console.log('🔄 [GLOBAL VOICE] Auto-restarting speech recognition...')
+                recognitionRef.current.start()
+              } catch (e) {
+                console.error('❌ [GLOBAL VOICE] Failed to restart:', e)
+              }
+            }
+          }, 100) // 100ms buffer
+        }
       }
     }
   }
@@ -366,6 +389,12 @@ export function GlobalVoiceRecorder({
 
       if (result.success && result.processedContent) {
         onContentProcessed?.(result.processedContent)
+      }
+      
+      // If tooth diagnoses were extracted, pass them to parent (not saved yet)
+      if (result.success && result.toothDiagnoses && result.toothDiagnoses.length > 0) {
+        console.log(`✅ [VOICE] ${result.toothDiagnoses.length} tooth diagnoses extracted from voice`)
+        onToothDiagnosesExtracted?.(result.toothDiagnoses)
       }
 
     } catch (error) {

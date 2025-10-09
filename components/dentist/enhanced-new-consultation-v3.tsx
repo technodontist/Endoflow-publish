@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { InteractiveDentalChart } from "./interactive-dental-chart"
 import { createClient } from '@/lib/supabase/client'
 import { format, differenceInYears } from 'date-fns'
-import { getPatientToothDiagnoses } from '@/lib/actions/tooth-diagnoses'
+import { getPatientToothDiagnoses, getPatientLatestToothDiagnoses } from '@/lib/actions/tooth-diagnoses'
 import { ChiefComplaintTab } from '@/components/consultation/tabs/ChiefComplaintTab'
 import { HOPITab } from '@/components/consultation/tabs/HOPITab'
 import { MedicalHistoryTab } from '@/components/consultation/tabs/MedicalHistoryTab'
@@ -142,6 +142,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null)
   const [showToothInterface, setShowToothInterface] = useState(false)
   const [toothData, setToothData] = useState<{[key: string]: any}>({})
+  const [toothDataVersion, setToothDataVersion] = useState(0) // Force re-render counter
   const [diagnosisHistory, setDiagnosisHistory] = useState<any[]>([])
   const [voiceSession, setVoiceSession] = useState<VoiceSession>({
     isActive: false,
@@ -154,8 +155,91 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   const [loadingError, setLoadingError] = useState<string | null>(null)
   const [savedConsultationId, setSavedConsultationId] = useState<string | null>(null)
   const [isConsultationCompleted, setIsConsultationCompleted] = useState(false)
+  const [pendingVoiceToothDiagnoses, setPendingVoiceToothDiagnoses] = useState<any[]>([])
 
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Function to reload tooth diagnoses from database
+  const reloadToothDiagnoses = async () => {
+    if (!selectedPatient?.id) return false
+    
+    console.log('🔄 [RELOAD] Fetching latest tooth diagnoses for patient:', selectedPatient.id)
+    console.log('🕹️ [RELOAD] Current toothData count BEFORE reload:', Object.keys(toothData).length)
+    
+    try {
+      const result = await getPatientLatestToothDiagnoses(selectedPatient.id)
+      
+      if (result.success && result.data) {
+        const teeth = result.data
+        console.log('✅ [RELOAD] Loaded', Object.keys(teeth).length, 'teeth with diagnoses from database')
+        
+        // Log what we got from database
+        Object.entries(teeth).forEach(([toothNumber, diag]: [string, any]) => {
+          console.log(`  🦷 Tooth #${toothNumber}: status=${diag.status}, diagnosis=${diag.primaryDiagnosis}, color=${diag.colorCode}`)
+          // CRITICAL: Debug the exact data structure
+          if (toothNumber === '41' || toothNumber === '18') {
+            console.log(`  🔍 [DB-DATA] Raw tooth #${toothNumber} data:`, diag)
+          }
+        })
+        
+        // Convert tooth diagnoses to format expected by UI
+        const updatedToothData: {[key: string]: any} = {}
+        
+        Object.entries(teeth).forEach(([toothNumber, diagnosis]: [string, any]) => {
+          updatedToothData[toothNumber] = {
+            // CRITICAL: Include BOTH status AND currentStatus for compatibility
+            status: diagnosis.status,  // This is what InteractiveDentalChart looks for!
+            currentStatus: diagnosis.status,  // This is for backward compatibility
+            // For dialog (ToothDiagnosisDialogV2)
+            primaryDiagnosis: diagnosis.primaryDiagnosis,
+            recommendedTreatment: diagnosis.recommendedTreatment,
+            treatmentPriority: diagnosis.treatmentPriority,
+            notes: diagnosis.notes,
+            diagnosisDetails: diagnosis.diagnosisDetails,
+            symptoms: diagnosis.symptoms || [],
+            estimatedDuration: diagnosis.estimatedDuration,
+            estimatedCost: diagnosis.estimatedCost,
+            followUpRequired: diagnosis.followUpRequired || false,
+            examinationDate: diagnosis.examinationDate,
+            // For FDI chart display
+            selectedDiagnoses: diagnosis.primaryDiagnosis ? [diagnosis.primaryDiagnosis] : [],
+            selectedTreatments: diagnosis.recommendedTreatment ? [diagnosis.recommendedTreatment] : [],
+            priority: diagnosis.treatmentPriority,
+            treatmentNotes: diagnosis.notes,
+            colorCode: diagnosis.colorCode
+          }
+          
+          // Debug: Verify the structure
+          if (toothNumber === '18' || toothNumber === '17') {
+            console.log(`✅ [RELOAD] Tooth #${toothNumber} updated with status='${updatedToothData[toothNumber].status}', colorCode='${diagnosis.colorCode}'`)
+          }
+        })
+        
+        console.log('💾 [RELOAD] Setting toothData state with', Object.keys(updatedToothData).length, 'teeth')
+        console.log('🔍 [RELOAD] Sample tooth data being set:', {
+          tooth18: updatedToothData['18'],
+          tooth41: updatedToothData['41']
+        })
+        setToothData(updatedToothData)
+        setToothDataVersion(prev => prev + 1) // Force re-render
+        
+        // Force re-render by logging after state update
+        setTimeout(() => {
+          console.log('✅ [RELOAD] ToothData state updated - FDI chart should now show colors')
+          console.log('🕹️ [RELOAD] Current toothData count AFTER reload:', Object.keys(updatedToothData).length)
+          console.log('🔄 [RELOAD] ToothData version:', toothDataVersion + 1)
+        }, 100)
+        
+        return true
+      } else {
+        console.warn('⚠️ [RELOAD] No tooth diagnoses found or error:', result.error)
+        return false
+      }
+    } catch (error) {
+      console.error('❌ [RELOAD] Error reloading tooth diagnoses:', error)
+      return false
+    }
+  }
 
   const [consultationData, setConsultationData] = useState<ConsultationData>({
     patientId: '',
@@ -265,20 +349,55 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         icon: <FileText className="w-5 h-5" />,
         status: getSectionStatus('hopi'),
         description: 'History of Present Illness',
-        data: {
-          onset_details: consultationData.hopiData?.onset_details?.when_started || consultationData.hopiOnsetDetails || '',
-          duration: consultationData.hopiData?.pain_characteristics?.duration || consultationData.painDuration || '',
-          aggravating_factors: consultationData.hopiData?.aggravating_factors || consultationData.painTriggers || [],
-          relieving_factors: consultationData.hopiData?.relieving_factors || consultationData.painRelief || [],
-          pain_characteristics: consultationData.hopiData?.pain_characteristics,
-          associated_symptoms: consultationData.hopiData?.associated_symptoms || [],
-          previous_episodes: consultationData.hopiData?.previous_episodes || '',
-          pattern_changes: consultationData.hopiData?.pattern_changes || '',
-          previous_treatments: consultationData.hopiData?.previous_treatments || [],
-          auto_extracted: consultationData.hopiData?.auto_extracted,
-          extraction_timestamp: consultationData.hopiData?.extraction_timestamp,
-          confidence: consultationData.confidence
-        },
+        data: (() => {
+          const hopiTabData = {
+            // Use the processed hopiOnsetDetails which combines all onset info, or build it from hopiData
+            onset_details: (() => {
+              if (consultationData.hopiOnsetDetails) {
+                return consultationData.hopiOnsetDetails
+              }
+              if (consultationData.hopiData?.onset_details) {
+                const od = consultationData.hopiData.onset_details
+                const parts = []
+                if (od.when_started) parts.push(`Started ${od.when_started}`)
+                if (od.how_started) parts.push(`onset was ${od.how_started}`)
+                if (od.precipitating_factors?.length > 0) {
+                  parts.push(`triggered by ${od.precipitating_factors.join(', ')}`)
+                }
+                return parts.length > 0 ? parts.join('; ') : ''
+              }
+              return ''
+            })(),
+            duration: consultationData.hopiData?.pain_characteristics?.duration || consultationData.painDuration || '',
+            aggravating_factors: consultationData.hopiData?.aggravating_factors || consultationData.painTriggers || [],
+            relieving_factors: consultationData.hopiData?.relieving_factors || consultationData.painRelief || [],
+            pain_characteristics: consultationData.hopiData?.pain_characteristics,
+            associated_symptoms: consultationData.hopiData?.associated_symptoms || [],
+            previous_episodes: consultationData.hopiData?.previous_episodes || '',
+            pattern_changes: consultationData.hopiData?.pattern_changes || '',
+            previous_treatments: (() => {
+              const treatments = consultationData.hopiData?.previous_treatments
+              if (Array.isArray(treatments)) return treatments
+              if (typeof treatments === 'string' && treatments) return [treatments]
+              return []
+            })(),
+            auto_extracted: consultationData.hopiData?.auto_extracted,
+            extraction_timestamp: consultationData.hopiData?.extraction_timestamp,
+            confidence: consultationData.confidence
+          }
+          
+          console.log('📊 [HOPI SECTION DATA] Built HOPI tab data:', {
+            onset_details: hopiTabData.onset_details,
+            duration: hopiTabData.duration,
+            aggravating_factors: hopiTabData.aggravating_factors,
+            relieving_factors: hopiTabData.relieving_factors,
+            hasAIData: !!consultationData.hopiData,
+            aiExtracted: hopiTabData.auto_extracted,
+            confidence: hopiTabData.confidence
+          })
+          
+          return hopiTabData
+        })(),
         voiceEnabled: true,
         component: HOPITab
       },
@@ -288,10 +407,16 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
       icon: <FileText className="w-5 h-5" />,
       status: getSectionStatus('medical-history'),
       description: 'Past medical history, medications, allergies',
-      data: {
-        medicalHistory: consultationData.medicalHistory,
-        currentMedications: consultationData.currentMedications,
-        allergies: consultationData.allergies
+      data: consultationData.medicalHistoryData || {
+        medical_conditions: consultationData.medicalHistory || [],
+        current_medications: consultationData.currentMedications || [],
+        allergies: consultationData.allergies || [],
+        previous_dental_treatments: consultationData.previousDentalTreatments || [],
+        family_medical_history: '',
+        additional_notes: consultationData.additionalNotes || '',
+        auto_extracted: consultationData.medicalHistoryData?.auto_extracted,
+        extraction_timestamp: consultationData.medicalHistoryData?.extraction_timestamp,
+        confidence: consultationData.confidence
       },
       voiceEnabled: true,
       component: MedicalHistoryTab
@@ -302,8 +427,30 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
       icon: <User className="w-5 h-5" />,
       status: getSectionStatus('personal-history'),
       description: 'Habits, lifestyle, oral hygiene',
-      data: {
-        previousDentalTreatments: consultationData.previousDentalTreatments
+      data: consultationData.personalHistoryData || consultationData.personalHistory || {
+        smoking: { status: 'never', duration: '', quantity: '', type: '', quit_date: '' },
+        alcohol: { status: 'never', frequency: '', quantity: '', type: [] },
+        tobacco: { status: 'never', type: [], duration: '', frequency: '', quit_date: '' },
+        dietary_habits: [],
+        oral_hygiene: {
+          brushing_frequency: '',
+          brushing_technique: '',
+          flossing: '',
+          mouthwash: '',
+          last_cleaning: '',
+          toothbrush_type: '',
+          fluoride_exposure: []
+        },
+        other_habits: [],
+        exercise_habits: '',
+        sleep_patterns: '',
+        stress_levels: '',
+        occupation: '',
+        occupational_hazards: [],
+        lifestyle_factors: [],
+        auto_extracted: consultationData.personalHistoryData?.auto_extracted,
+        extraction_timestamp: consultationData.personalHistoryData?.extraction_timestamp,
+        confidence: consultationData.confidence
       },
       voiceEnabled: true,
       component: PersonalHistoryTab
@@ -314,10 +461,16 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
       icon: <Search className="w-5 h-5" />,
       status: getSectionStatus('clinical-examination'),
       description: 'Extraoral & intraoral findings',
-      data: {
-        extraoralFindings: consultationData.extraoralFindings,
-        intraoralFindings: consultationData.intraoralFindings,
-        periodontalStatus: consultationData.periodontalStatus
+      data: consultationData.clinicalExaminationData || {
+        extraoral_findings: consultationData.extraoralFindings ? consultationData.extraoralFindings.split(/;|,|\n/).map(s => s.trim()).filter(Boolean) : [],
+        intraoral_findings: consultationData.intraoralFindings ? consultationData.intraoralFindings.split(/;|,|\n/).map(s => s.trim()).filter(Boolean) : [],
+        oral_hygiene: consultationData.oralHygieneStatus || '',
+        gingival_condition: consultationData.gingivalCondition || '',
+        periodontal_status: consultationData.periodontalStatus || '',
+        occlusion_notes: consultationData.occlusionNotes ? consultationData.occlusionNotes.split(/;|,|\n/).map(s => s.trim()).filter(Boolean) : [],
+        auto_extracted: consultationData.clinicalExaminationData?.auto_extracted,
+        extraction_timestamp: consultationData.clinicalExaminationData?.extraction_timestamp,
+        confidence: consultationData.confidence
       },
       voiceEnabled: true,
       component: ClinicalExaminationTab
@@ -328,10 +481,23 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
       icon: <FileText className="w-5 h-5" />,
       status: getSectionStatus('investigations'),
       description: 'Radiographic findings, tests',
-      data: {
-        radiographicFindings: consultationData.radiographicFindings,
-        vitalityTests: consultationData.vitalityTests,
-        percussionTests: consultationData.percussionTests
+      data: consultationData.investigationsData || {
+        radiographic_findings: consultationData.radiographicFindings || '',
+        radiographic_types: consultationData.radiographicTypes || [],
+        vitality_tests: typeof consultationData.vitalityTests === 'string' 
+          ? consultationData.vitalityTests.split(/;|,|\n/).map(s => s.trim()).filter(Boolean)
+          : (consultationData.vitalityTests || []),
+        percussion_tests: typeof consultationData.percussionTests === 'string'
+          ? consultationData.percussionTests.split(/;|,|\n/).map(s => s.trim()).filter(Boolean)
+          : (consultationData.percussionTests || []),
+        palpation_findings: typeof consultationData.palpationFindings === 'string'
+          ? consultationData.palpationFindings.split(/;|,|\n/).map(s => s.trim()).filter(Boolean)
+          : (consultationData.palpationFindings || []),
+        laboratory_tests: consultationData.laboratoryTests || '',
+        recommendations: consultationData.investigationRecommendations || '',
+        auto_extracted: consultationData.investigationsData?.auto_extracted,
+        extraction_timestamp: consultationData.investigationsData?.extraction_timestamp,
+        confidence: consultationData.confidence
       },
       voiceEnabled: true,
       component: InvestigationsTab
@@ -547,79 +713,613 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
 
   const distributeContentToTabs = (processedContent: any) => {
     console.log('🎯 Distributing AI-processed content to consultation tabs...')
+    console.log('📊 [CONFIDENCE] AI extraction confidence:', processedContent.confidence, '%')
+    console.log('🔍 [DEBUG] Full processed content:', processedContent)
+
+    // Check confidence threshold - don't auto-fill if too low
+    if (processedContent.confidence < 60) {
+      console.warn('⚠️ [CONFIDENCE] Confidence too low (<60%), not auto-filling. User should review transcript manually.')
+      alert(
+        `Voice extraction confidence is low (${processedContent.confidence}%).\n\n` +
+        'The AI was unsure about extracting information from the recording. ' +
+        'Please review the transcript and manually fill in the details.'
+      )
+      return // Don't auto-fill
+    }
 
     try {
       setConsultationData(prev => {
         const updated = { ...prev }
         if (processedContent.chiefComplaint) {
           const cc = processedContent.chiefComplaint
+          console.log('🧾 [CHIEF COMPLAINT] Processing:', cc)
+          
           if (cc.primary_complaint) updated.chiefComplaint = cc.primary_complaint
-          if (cc.pain_scale) updated.painIntensity = cc.pain_scale
-          if (cc.patient_description) updated.painLocation = cc.patient_description
+          if (cc.pain_scale !== undefined) updated.painIntensity = cc.pain_scale
+          if (cc.location_detail) updated.painLocation = cc.location_detail
+          
+          // Map associated symptoms to checkbox-compatible format
+          const symptomMapping: { [key: string]: string } = {
+            'sharp': 'Sharp pain',
+            'dull': 'Dull ache',
+            'throbbing': 'Throbbing',
+            'swelling': 'Swelling',
+            'hot': 'Sensitivity to hot',
+            'cold': 'Sensitivity to cold',
+            'heat': 'Sensitivity to hot',
+            'sensitivity to hot': 'Sensitivity to hot',
+            'sensitivity to cold': 'Sensitivity to cold'
+          }
+          
+          // Convert AI symptoms to checkbox labels
+          const mappedSymptoms: string[] = []
+          if (cc.associated_symptoms && Array.isArray(cc.associated_symptoms)) {
+            cc.associated_symptoms.forEach((symptom: string) => {
+              const symptomLower = symptom.toLowerCase()
+              // Check for direct matches
+              for (const [key, value] of Object.entries(symptomMapping)) {
+                if (symptomLower.includes(key)) {
+                  if (!mappedSymptoms.includes(value)) {
+                    mappedSymptoms.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          // Also check pain quality for symptoms
+          if (cc.pain_quality || processedContent.hopi?.pain_characteristics?.quality) {
+            const quality = (cc.pain_quality || processedContent.hopi?.pain_characteristics?.quality || '').toLowerCase()
+            if (quality.includes('sharp')) mappedSymptoms.push('Sharp pain')
+            if (quality.includes('dull') || quality.includes('aching')) mappedSymptoms.push('Dull ache')
+            if (quality.includes('throb')) mappedSymptoms.push('Throbbing')
+          }
 
           // Store complete Chief Complaint AI data for tab consumption
-          updated.chiefComplaintData = cc
+          updated.chiefComplaintData = {
+            ...cc,
+            associated_symptoms: mappedSymptoms.length > 0 ? mappedSymptoms : cc.associated_symptoms,
+            auto_extracted: true,
+            extraction_timestamp: new Date().toISOString()
+          }
           updated.confidence = processedContent.confidence
+          
+          console.log('✅ [CHIEF COMPLAINT] Mapped symptoms:', mappedSymptoms)
         }
+        
         if (processedContent.hopi) {
           const hopi = processedContent.hopi
+          console.log('📑 [HOPI] Processing:', hopi)
+          
           if (hopi.pain_characteristics?.quality) updated.painCharacter = hopi.pain_characteristics.quality
           if (hopi.pain_characteristics?.duration) updated.painDuration = hopi.pain_characteristics.duration
-          if (hopi.duration) updated.painDuration = hopi.duration
-          if (hopi.onset_details) updated.hopiOnsetDetails = hopi.onset_details
-          if (hopi.aggravating_factors) updated.painTriggers = hopi.aggravating_factors
-          if (hopi.relieving_factors) updated.painRelief = hopi.relieving_factors
+          if (hopi.pain_characteristics?.intensity !== undefined) updated.painIntensity = hopi.pain_characteristics.intensity
+          
+          // Combine onset_details object into a comprehensive string
+          if (hopi.onset_details) {
+            const onsetParts = []
+            if (hopi.onset_details.when_started) {
+              onsetParts.push(`Started ${hopi.onset_details.when_started}`)
+            }
+            if (hopi.onset_details.how_started) {
+              onsetParts.push(`onset was ${hopi.onset_details.how_started}`)
+            }
+            if (hopi.onset_details.precipitating_factors?.length > 0) {
+              onsetParts.push(`triggered by ${hopi.onset_details.precipitating_factors.join(', ')}`)
+            }
+            if (onsetParts.length > 0) {
+              updated.hopiOnsetDetails = onsetParts.join('; ')
+            }
+          }
+          
+          // Map aggravating factors to checkbox options
+          const aggravatingMapping: { [key: string]: string } = {
+            'cold': 'Cold food/drinks',
+            'hot': 'Hot food/drinks',
+            'sweet': 'Sweet foods',
+            'chewing': 'Chewing',
+            'pressure': 'Pressure',
+            'lying down': 'Lying down',
+            'physical': 'Physical activity',
+            'stress': 'Stress'
+          }
+          
+          const mappedAggravating: string[] = []
+          if (hopi.aggravating_factors && Array.isArray(hopi.aggravating_factors)) {
+            hopi.aggravating_factors.forEach((factor: string) => {
+              const factorLower = factor.toLowerCase()
+              for (const [key, value] of Object.entries(aggravatingMapping)) {
+                if (factorLower.includes(key)) {
+                  if (!mappedAggravating.includes(value)) {
+                    mappedAggravating.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          // Map relieving factors to checkbox options
+          const relievingMapping: { [key: string]: string } = {
+            'cold': 'Cold application',
+            'heat': 'Heat application',
+            'hot': 'Heat application',
+            'pain medication': 'Pain medications',
+            'painkiller': 'Pain medications',
+            'ibuprofen': 'Pain medications',
+            'rest': 'Rest',
+            'avoiding chewing': 'Avoiding chewing',
+            'salt water': 'Salt water rinse',
+            'elevation': 'Elevation',
+            'nothing': 'Nothing helps'
+          }
+          
+          const mappedRelieving: string[] = []
+          if (hopi.relieving_factors && Array.isArray(hopi.relieving_factors)) {
+            hopi.relieving_factors.forEach((factor: string) => {
+              const factorLower = factor.toLowerCase()
+              for (const [key, value] of Object.entries(relievingMapping)) {
+                if (factorLower.includes(key)) {
+                  if (!mappedRelieving.includes(value)) {
+                    mappedRelieving.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          updated.painTriggers = mappedAggravating.length > 0 ? mappedAggravating : hopi.aggravating_factors
+          updated.painRelief = mappedRelieving.length > 0 ? mappedRelieving : hopi.relieving_factors
 
-          // Store complete HOPI AI data for tab consumption
-          updated.hopiData = hopi
+          // Store complete HOPI AI data for tab consumption with mapped values
+          updated.hopiData = {
+            ...hopi,
+            aggravating_factors: mappedAggravating.length > 0 ? mappedAggravating : hopi.aggravating_factors,
+            relieving_factors: mappedRelieving.length > 0 ? mappedRelieving : hopi.relieving_factors,
+            auto_extracted: true,
+            extraction_timestamp: new Date().toISOString()
+          }
+          
+          console.log('✅ [HOPI] Mapped factors:', {
+            aggravating_original: hopi.aggravating_factors,
+            aggravating_mapped: mappedAggravating,
+            relieving_original: hopi.relieving_factors,
+            relieving_mapped: mappedRelieving
+          })
         }
         if (processedContent.medicalHistory) {
           const medHist = processedContent.medicalHistory
-          if (medHist.medical_conditions) {
-            updated.medicalHistory = medHist.medical_conditions.map((cond: any) =>
-              typeof cond === 'string' ? cond : cond.condition || cond.name
-            )
+          console.log('📄 [MEDICAL HISTORY] Processing:', medHist)
+          
+          // Map medical conditions to checkbox options
+          const conditionMapping: { [key: string]: string } = {
+            'diabetes': 'Diabetes',
+            'hypertension': 'Hypertension',
+            'high blood pressure': 'Hypertension',
+            'heart disease': 'Heart Disease',
+            'cardiac': 'Heart Disease',
+            'asthma': 'Asthma',
+            'thyroid': 'Thyroid Disorders',
+            'kidney': 'Kidney Disease',
+            'arthritis': 'Arthritis',
+            'cancer': 'Cancer',
+            'depression': 'Depression',
+            'anxiety': 'Anxiety'
           }
+          
+          const mappedConditions: string[] = []
+          if (medHist.medical_conditions && Array.isArray(medHist.medical_conditions)) {
+            medHist.medical_conditions.forEach((cond: any) => {
+              const condStr = typeof cond === 'string' ? cond : (cond.condition || cond.name || '')
+              const condLower = condStr.toLowerCase()
+              
+              // Try to map to standard checkbox options
+              for (const [key, value] of Object.entries(conditionMapping)) {
+                if (condLower.includes(key)) {
+                  if (!mappedConditions.includes(value)) {
+                    mappedConditions.push(value)
+                  }
+                }
+              }
+              
+              // If no mapping found, add the original
+              if (!mappedConditions.length && condStr) {
+                mappedConditions.push(condStr)
+              }
+            })
+          }
+          
+          if (mappedConditions.length > 0) {
+            updated.medicalHistory = mappedConditions
+          }
+          
+          // Store complete medical history for tab
+          updated.medicalHistoryData = {
+            medical_conditions: mappedConditions,
+            current_medications: Array.isArray(medHist.current_medications) 
+              ? medHist.current_medications.map((med: any) => typeof med === 'string' ? med : med.name || med.medication)
+              : [],
+            allergies: Array.isArray(medHist.allergies)
+              ? medHist.allergies.map((allergy: any) => typeof allergy === 'string' ? allergy : allergy.allergen || allergy.name)
+              : [],
+            previous_dental_treatments: Array.isArray(medHist.previous_dental_treatments)
+              ? medHist.previous_dental_treatments.map((t: any) => typeof t === 'string' ? t : t.name || t.treatment)
+              : [],
+            family_medical_history: medHist.family_medical_history || '',
+            additional_notes: medHist.additional_notes || '',
+            auto_extracted: true,
+            extraction_timestamp: new Date().toISOString()
+          }
+          
+          // Also update individual fields for backward compatibility
           if (medHist.current_medications) {
-            updated.currentMedications = medHist.current_medications.map((med: any) =>
-              typeof med === 'string' ? med : med.name || med.medication
-            )
+            updated.currentMedications = updated.medicalHistoryData.current_medications
           }
           if (medHist.allergies) {
-            updated.allergies = medHist.allergies.map((allergy: any) =>
-              typeof allergy === 'string' ? allergy : allergy.allergen || allergy.name
-            )
+            updated.allergies = updated.medicalHistoryData.allergies
           }
-          if (medHist.previous_dental_treatments || medHist.previousDentalTreatments) {
-            const src = medHist.previous_dental_treatments || medHist.previousDentalTreatments
-            updated.previousDentalTreatments = (src || []).map((t: any) => typeof t === 'string' ? t : t.name || t.treatment)
+          if (medHist.previous_dental_treatments) {
+            updated.previousDentalTreatments = updated.medicalHistoryData.previous_dental_treatments
           }
           if (medHist.additional_notes) {
             updated.additionalNotes = medHist.additional_notes
           }
+          
+          console.log('✅ [MEDICAL HISTORY] Mapped:', {
+            conditions: mappedConditions,
+            medications: updated.medicalHistoryData.current_medications.length,
+            allergies: updated.medicalHistoryData.allergies.length
+          })
         }
+        
+        if (processedContent.personalHistory) {
+          const persHist = processedContent.personalHistory
+          console.log('👤 [PERSONAL HISTORY] Processing:', persHist)
+          
+          // Map dietary habits to checkbox options
+          const dietMapping: { [key: string]: string } = {
+            'high sugar': 'High sugar diet',
+            'sweet': 'High sugar diet',
+            'frequent snack': 'Frequent snacking',
+            'snacking': 'Frequent snacking',
+            'carbonated': 'Carbonated drinks',
+            'soda': 'Carbonated drinks',
+            'energy drink': 'Energy drinks',
+            'sticky food': 'Sticky foods',
+            'hard food': 'Hard foods',
+            'vegetarian': 'Vegetarian',
+            'non-vegetarian': 'Non-vegetarian',
+            'vegan': 'Vegan',
+            'balanced': 'Balanced diet'
+          }
+          
+          const mappedDiet: string[] = []
+          if (persHist.dietary_habits && Array.isArray(persHist.dietary_habits)) {
+            persHist.dietary_habits.forEach((habit: string) => {
+              const habitLower = habit.toLowerCase()
+              for (const [key, value] of Object.entries(dietMapping)) {
+                if (habitLower.includes(key)) {
+                  if (!mappedDiet.includes(value)) {
+                    mappedDiet.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          // Map other habits
+          const habitMapping: { [key: string]: string } = {
+            'nail bit': 'Nail biting',
+            'lip bit': 'Lip biting',
+            'cheek bit': 'Cheek biting',
+            'grind': 'Teeth grinding (bruxism)',
+            'bruxism': 'Teeth grinding (bruxism)',
+            'clench': 'Jaw clenching',
+            'chew pen': 'Pen/pencil chewing',
+            'chew ice': 'Ice chewing',
+            'mouth breath': 'Mouth breathing'
+          }
+          
+          const mappedHabits: string[] = []
+          if (persHist.other_habits && Array.isArray(persHist.other_habits)) {
+            persHist.other_habits.forEach((habit: string) => {
+              const habitLower = habit.toLowerCase()
+              for (const [key, value] of Object.entries(habitMapping)) {
+                if (habitLower.includes(key)) {
+                  if (!mappedHabits.includes(value)) {
+                    mappedHabits.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          // Build complete personal history object
+          updated.personalHistoryData = {
+            smoking: persHist.smoking || { status: 'never', details: '' },
+            alcohol: persHist.alcohol || { status: 'never', details: '' },
+            tobacco: persHist.tobacco || { status: 'never', type: [], details: '' },
+            dietary_habits: mappedDiet,
+            oral_hygiene: persHist.oral_hygiene || {
+              brushing_frequency: '',
+              flossing: '',
+              last_cleaning: ''
+            },
+            other_habits: mappedHabits,
+            occupation: persHist.occupation || '',
+            lifestyle_notes: persHist.lifestyle_notes || '',
+            auto_extracted: true,
+            extraction_timestamp: new Date().toISOString()
+          }
+          
+          // Store in personalHistory field for backward compatibility
+          updated.personalHistory = updated.personalHistoryData
+          
+          console.log('✅ [PERSONAL HISTORY] Mapped:', {
+            smoking: persHist.smoking?.status,
+            alcohol: persHist.alcohol?.status,
+            tobacco: persHist.tobacco?.status,
+            dietary_habits: mappedDiet.length,
+            other_habits: mappedHabits.length
+          })
+        }
+        
         if (processedContent.clinicalExamination) {
           const clinExam = processedContent.clinicalExamination
-          if (clinExam.extraoral_findings) {
-            const extraoral = Object.values(clinExam.extraoral_findings).join('; ')
-            updated.extraoralFindings = extraoral
+          console.log('🔍 [CLINICAL EXAM] Processing:', clinExam)
+          
+          // Map findings to checkbox options
+          const extraoralMapping: { [key: string]: string } = {
+            'asymmetry': 'Facial asymmetry',
+            'tmj': 'TMJ tenderness',
+            'lymph': 'Lymphadenopathy',
+            'swell': 'Swelling',
+            'trismus': 'Trismus',
+            'skin lesion': 'Skin lesions'
           }
-          if (clinExam.intraoral_findings) {
-            const intraoral = Object.values(clinExam.intraoral_findings).join('; ')
-            updated.intraoralFindings = intraoral
+          
+          const intraoralMapping: { [key: string]: string } = {
+            'caries': 'Caries present',
+            'cavit': 'Caries present',
+            'restoration': 'Existing restorations',
+            'filling': 'Existing restorations',
+            'inflammation': 'Gingival inflammation',
+            'inflamed': 'Gingival inflammation',
+            'plaque': 'Plaque / calculus',
+            'calculus': 'Plaque / calculus',
+            'tartar': 'Plaque / calculus',
+            'ulcer': 'Ulcer / lesion',
+            'lesion': 'Ulcer / lesion',
+            'tongue coat': 'Tongue coating',
+            'halitosis': 'Halitosis',
+            'bad breath': 'Halitosis',
+            'mobility': 'Tooth mobility',
+            'mobile': 'Tooth mobility',
+            'mucosal': 'Mucosal lesion',
+            'fistula': 'Fistula',
+            'bleeding': 'Bleeding on probing'
           }
+          
+          const mappedExtraoral: string[] = []
+          if (clinExam.extraoral_findings && Array.isArray(clinExam.extraoral_findings)) {
+            clinExam.extraoral_findings.forEach((finding: string) => {
+              const findingLower = finding.toLowerCase()
+              for (const [key, value] of Object.entries(extraoralMapping)) {
+                if (findingLower.includes(key)) {
+                  if (!mappedExtraoral.includes(value)) {
+                    mappedExtraoral.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          const mappedIntraoral: string[] = []
+          if (clinExam.intraoral_findings && Array.isArray(clinExam.intraoral_findings)) {
+            clinExam.intraoral_findings.forEach((finding: string) => {
+              const findingLower = finding.toLowerCase()
+              for (const [key, value] of Object.entries(intraoralMapping)) {
+                if (findingLower.includes(key)) {
+                  if (!mappedIntraoral.includes(value)) {
+                    mappedIntraoral.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          // Store complete clinical examination data
+          updated.clinicalExaminationData = {
+            extraoral_findings: mappedExtraoral,
+            intraoral_findings: mappedIntraoral,
+            oral_hygiene: clinExam.oral_hygiene || '',
+            gingival_condition: clinExam.gingival_condition || '',
+            periodontal_status: clinExam.periodontal_status || '',
+            occlusion_notes: clinExam.occlusion_notes || [],
+            additional_observations: clinExam.additional_observations || '',
+            auto_extracted: true,
+            extraction_timestamp: new Date().toISOString()
+          }
+          
+          // Update individual fields for backward compatibility
+          if (mappedExtraoral.length > 0) {
+            updated.extraoralFindings = mappedExtraoral.join('; ')
+          }
+          if (mappedIntraoral.length > 0) {
+            updated.intraoralFindings = mappedIntraoral.join('; ')
+          }
+          if (clinExam.oral_hygiene) {
+            updated.oralHygieneStatus = clinExam.oral_hygiene
+          }
+          if (clinExam.gingival_condition) {
+            updated.gingivalCondition = clinExam.gingival_condition
+          }
+          if (clinExam.periodontal_status) {
+            updated.periodontalStatus = clinExam.periodontal_status
+          }
+          if (clinExam.occlusion_notes && Array.isArray(clinExam.occlusion_notes)) {
+            updated.occlusionNotes = clinExam.occlusion_notes.join('; ')
+          }
+          
+          console.log('✅ [CLINICAL EXAM] Mapped:', {
+            extraoral: mappedExtraoral.length,
+            intraoral: mappedIntraoral.length,
+            oral_hygiene: clinExam.oral_hygiene,
+            gingival: clinExam.gingival_condition
+          })
         }
         if (processedContent.investigations) {
           const investigations = processedContent.investigations
+          console.log('🔬 [INVESTIGATIONS] Processing:', investigations)
+          
+          // Map radiographic types to checkbox options
+          const radiographicTypeMapping: { [key: string]: string } = {
+            'x-ray': 'IOPA (Intraoral Periapical)',
+            'iopa': 'IOPA (Intraoral Periapical)',
+            'periapical': 'IOPA (Intraoral Periapical)',
+            'bitewing': 'Bitewing',
+            'panoramic': 'Panoramic (OPG)',
+            'opg': 'Panoramic (OPG)',
+            'cbct': 'CBCT',
+            'ct scan': 'CT Scan',
+            'occlusal': 'Occlusal'
+          }
+          
+          const mappedRadiographicTypes: string[] = []
+          if (investigations.radiographic?.type && Array.isArray(investigations.radiographic.type)) {
+            investigations.radiographic.type.forEach((type: string) => {
+              const typeLower = type.toLowerCase()
+              for (const [key, value] of Object.entries(radiographicTypeMapping)) {
+                if (typeLower.includes(key)) {
+                  if (!mappedRadiographicTypes.includes(value)) {
+                    mappedRadiographicTypes.push(value)
+                  }
+                }
+              }
+            })
+          }
+          
+          // Map vitality test results to checkbox options
+          const vitalityMapping: { [key: string]: string } = {
+            'cold test positive': 'Cold test positive',
+            'cold positive': 'Cold test positive',
+            'cold test negative': 'Cold test negative',
+            'cold negative': 'Cold test negative',
+            'heat test positive': 'Heat test positive',
+            'heat positive': 'Heat test positive',
+            'heat test negative': 'Heat test negative',
+            'heat negative': 'Heat test negative',
+            'ept positive': 'Electric pulp test positive',
+            'electric pulp test positive': 'Electric pulp test positive',
+            'ept negative': 'Electric pulp test negative',
+            'electric pulp test negative': 'Electric pulp test negative',
+            'no response': 'No response to EPT',
+            'delayed': 'Delayed response',
+            'hyperresponsive': 'Hyperresponsive',
+            'hyporesponsive': 'Hyporesponsive'
+          }
+          
+          const mappedVitalityTests: string[] = []
+          if (investigations.clinical_tests?.vitality_test) {
+            const vitalityText = investigations.clinical_tests.vitality_test.toLowerCase()
+            for (const [key, value] of Object.entries(vitalityMapping)) {
+              if (vitalityText.includes(key)) {
+                if (!mappedVitalityTests.includes(value)) {
+                  mappedVitalityTests.push(value)
+                }
+              }
+            }
+          }
+          
+          // Map percussion test results to checkbox options
+          const percussionMapping: { [key: string]: string } = {
+            'vertical percussion positive': 'Vertical percussion positive',
+            'vertical positive': 'Vertical percussion positive',
+            'vertical percussion negative': 'Vertical percussion negative',
+            'vertical negative': 'Vertical percussion negative',
+            'horizontal percussion positive': 'Horizontal percussion positive',
+            'horizontal positive': 'Horizontal percussion positive',
+            'horizontal percussion negative': 'Horizontal percussion negative',
+            'horizontal negative': 'Horizontal percussion negative',
+            'tender to percussion': 'Tender to percussion',
+            'percussion tender': 'Tender to percussion',
+            'no tenderness': 'No tenderness'
+          }
+          
+          const mappedPercussionTests: string[] = []
+          if (investigations.clinical_tests?.percussion_test) {
+            const percussionText = investigations.clinical_tests.percussion_test.toLowerCase()
+            for (const [key, value] of Object.entries(percussionMapping)) {
+              if (percussionText.includes(key)) {
+                if (!mappedPercussionTests.includes(value)) {
+                  mappedPercussionTests.push(value)
+                }
+              }
+            }
+          }
+          
+          // Map palpation findings to checkbox options
+          const palpationMapping: { [key: string]: string } = {
+            'tender to palpation': 'Tender to palpation',
+            'palpation tender': 'Tender to palpation',
+            'no tenderness': 'No tenderness',
+            'swelling present': 'Swelling present',
+            'no swelling': 'No swelling',
+            'fluctuant swelling': 'Fluctuant swelling',
+            'fluctuant': 'Fluctuant swelling',
+            'firm swelling': 'Firm swelling',
+            'lymph node': 'Lymph node enlargement',
+            'lymphadenopathy': 'Lymph node enlargement',
+            'normal palpation': 'Normal palpation'
+          }
+          
+          const mappedPalpationFindings: string[] = []
+          if (investigations.clinical_tests?.palpation_test) {
+            const palpationText = investigations.clinical_tests.palpation_test.toLowerCase()
+            for (const [key, value] of Object.entries(palpationMapping)) {
+              if (palpationText.includes(key)) {
+                if (!mappedPalpationFindings.includes(value)) {
+                  mappedPalpationFindings.push(value)
+                }
+              }
+            }
+          }
+          
+          // Store complete investigation data for tab consumption
+          updated.investigationsData = {
+            radiographic_findings: investigations.radiographic?.findings || '',
+            radiographic_types: mappedRadiographicTypes,
+            vitality_tests: mappedVitalityTests,
+            percussion_tests: mappedPercussionTests,
+            palpation_findings: mappedPalpationFindings,
+            laboratory_tests: '',
+            recommendations: '',
+            auto_extracted: true,
+            extraction_timestamp: new Date().toISOString()
+          }
+          
+          // Update individual fields for backward compatibility
           if (investigations.radiographic?.findings) {
             updated.radiographicFindings = investigations.radiographic.findings
           }
-          if (investigations.clinical_tests) {
-            const clinicalTests = Object.entries(investigations.clinical_tests)
-              .map(([test, result]) => `${test}: ${result}`)
-              .join('; ')
-            updated.vitalityTests = clinicalTests
+          if (mappedRadiographicTypes.length > 0) {
+            updated.radiographicTypes = mappedRadiographicTypes
           }
+          if (mappedVitalityTests.length > 0) {
+            updated.vitalityTests = mappedVitalityTests.join('; ')
+          }
+          if (mappedPercussionTests.length > 0) {
+            updated.percussionTests = mappedPercussionTests.join('; ')
+          }
+          if (mappedPalpationFindings.length > 0) {
+            updated.palpationFindings = mappedPalpationFindings.join('; ')
+          }
+          
+          console.log('✅ [INVESTIGATIONS] Mapped:', {
+            radiographic_types: mappedRadiographicTypes.length,
+            vitality_tests: mappedVitalityTests.length,
+            percussion_tests: mappedPercussionTests.length,
+            palpation_findings: mappedPalpationFindings.length
+          })
         }
         if (processedContent.diagnosis) {
           const diagnosis = processedContent.diagnosis
@@ -1032,7 +1732,32 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
     setSearchTerm("")
     setPatients([])
     onPatientSelect?.(patient)
+    
+    // Load previous consultation data (this will load toothData if exists)
     await loadPreviousConsultationData(patient.id)
+    
+    // Also load latest tooth diagnoses (this ensures we always have the latest data)
+    console.log('🦷 [SELECT] Loading latest tooth diagnoses for patient:', patient.id)
+    await reloadToothDiagnoses()
+    
+    // Auto-create a draft consultation to enable voice recording
+    if (!savedConsultationId) {
+      console.log('🎤 [AUTO-DRAFT] Creating draft consultation for voice recording...')
+      try {
+        const result = await saveConsultationSectionAction({
+          patientId: patient.id,
+          consultationId: undefined,
+          sectionId: 'initial',
+          sectionData: { patientId: patient.id, created_at: new Date().toISOString() }
+        })
+        if (result.success && result.consultationId) {
+          setSavedConsultationId(result.consultationId)
+          console.log('✅ [AUTO-DRAFT] Draft consultation created:', result.consultationId)
+        }
+      } catch (error) {
+        console.error('❌ [AUTO-DRAFT] Failed to create draft consultation:', error)
+      }
+    }
   }
 
   const handleSaveConsultation = async (status: 'draft' | 'completed' = 'draft') => {
@@ -1476,6 +2201,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         </CardHeader>
         <CardContent className="p-6">
           <InteractiveDentalChart
+            key={`fdi-chart-${toothDataVersion}-${Object.keys(toothData).length}`}
             onToothSelect={(toothNumber) => {
               console.log('🦷 Tooth selected:', toothNumber)
               setSelectedTooth(toothNumber)
@@ -1486,16 +2212,25 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
             consultationId={undefined}
             multiSelectMode={true}
             toothData={toothData}
-            // Chart-driven: listen to DB changes and allow DB loads even with external data
-            subscribeRealtime={true}
-            allowDbLoadWithExternal={true}
-            onToothStatusChange={(toothNumber, status, data) => {
-              console.log('🦷 Right-click status change:', { toothNumber, status, data })
-              // Update the local toothData state with the new data (live UI feedback)
+            // Parent-driven: disable DB loading, parent provides all data
+            subscribeRealtime={false}
+            allowDbLoadWithExternal={false}
+            onToothStatusChange={async (toothNumber, status, data) => {
+              console.log('🦷 [RIGHT-CLICK] Status change:', { toothNumber, status, data })
+              
+              // Update local state immediately for instant UI feedback
               setToothData(prev => ({
                 ...prev,
                 [toothNumber]: data
               }))
+              
+              // After a brief delay, reload from database to ensure consistency
+              // The InteractiveDentalChart saves to DB, so we reload to get the canonical data
+              setTimeout(async () => {
+                console.log('🔄 [RIGHT-CLICK] Reloading tooth data after quick status change...')
+                await reloadToothDiagnoses()
+                console.log('✅ [RIGHT-CLICK] Tooth data reloaded')
+              }, 1000) // 1 second delay to allow DB save to complete
             }}
           />
           <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg border border-blue-200">
@@ -1632,12 +2367,58 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
       </Card>
 
       <GlobalVoiceRecorder
-        consultationId={selectedPatient.id}
+        consultationId={savedConsultationId || ''}
         onContentProcessed={(content) => {
           console.log('🎤 Processed voice content:', content)
           distributeContentToTabs(content)
         }}
-        isEnabled={true}
+        onToothDiagnosesExtracted={(toothDiagnoses) => {
+          console.log('🦷 [VOICE] Received tooth diagnoses from voice:', toothDiagnoses)
+          // Store in pending state - will be saved when consultation is saved
+          setPendingVoiceToothDiagnoses(prev => {
+            // Merge with existing pending diagnoses, updating if tooth already exists
+            const merged = [...prev]
+            toothDiagnoses.forEach(newDiag => {
+              const existingIndex = merged.findIndex(d => d.toothNumber === newDiag.toothNumber)
+              if (existingIndex >= 0) {
+                merged[existingIndex] = newDiag
+              } else {
+                merged.push(newDiag)
+              }
+            })
+            return merged
+          })
+          
+          // Update toothData for immediate UI display (temporary, not saved)
+          setToothData(prev => {
+            const updated = { ...prev }
+            toothDiagnoses.forEach(diag => {
+              // Format data to match both dialog and FDI chart expectations
+              updated[diag.toothNumber] = {
+                // For dialog (ToothDiagnosisDialogV2)
+                status: diag.status,
+                primaryDiagnosis: diag.primaryDiagnosis,
+                recommendedTreatment: diag.recommendedTreatment,
+                treatmentPriority: diag.treatmentPriority,
+                notes: diag.notes,
+                diagnosisDetails: diag.diagnosisDetails,
+                symptoms: diag.symptoms || [],
+                estimatedDuration: diag.estimatedDuration,
+                estimatedCost: diag.estimatedCost,
+                followUpRequired: false,
+                // For FDI chart display
+                currentStatus: diag.status,
+                selectedDiagnoses: diag.primaryDiagnosis ? [diag.primaryDiagnosis] : [],
+                selectedTreatments: diag.recommendedTreatment ? [diag.recommendedTreatment] : [],
+                priority: diag.treatmentPriority,
+                treatmentNotes: diag.notes
+              }
+            })
+            console.log('✅ [VOICE] Updated toothData with', toothDiagnoses.length, 'voice diagnoses (temporary)')
+            return updated
+          })
+        }}
+        isEnabled={!!savedConsultationId}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1793,12 +2574,19 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
               const section = getConsultationSections().find(s => s.id === activeSection)
               if (section?.component) {
                 const TabComponent = section.component
+                
+                // Use the data from the section object which has the properly mapped values
                 const getDefaultData = () => {
-                  // If the rendered component is an overview (diagnosis/treatment), it expects toothData
-                  if (section?.component === DiagnosisOverviewTab || section?.component === TreatmentOverviewTab) {
-                    return toothData
-                  }
-                  switch (activeSection) {
+                  console.log(`🔄 [TAB RENDER] Using section data for ${activeSection}:`, section.data)
+                  
+                  // Most tabs should use the section.data directly
+                  // which already has the AI-mapped values
+                  return section.data || getBackupData(activeSection)
+                }
+                
+                // Backup data function in case section.data is missing
+                const getBackupData = (sectionId: string) => {
+                  switch (sectionId) {
                     case 'chief-complaint':
                       return {
                         primary_complaint: consultationData.chiefComplaint || '',
@@ -2138,13 +2926,37 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         toothNumber={selectedTooth || ''}
         patientId={selectedPatient?.id}
         consultationId={savedConsultationId || undefined}
-        existingData={toothData[selectedTooth || '']}
-        onDataSaved={() => {
-          console.log('💾 Tooth diagnosis saved for tooth', selectedTooth)
-          // Reload tooth data after saving
+        existingData={(() => {
+          const data = toothData[selectedTooth || ''];
+          console.log(`🔍 [PARENT] Passing to dialog for tooth ${selectedTooth}:`, data);
+          return data;
+        })()}
+        onDataSaved={async () => {
+          console.log('💾 [SAVE] Tooth diagnosis saved for tooth', selectedTooth)
+          
+          // Close the dialog first for immediate feedback
+          setShowToothInterface(false)
+          
+          // Reload tooth data from database to update all UI components
           if (selectedPatient?.id) {
-            // You might want to refresh the tooth data here
-            setShowToothInterface(false)
+            console.log('🔄 [SAVE] Reloading tooth diagnoses after save...')
+            
+            // Add a small delay to ensure database write completes
+            await new Promise(resolve => setTimeout(resolve, 500))
+            
+            // Reload tooth data - this will update:
+            // 1. toothData state (used by FDI chart via toothData prop)
+            // 2. Clinical Diagnosis tab (uses toothData)
+            // 3. Treatment Plan tab (uses toothData)
+            const reloaded = await reloadToothDiagnoses()
+            
+            if (reloaded) {
+              console.log('✅ [SAVE] Tooth data reloaded successfully')
+              console.log('🎨 [SAVE] FDI chart should now show updated colors')
+              console.log('📄 [SAVE] Clinical Diagnosis & Treatment Plan tabs should now show updated data')
+            } else {
+              console.warn('⚠️ [SAVE] Tooth data reload had issues')
+            }
           }
         }}
       />

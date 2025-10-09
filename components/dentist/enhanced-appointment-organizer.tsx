@@ -32,7 +32,8 @@ import {
   RefreshCw,
   Timer,
   UserCheck,
-  Bell
+  Bell,
+  Sparkles
 } from "lucide-react"
 import {
   getDentistAppointmentsAction,
@@ -52,6 +53,7 @@ import { toast } from 'sonner'
 import { FollowUpAppointmentForm } from '../appointments/FollowUpAppointmentForm'
 import ContextualAppointmentForm from '../appointments/ContextualAppointmentForm'
 import PatientSearch from '../shared/PatientSearch'
+import AIAppointmentScheduler from './ai-appointment-scheduler'
 
 interface Appointment {
   id: string
@@ -149,6 +151,9 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
   // Contextual appointment form state
   const [showContextualForm, setShowContextualForm] = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState<string>('')
+  
+  // AI Appointment Scheduler state
+  const [showAIScheduler, setShowAIScheduler] = useState(false)
 
   const supabase = createClient()
 
@@ -693,13 +698,25 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
                 <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Button 
-                className="bg-teal-600 hover:bg-teal-700"
-                onClick={() => setShowContextualForm(true)}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                New Appointment
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700" 
+                  onClick={() => setShowAIScheduler(true)}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  AI Schedule
+                </Button>
+                <Button 
+                  className="bg-teal-600 hover:bg-teal-700"
+                  onClick={() => {
+                    setSelectedPatientId('')
+                    setShowContextualForm(true)
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Appointment
+                </Button>
+              </div>
             </div>
           </div>
           <p className="text-sm text-gray-600">Manage and schedule patient appointments for Dr. {dentistName}</p>
@@ -1492,6 +1509,30 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
                 />
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Appointment Scheduler Dialog */}
+      <Dialog open={showAIScheduler} onOpenChange={setShowAIScheduler}>
+        <DialogContent className="max-w-2xl h-[85vh] flex flex-col p-0">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+              AI Appointment Scheduler
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AIAppointmentScheduler
+              dentistId={dentistId}
+              onAppointmentCreated={(appointmentId) => {
+                console.log('Appointment created:', appointmentId)
+                setShowAIScheduler(false)
+                loadAppointments()
+                onRefreshStats()
+                toast.success('Appointment scheduled successfully!')
+              }}
+            />
           </div>
         </DialogContent>
       </Dialog>

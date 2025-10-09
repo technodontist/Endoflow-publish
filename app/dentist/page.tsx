@@ -35,14 +35,13 @@ import { LivePatientManagement } from "@/components/dentist/live-patient-managem
 import { DentistBookingInterface } from "@/components/dentist/booking-interface"
 import { ClinicalCockpit } from "@/components/dentist/clinical-cockpit"
 import { RealtimeAppointments } from "@/components/dentist/realtime-appointments"
-import { EnhancedNewConsultationV2 } from "@/components/dentist/enhanced-new-consultation-v2"
 import { EnhancedNewConsultationV3 } from "@/components/dentist/enhanced-new-consultation-v3"
 import { NotificationCenter } from "@/components/notifications/notification-center"
 import { ClinicAnalysis } from "@/components/dentist/clinic-analysis"
-import { ResearchProjects } from "@/components/dentist/research-projects"
 import { ResearchProjects as ResearchProjectsV2 } from "@/components/dentist/research-projects-v2"
 import ResearchAiAssistant from "@/components/dentist/research-ai-assistant"
 import MedicalKnowledgeUploader from "@/components/dentist/medical-knowledge-uploader"
+import SelfLearningAssistant from "@/components/dentist/self-learning-assistant"
 import { MessagesChatInterface } from "@/components/dentist/messages-chat-interface"
 import SimpleMessagingInterface from "@/components/dentist/simple-messaging-interface"
 import { getCurrentDentist, getTodaysAppointments, getWeekAppointments, getDentistAppointmentsAction } from "@/lib/actions/dentist"
@@ -54,6 +53,7 @@ import { TemplatesDashboard } from "@/components/dentist/templates-dashboard"
 import { AssistantTaskManager } from "@/components/dentist/assistant-task-manager"
 import { DentistPatientsTwoColumn } from "@/components/dentist/patients-two-column"
 import { EnhancedPatientsInterface } from "@/components/dentist/enhanced-patients-interface"
+import { EndoFlowVoiceController } from "@/components/dentist/endoflow-voice-controller"
 
 interface DentistData {
   id: string
@@ -73,12 +73,10 @@ interface AppointmentStats {
 const navigationTabs = [
   { id: "today", label: "Today's View", icon: Activity },
   { id: "patients", label: "Patients", icon: Users },
-  { id: "consultation", label: "Enhanced Consultation", icon: FileText },
-  { id: "consultation-v3", label: "Enhanced Consultation V3 (Dev)", icon: FileText },
+  { id: "consultation-v3", label: "Enhanced Consultation", icon: FileText },
   { id: "organizer", label: "Appointment Organizer", icon: CalendarDays },
   { id: "analysis", label: "Clinic Analysis", icon: TrendingUp },
-  { id: "research", label: "Research Projects", icon: Search },
-  { id: "research-v2", label: "Research V2 (Advanced)", icon: Search },
+  { id: "research-v2", label: "Research Projects", icon: Search },
   { id: "medical-knowledge", label: "Medical Knowledge", icon: FileText },
   { id: "messages", label: "Messages & Chat", icon: MessageSquare },
   { id: "templates", label: "Templates", icon: FileText },
@@ -455,14 +453,6 @@ function DentistDashboardContent() {
             </div>
           )}
 
-          {activeTab === "consultation" && (
-            <EnhancedNewConsultationV2 
-              selectedPatientId={searchParams?.get('patientId') || undefined}
-              appointmentId={searchParams?.get('appointmentId') || undefined}
-              dentistId={dentistData.id}
-            />
-          )}
-
           {activeTab === "consultation-v3" && (
             <EnhancedNewConsultationV3 
               selectedPatientId={searchParams?.get('patientId') || undefined}
@@ -495,10 +485,6 @@ function DentistDashboardContent() {
             <ClinicAnalysis />
           )}
 
-          {activeTab === "research" && (
-            <ResearchProjects />
-          )}
-
           {activeTab === "research-v2" && (
             <ResearchProjectsV2 />
           )}
@@ -508,10 +494,27 @@ function DentistDashboardContent() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Medical Knowledge Base</h1>
-                  <p className="text-gray-500">Upload research papers and clinical protocols for AI-powered evidence-based analysis</p>
+                  <p className="text-gray-500">Upload research papers and learn treatment procedures with AI assistance</p>
                 </div>
               </div>
-              <MedicalKnowledgeUploader />
+              <Tabs defaultValue="upload" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="upload" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Upload Knowledge
+                  </TabsTrigger>
+                  <TabsTrigger value="learning" className="flex items-center gap-2">
+                    <Search className="h-4 w-4" />
+                    Self Learning
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="upload">
+                  <MedicalKnowledgeUploader />
+                </TabsContent>
+                <TabsContent value="learning">
+                  <SelfLearningAssistant />
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 
@@ -555,6 +558,9 @@ function DentistDashboardContent() {
           )}
         </div>
       </div>
+
+      {/* EndoFlow Master AI - Floating Voice Controller */}
+      <EndoFlowVoiceController isFloating={true} defaultExpanded={false} />
     </div>
   )
 }

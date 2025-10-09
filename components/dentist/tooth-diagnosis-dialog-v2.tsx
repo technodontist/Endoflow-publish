@@ -50,16 +50,45 @@ export function ToothDiagnosisDialogV2({
   // Load existing data when dialog opens
   useEffect(() => {
     if (isOpen && existingData) {
-      setSelectedDiagnoses(existingData.primaryDiagnosis ? [existingData.primaryDiagnosis] : [])
-      setSelectedTreatments(existingData.recommendedTreatment ? [existingData.recommendedTreatment] : [])
-      setStatus(existingData.status)
-      setTreatmentPriority(existingData.treatmentPriority)
-      setNotes(existingData.notes || "")
-      setEstimatedDuration(existingData.estimatedDuration)
-      setEstimatedCost(existingData.estimatedCost || "")
-      setFollowUpRequired(existingData.followUpRequired || false)
+      console.log('🦷 [DIALOG] Loading existing data for tooth:', existingData)
+      
+      // IMPORTANT: Only load data that has been saved (has an ID)
+      // If existingData doesn't have an ID, it's unsaved draft data - reset instead
+      if (existingData.id) {
+        // This is saved data from the database - load it
+        // Handle both formats: primaryDiagnosis (string) or selectedDiagnoses (array)
+        const diagnoses = existingData.primaryDiagnosis 
+                         ? existingData.primaryDiagnosis.split(', ').filter(Boolean)
+                         : []
+        const treatments = existingData.recommendedTreatment 
+                          ? existingData.recommendedTreatment.split(', ').filter(Boolean)
+                          : []
+        
+        setSelectedDiagnoses(diagnoses)
+        setSelectedTreatments(treatments)
+        setStatus(existingData.status || 'healthy')
+        setTreatmentPriority(existingData.treatmentPriority || 'medium')
+        setNotes(existingData.notes || "")
+        setEstimatedDuration(existingData.estimatedDuration)
+        setEstimatedCost(existingData.estimatedCost || "")
+        setFollowUpRequired(existingData.followUpRequired || false)
+        
+        console.log('✅ [DIALOG] Loaded saved diagnoses:', diagnoses, 'treatments:', treatments)
+      } else {
+        // This is unsaved draft data - reset the form
+        console.log('⚠️ [DIALOG] No saved data (no ID), resetting form')
+        setSelectedDiagnoses([])
+        setSelectedTreatments([])
+        setStatus('healthy')
+        setTreatmentPriority('medium')
+        setNotes("")
+        setEstimatedDuration(undefined)
+        setEstimatedCost("")
+        setFollowUpRequired(false)
+      }
     } else if (isOpen) {
       // Reset form for new diagnosis
+      console.log('🆕 [DIALOG] New diagnosis - resetting form')
       setSelectedDiagnoses([])
       setSelectedTreatments([])
       setStatus('healthy')
@@ -70,7 +99,7 @@ export function ToothDiagnosisDialogV2({
       setFollowUpRequired(false)
     }
     setError(null)
-  }, [isOpen, existingData])
+  }, [isOpen, existingData, toothNumber])
 
   const predefinedDiagnoses = {
     "Caries & Cavities": [
@@ -228,9 +257,20 @@ export function ToothDiagnosisDialogV2({
   }
 
   const handleDiagnosisToggle = (diagnosis: string) => {
-    setSelectedDiagnoses((prev) =>
-      prev.includes(diagnosis) ? prev.filter((d) => d !== diagnosis) : [...prev, diagnosis],
-    )
+    const newDiagnoses = selectedDiagnoses.includes(diagnosis)
+      ? selectedDiagnoses.filter((d) => d !== diagnosis)
+      : [...selectedDiagnoses, diagnosis]
+    
+    setSelectedDiagnoses(newDiagnoses)
+    
+    // Auto-update status based on diagnosis if currently healthy
+    if (newDiagnoses.length > 0 && status === 'healthy') {
+      const diagnosisText = newDiagnoses.join(', ')
+      const autoStatus = getStatusFromDiagnosis(diagnosisText)
+      setStatus(autoStatus)
+    } else if (newDiagnoses.length === 0) {
+      setStatus('healthy')
+    }
   }
 
   const handleTreatmentToggle = (treatment: string) => {
@@ -246,6 +286,39 @@ export function ToothDiagnosisDialogV2({
     }
   }
 
+  // Helper function to map diagnosis to status
+  const getStatusFromDiagnosis = (diagnosis: string): ToothDiagnosisData['status'] => {
+    const diagnosisLower = diagnosis.toLowerCase()
+    
+    if (diagnosisLower.includes('caries') || diagnosisLower.includes('cavity') || diagnosisLower.includes('decay')) {
+      return 'caries'
+    }
+    if (diagnosisLower.includes('filled') || diagnosisLower.includes('filling') || diagnosisLower.includes('restoration')) {
+      return 'filled'
+    }
+    if (diagnosisLower.includes('crown')) {
+      return 'crown'
+    }
+    if (diagnosisLower.includes('missing') || diagnosisLower.includes('extracted') || diagnosisLower.includes('absent')) {
+      return 'missing'
+    }
+    if (diagnosisLower.includes('root canal') || diagnosisLower.includes('rct') || diagnosisLower.includes('endodontic')) {
+      return 'root_canal'
+    }
+    if (diagnosisLower.includes('implant')) {
+      return 'implant'
+    }
+    if (diagnosisLower.includes('extraction needed') || diagnosisLower.includes('hopeless')) {
+      return 'extraction_needed'
+    }
+    if (diagnosisLower.includes('attention') || diagnosisLower.includes('watch') || diagnosisLower.includes('monitor')) {
+      return 'attention'
+    }
+    
+    // Default to healthy only if no issues found
+    return 'healthy'
+  }
+
   const handleSave = async () => {
     if (!patientId) {
       setError('Patient ID is required')
@@ -256,21 +329,50 @@ export function ToothDiagnosisDialogV2({
     setError(null)
 
     try {
+      // Auto-determine status based on diagnosis if not manually set or set to healthy
+      const diagnosisText = selectedDiagnoses.join(', ')
+      const autoStatus = diagnosisText ? getStatusFromDiagnosis(diagnosisText) : status
+      const finalStatus = (status === 'healthy' && diagnosisText) ? autoStatus : status
+
+      // Get proper color code for the status
+      const getColorForStatus = (status: string): string => {
+        const colors: Record<string, string> = {
+          'healthy': '#22c55e',
+          'caries': '#ef4444',
+          'filled': '#3b82f6',
+          'crown': '#a855f7',
+          'missing': '#6b7280',
+          'root_canal': '#f97316',
+          'bridge': '#8b5cf6',
+          'implant': '#06b6d4',
+          'extraction_needed': '#dc2626',
+          'attention': '#eab308'
+        }
+        return colors[status] || '#22c55e'
+      }
+
       const toothDiagnosisData: ToothDiagnosisData = {
         id: existingData?.id,
         patientId,
         consultationId,
         toothNumber,
-        status,
-        primaryDiagnosis: selectedDiagnoses.join(', '),
+        status: finalStatus,
+        primaryDiagnosis: diagnosisText,
         recommendedTreatment: selectedTreatments.join(', '),
         treatmentPriority,
         notes,
         estimatedDuration,
         estimatedCost,
         followUpRequired,
-        examinationDate: new Date().toISOString().split('T')[0]
+        examinationDate: new Date().toISOString().split('T')[0],
+        colorCode: getColorForStatus(finalStatus)  // ADD THIS!
       }
+      
+      console.log('🔨 [DIALOG] Saving tooth diagnosis for tooth #' + toothNumber)
+      console.log('  📊 Status determined: "' + finalStatus + '" (was: "' + status + '")')
+      console.log('  🦷 Diagnosis: "' + diagnosisText + '"')
+      console.log('  💉 Treatment: "' + selectedTreatments.join(', ') + '"')
+      console.log('🔨 [DIALOG] Full data being saved:', toothDiagnosisData)
 
       const result = await saveToothDiagnosis(toothDiagnosisData)
       

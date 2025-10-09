@@ -1032,6 +1032,25 @@ export function EnhancedNewConsultationV2({ selectedPatientId, appointmentId, de
     setPatients([])
     onPatientSelect?.(patient)
     await loadPreviousConsultationData(patient.id)
+    
+    // Auto-create a draft consultation to enable voice recording
+    if (!savedConsultationId) {
+      console.log('🎤 [AUTO-DRAFT] Creating draft consultation for voice recording...')
+      try {
+        const result = await saveConsultationSectionAction({
+          patientId: patient.id,
+          consultationId: undefined,
+          sectionId: 'initial',
+          sectionData: { patientId: patient.id, created_at: new Date().toISOString() }
+        })
+        if (result.success && result.consultationId) {
+          setSavedConsultationId(result.consultationId)
+          console.log('✅ [AUTO-DRAFT] Draft consultation created:', result.consultationId)
+        }
+      } catch (error) {
+        console.error('❌ [AUTO-DRAFT] Failed to create draft consultation:', error)
+      }
+    }
   }
 
   const handleSaveConsultation = async (status: 'draft' | 'completed' = 'draft') => {
@@ -1631,12 +1650,19 @@ export function EnhancedNewConsultationV2({ selectedPatientId, appointmentId, de
       </Card>
 
       <GlobalVoiceRecorder
-        consultationId={selectedPatient.id}
+        consultationId={savedConsultationId || ''}
         onContentProcessed={(content) => {
           console.log('🎤 Processed voice content:', content)
           distributeContentToTabs(content)
         }}
-        isEnabled={true}
+        onToothDiagnosisSaved={async () => {
+          console.log('🦷 [REFRESH] Reloading tooth data after voice diagnosis...')
+          if (selectedPatient?.id) {
+            setHistoryVersion(prev => prev + 1)
+            console.log('✅ [REFRESH] Triggered tooth data refresh')
+          }
+        }}
+        isEnabled={!!savedConsultationId}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

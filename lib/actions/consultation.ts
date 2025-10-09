@@ -53,7 +53,8 @@ async function syncPatientSideFromConsultationInternal(payload: { patientId: str
     if (t.includes('day')) return { type: 'days', value: n || 5 }
     return { type: 'days', value: n || 5 }
   }
-  const prescriptions = typeof payload.prescriptions === 'string' ? JSON.parse(payload.prescriptions) : payload.prescriptions || []
+  const parsedPrescriptions = typeof payload.prescriptions === 'string' ? JSON.parse(payload.prescriptions) : payload.prescriptions;
+  const prescriptions = Array.isArray(parsedPrescriptions) ? parsedPrescriptions : [];
   for (const med of prescriptions) {
     try {
       const nowStr = new Date().toISOString().split('T')[0]
@@ -682,8 +683,17 @@ export async function saveCompleteConsultationAction(formData: {
 
       // Diagnosis information
       diagnosis: {
-        primary: formData.consultationData.finalDiagnosis?.[0],
-        secondary: formData.consultationData.finalDiagnosis?.[1],
+        // ✅ AUTO-POPULATE primary from first final diagnosis
+        primary: Array.isArray(formData.consultationData.finalDiagnosis) && formData.consultationData.finalDiagnosis.length > 0
+          ? (typeof formData.consultationData.finalDiagnosis[0] === 'object' && formData.consultationData.finalDiagnosis[0].diagnosis_name
+              ? formData.consultationData.finalDiagnosis[0].diagnosis_name
+              : formData.consultationData.finalDiagnosis[0])
+          : undefined,
+        secondary: Array.isArray(formData.consultationData.finalDiagnosis) && formData.consultationData.finalDiagnosis.length > 1
+          ? (typeof formData.consultationData.finalDiagnosis[1] === 'object' && formData.consultationData.finalDiagnosis[1].diagnosis_name
+              ? formData.consultationData.finalDiagnosis[1].diagnosis_name
+              : formData.consultationData.finalDiagnosis[1])
+          : undefined,
         provisional: formData.consultationData.provisionalDiagnosis || [],
         differential: formData.consultationData.differentialDiagnosis || []
       },
@@ -744,7 +754,13 @@ export async function saveCompleteConsultationAction(formData: {
       diagnosis: JSON.stringify({
         provisional: formData.consultationData.provisionalDiagnosis,
         differential: formData.consultationData.differentialDiagnosis,
-        final: formData.consultationData.finalDiagnosis
+        final: formData.consultationData.finalDiagnosis,
+        // ✅ AUTO-POPULATE primary from first final diagnosis for research filtering
+        primary: Array.isArray(formData.consultationData.finalDiagnosis) && formData.consultationData.finalDiagnosis.length > 0
+          ? (typeof formData.consultationData.finalDiagnosis[0] === 'object' && formData.consultationData.finalDiagnosis[0].diagnosis_name
+              ? formData.consultationData.finalDiagnosis[0].diagnosis_name
+              : formData.consultationData.finalDiagnosis[0])
+          : undefined
       }),
       treatment_plan: JSON.stringify({
         plan: formData.consultationData.treatmentPlan,
@@ -1110,8 +1126,17 @@ export async function finalizeConsultationFromDraftAction(payload: {
         location: payload.consultationData.painLocation || ''
       },
       diagnosis: {
-        primary: payload.consultationData.finalDiagnosis?.[0] || '',
-        secondary: payload.consultationData.finalDiagnosis?.[1] || '',
+        // ✅ AUTO-POPULATE primary from first final diagnosis
+        primary: Array.isArray(payload.consultationData.finalDiagnosis) && payload.consultationData.finalDiagnosis.length > 0
+          ? (typeof payload.consultationData.finalDiagnosis[0] === 'object' && payload.consultationData.finalDiagnosis[0].diagnosis_name
+              ? payload.consultationData.finalDiagnosis[0].diagnosis_name
+              : payload.consultationData.finalDiagnosis[0])
+          : '',
+        secondary: Array.isArray(payload.consultationData.finalDiagnosis) && payload.consultationData.finalDiagnosis.length > 1
+          ? (typeof payload.consultationData.finalDiagnosis[1] === 'object' && payload.consultationData.finalDiagnosis[1].diagnosis_name
+              ? payload.consultationData.finalDiagnosis[1].diagnosis_name
+              : payload.consultationData.finalDiagnosis[1])
+          : '',
         provisional: payload.consultationData.provisionalDiagnosis || [],
         differential: payload.consultationData.differentialDiagnosis || []
       },
@@ -1167,7 +1192,13 @@ export async function finalizeConsultationFromDraftAction(payload: {
       diagnosis: JSON.stringify({
         provisional: payload.consultationData.provisionalDiagnosis,
         differential: payload.consultationData.differentialDiagnosis,
-        final: payload.consultationData.finalDiagnosis
+        final: payload.consultationData.finalDiagnosis,
+        // ✅ AUTO-POPULATE primary from first final diagnosis for research filtering
+        primary: Array.isArray(payload.consultationData.finalDiagnosis) && payload.consultationData.finalDiagnosis.length > 0
+          ? (typeof payload.consultationData.finalDiagnosis[0] === 'object' && payload.consultationData.finalDiagnosis[0].diagnosis_name
+              ? payload.consultationData.finalDiagnosis[0].diagnosis_name
+              : payload.consultationData.finalDiagnosis[0])
+          : undefined
       }),
       treatment_plan: JSON.stringify({
         plan: payload.consultationData.treatmentPlan,
