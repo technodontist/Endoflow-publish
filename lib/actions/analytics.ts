@@ -227,18 +227,31 @@ export async function getCompletePatientRecordsAction() {
       .from('consultations')
       .select('*')
       .in('patient_id', patientIds);
-    
+
+    // Get tooth-level diagnoses (CRITICAL for dental chart data)
+    const { data: toothDiagnoses, error: diagnosesError } = await supabase
+      .schema('api')
+      .from('tooth_diagnoses')
+      .select('*')
+      .in('patient_id', patientIds);
+
+    if (diagnosesError) {
+      console.error('❌ [ACTION] Error fetching tooth diagnoses:', diagnosesError);
+    } else {
+      console.log(`✅ [ACTION] Fetched ${toothDiagnoses?.length || 0} tooth diagnoses`);
+    }
+
     // Get treatments
     const { data: treatments, error: treatmentsError } = await supabase
       .schema('api')
       .from('treatments')
       .select('*')
       .in('patient_id', patientIds);
-    
+
     if (treatmentsError) {
       console.error('❌ [ACTION] Error fetching treatments:', treatmentsError);
     }
-    
+
     // Debug: Check if treatments are being matched
     if (treatments && treatments.length > 0) {
       console.log(`🔍 [DEBUG] Sample treatment:`, JSON.stringify({
@@ -247,7 +260,7 @@ export async function getCompletePatientRecordsAction() {
         treatment_type: treatments[0].treatment_type,
         status: treatments[0].status
       }, null, 2));
-      
+
       // Check how many treatments each patient has
       const treatmentsByPatient = treatments.reduce((acc: any, t) => {
         acc[t.patient_id] = (acc[t.patient_id] || 0) + 1;
@@ -255,7 +268,7 @@ export async function getCompletePatientRecordsAction() {
       }, {});
       console.log(`🔍 [DEBUG] Treatments distribution:`, treatmentsByPatient);
     }
-    
+
     // Get appointments
     const { data: appointments } = await supabase
       .schema('api')
@@ -268,17 +281,20 @@ export async function getCompletePatientRecordsAction() {
       const patientConsultations = consultations?.filter(c => c.patient_id === patient.id) || [];
       const patientTreatments = treatments?.filter(t => t.patient_id === patient.id) || [];
       const patientAppointments = appointments?.filter(a => a.patient_id === patient.id) || [];
-      
+      const patientToothDiagnoses = toothDiagnoses?.filter(td => td.patient_id === patient.id) || [];
+
       return {
         ...patient,
         consultations: patientConsultations,
         treatments: patientTreatments,
-        appointments: patientAppointments
+        appointments: patientAppointments,
+        toothDiagnoses: patientToothDiagnoses
       };
     });
     
     console.log(`✅ [ACTION] Successfully fetched ${completeRecords.length} complete patient records with clinical data`);
     console.log(`   - Total consultations: ${consultations?.length || 0}`);
+    console.log(`   - Total tooth diagnoses: ${toothDiagnoses?.length || 0}`);
     console.log(`   - Total treatments: ${treatments?.length || 0}`);
     console.log(`   - Total appointments: ${appointments?.length || 0}`);
     console.log(`   - Sample first patient data:`, JSON.stringify({

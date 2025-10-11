@@ -206,6 +206,12 @@ export const consultations = apiSchema.table('consultations', {
   aiParsedData: text('ai_parsed_data'), // JSON string
   voiceSessionActive: boolean('voice_session_active').notNull().default(false),
 
+  // Global voice recording (full consultation recording)
+  globalVoiceTranscript: text('global_voice_transcript'), // Full consultation transcript
+  globalVoiceProcessedData: text('global_voice_processed_data'), // JSON string of AI-processed data
+  voiceRecordingDuration: integer('voice_recording_duration'), // in seconds
+  voiceExtractedToothDiagnoses: text('voice_extracted_tooth_diagnoses'), // JSON string of extracted tooth diagnoses
+
   // Prescription & Follow-up
   prescriptionData: text('prescription_data'), // JSON string
   followUpData: text('follow_up_data'), // JSON string
@@ -456,6 +462,39 @@ export const researchAIConversations = apiSchema.table('research_ai_conversation
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// Clinic Analysis Chat Sessions - Gemini-style chat history for Clinic Analysis AI
+export const clinicAnalysisChatSessions = apiSchema.table('clinic_analysis_chat_sessions', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  dentistId: uuid('dentist_id').notNull(), // References auth.users.id
+
+  // Session metadata
+  title: text('title').notNull().default('New Chat'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+
+  // Session summary
+  messageCount: integer('message_count').notNull().default(0),
+  lastMessagePreview: text('last_message_preview'), // First 100 chars of last message
+  lastActivityAt: timestamp('last_activity_at').defaultNow().notNull(),
+});
+
+// Clinic Analysis Messages - Individual messages in chat sessions
+export const clinicAnalysisMessages = apiSchema.table('clinic_analysis_messages', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  sessionId: uuid('session_id').notNull().references(() => clinicAnalysisChatSessions.id, { onDelete: 'cascade' }),
+
+  // Message content
+  role: text('role', { enum: ['user', 'assistant'] }).notNull(),
+  content: text('content').notNull(),
+  timestamp: timestamp('timestamp').defaultNow().notNull(),
+
+  // Metadata (optional)
+  metadata: text('metadata'), // JSON string: cohort_size, analysis_type, processing_time, source, etc.
+
+  // Ordering
+  sequenceNumber: integer('sequence_number').notNull().default(0),
+});
+
 // Export type definitions
 export type ResearchProject = typeof researchProjects.$inferSelect;
 export type NewResearchProject = typeof researchProjects.$inferInsert;
@@ -469,6 +508,10 @@ export type ResearchExport = typeof researchExports.$inferSelect;
 export type NewResearchExport = typeof researchExports.$inferInsert;
 export type ResearchAIConversation = typeof researchAIConversations.$inferSelect;
 export type NewResearchAIConversation = typeof researchAIConversations.$inferInsert;
+export type ClinicAnalysisChatSession = typeof clinicAnalysisChatSessions.$inferSelect;
+export type NewClinicAnalysisChatSession = typeof clinicAnalysisChatSessions.$inferInsert;
+export type ClinicAnalysisMessage = typeof clinicAnalysisMessages.$inferSelect;
+export type NewClinicAnalysisMessage = typeof clinicAnalysisMessages.$inferInsert;
 
 // ===============================================
 // PATIENT DASHBOARD NEW FEATURES SCHEMA

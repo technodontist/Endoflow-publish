@@ -1,8 +1,21 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { searchTreatmentOptionsAction, getTreatmentStepsAction, askTreatmentQuestionAction } from '@/lib/actions/self-learning'
+import { 
+  createLearningSessionAction,
+  getLearningSessionsAction,
+  getLearningMessagesAction,
+  saveLearningMessageAction,
+  deleteLearningSessionAction,
+  renameLearningSessionAction,
+  autoTitleLearningSessionAction
+} from '@/lib/actions/self-learning-chat'
 import { getPatientFullContext, type PatientMedicalContext } from '@/lib/actions/patient-context'
+import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition'
+import { useTextToSpeech } from '@/lib/hooks/use-text-to-speech'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,7 +50,17 @@ import {
   Calendar,
   Activity,
   Clock,
-  Send
+  Send,
+  Plus,
+  Trash2,
+  Edit2,
+  MoreVertical,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Pause,
+  Square
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -76,6 +99,21 @@ interface PatientContext {
   consultationId: string | null
 }
 
+interface LearningSessions {
+  id: string
+  dentist_id: string
+  title: string
+  created_at: string
+  updated_at: string
+  patient_id: string | null
+  patient_name: string | null
+  diagnosis: string | null
+  treatment: string | null
+  message_count: number
+  last_message_preview: string | null
+  last_activity_at: string
+}
+
 export default function SelfLearningAssistant() {
   const [activeMode, setActiveMode] = useState<'search' | 'chat'>('search')
   const [searchQuery, setSearchQuery] = useState('')
@@ -107,6 +145,25 @@ export default function SelfLearningAssistant() {
   // Patient medical context (full data from database)
   const [patientMedicalContext, setPatientMedicalContext] = useState<PatientMedicalContext | null>(null)
   const [isLoadingPatientContext, setIsLoadingPatientContext] = useState(false)
+
+  // Chat session management state
+  const [chatSessions, setChatSessions] = useState<LearningSessions[]>([])
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true)
+  const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [showSessionSidebar, setShowSessionSidebar] = useState(true)
+
+  // Voice features
+  const speechRecognition = useSpeechRecognition({
+    continuous: false,
+    interimResults: true,
+    onResult: (transcript) => {
+      setChatInput(transcript)
+    }
+  })
+
+  const textToSpeech = useTextToSpeech()
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null)
 
   // Sample diagnoses for demonstration
   const commonDiagnoses = [
@@ -283,9 +340,131 @@ export default function SelfLearningAssistant() {
     }
   }
 
+  // ============================================
+  // CHAT SESSION MANAGEMENT FUNCTIONS
+  // ============================================
+
+  // Load all sessions from database
+  const loadSessions = async () => {
+    setIsLoadingSessions(true)
+    try {
+      const result = await getLearningSessionsAction()
+      if (result.success && result.data) {
+        setChatSessions(result.data)
+        // If no current session and sessions exist, set the most recent one
+        if (!currentSessionId && result.data.length > 0) {
+          const mostRecent = result.data[0]
+          setCurrentSessionId(mostRecent.id)
+          loadSessionMessages(mostRecent.id)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error)
+    } finally {
+      setIsLoadingSessions(false)
+    }
+  }
+
+  // Load messages for a specific session
+  const loadSessionMessages = async (sessionId: string) => {
+    try {
+      const result = await getLearningMessagesAction(sessionId)
+      if (result.success && result.data) {
+        // Convert database messages to ChatMessage format
+        const messages: ChatMessage[] = result.data.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp)
+        }))
+        setChatMessages(messages)
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error)
+      setChatMessages([])
+    }
+  }
+
+  // Create a new session
+  const createNewSession = async () => {
+    setIsCreatingSession(true)
+    try {
+      const result = await createLearningSessionAction({
+        title: undefined, // Will default to "New Learning Session"
+        patientId: patientContext.patientId || undefined,
+        patientName: patientContext.patientName || undefined,
+        diagnosis: patientContext.diagnosis || undefined,
+        treatment: patientContext.treatment || undefined
+      })
+
+      if (result.success && result.data) {
+        // Add to sessions list
+        setChatSessions(prev => [result.data, ...prev])
+        // Set as current session
+        setCurrentSessionId(result.data.id)
+        // Clear messages
+        setChatMessages([])
+        return result.data
+      } else {
+        console.error('Failed to create session:', result.error)
+        return null
+      }
+    } catch (error) {
+      console.error('Error creating session:', error)
+      return null
+    } finally {
+      setIsCreatingSession(false)
+    }
+  }
+
+  // Switch to a different session
+  const switchSession = (sessionId: string) => {
+    setCurrentSessionId(sessionId)
+    loadSessionMessages(sessionId)
+  }
+
+  // Delete a session
+  const deleteSession = async (sessionId: string) => {
+    try {
+      const result = await deleteLearningSessionAction(sessionId)
+      if (result.success) {
+        // Remove from list
+        setChatSessions(prev => prev.filter(s => s.id !== sessionId))
+        // If deleted session was current, switch to most recent
+        if (currentSessionId === sessionId) {
+          const remaining = chatSessions.filter(s => s.id !== sessionId)
+          if (remaining.length > 0) {
+            switchSession(remaining[0].id)
+          } else {
+            setCurrentSessionId(null)
+            setChatMessages([])
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error)
+    }
+  }
+
+  // Load sessions on component mount
+  useEffect(() => {
+    loadSessions()
+  }, [])
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!chatInput.trim()) return
+
+    // Ensure we have a session
+    let sessionId = currentSessionId
+    if (!sessionId) {
+      // Create new session if none exists
+      const newSession = await createNewSession()
+      if (!newSession) {
+        console.error('Failed to create session')
+        return
+      }
+      sessionId = newSession.id
+    }
 
     const userMessage: ChatMessage = {
       role: 'user',
@@ -299,6 +478,24 @@ export default function SelfLearningAssistant() {
     setIsChatLoading(true)
 
     try {
+      // Save user message to database
+      await saveLearningMessageAction({
+        sessionId: sessionId,
+        role: 'user',
+        content: question,
+        metadata: {
+          patientId: patientContext.patientId,
+          patientName: patientContext.patientName
+        }
+      })
+
+      // Auto-title session from first message
+      if (chatMessages.length === 0) {
+        await autoTitleLearningSessionAction(sessionId, question)
+        // Reload sessions to get updated title
+        loadSessions()
+      }
+
       // Build patient context object if patient is selected
       const patientCtx = patientContext.patientId ? {
         patientId: patientContext.patientId,
@@ -318,6 +515,17 @@ export default function SelfLearningAssistant() {
           timestamp: new Date()
         }
         setChatMessages(prev => [...prev, aiResponse])
+        
+        // Save assistant message to database
+        await saveLearningMessageAction({
+          sessionId: sessionId,
+          role: 'assistant',
+          content: result.data.answer,
+          metadata: {
+            hasEvidence: result.data.hasEvidence,
+            sourceCount: result.data.sourceCount
+          }
+        })
       } else {
         const errorResponse: ChatMessage = {
           role: 'assistant',
@@ -325,6 +533,13 @@ export default function SelfLearningAssistant() {
           timestamp: new Date()
         }
         setChatMessages(prev => [...prev, errorResponse])
+        
+        // Save error response
+        await saveLearningMessageAction({
+          sessionId: sessionId,
+          role: 'assistant',
+          content: errorResponse.content
+        })
       }
     } catch (error) {
       console.error('Error asking question:', error)
@@ -973,17 +1188,107 @@ export default function SelfLearningAssistant() {
 
         {/* Chat Mode */}
         <TabsContent value="chat" className="space-y-4">
-          <Card className="h-[700px] flex flex-col">
-            <CardHeader className="border-b">
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-teal-600" />
-                AI Learning Assistant
-              </CardTitle>
-              <CardDescription>
-                Ask questions about treatment procedures, techniques, and best practices
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col p-0">
+          <Card className="h-[700px] flex">
+            {/* Session Sidebar */}
+            <div className="w-80 border-r flex flex-col bg-gray-50">
+              <div className="p-4 border-b bg-white">
+                <Button 
+                  onClick={createNewSession}
+                  className="w-full bg-teal-600 hover:bg-teal-700"
+                  disabled={isCreatingSession}
+                >
+                  {isCreatingSession ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-2" />
+                  )}
+                  New Chat
+                </Button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-2 space-y-1">
+                  {isLoadingSessions ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+                    </div>
+                  ) : chatSessions.length === 0 ? (
+                    <div className="text-center py-8 px-4">
+                      <p className="text-sm text-gray-500">No chat sessions yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Click "New Chat" to start</p>
+                    </div>
+                  ) : (
+                    chatSessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className={cn(
+                          "group relative p-3 rounded-lg cursor-pointer transition-colors",
+                          currentSessionId === session.id
+                            ? "bg-teal-100 border-teal-300 border"
+                            : "hover:bg-gray-100 border border-transparent"
+                        )}
+                        onClick={() => switchSession(session.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h4 className={cn(
+                              "text-sm font-medium truncate",
+                              currentSessionId === session.id ? "text-teal-900" : "text-gray-900"
+                            )}>
+                              {session.title}
+                            </h4>
+                            {session.last_message_preview && (
+                              <p className="text-xs text-gray-500 truncate mt-1">
+                                {session.last_message_preview}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-400">
+                                {session.message_count} messages
+                              </span>
+                              {session.patient_name && (
+                                <Badge variant="outline" className="text-xs">
+                                  {session.patient_name}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (confirm('Delete this chat session?')) {
+                                deleteSession(session.id)
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3 text-red-600" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col">
+              <div className="p-4 border-b bg-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5 text-teal-600" />
+                      AI Learning Assistant
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Ask questions about treatment procedures, techniques, and best practices
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 flex flex-col p-0">
               {/* Chat Messages */}
               <ScrollArea className="flex-1 p-6">
                 {chatMessages.length === 0 ? (
@@ -1046,13 +1351,69 @@ export default function SelfLearningAssistant() {
                               : "bg-gray-100 text-gray-900"
                           )}
                         >
-                          <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                          {message.role === 'assistant' ? (
+                            <div className="prose prose-sm max-w-none">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {message.content}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                          )}
                           <div className={cn(
                             "text-xs mt-2",
                             message.role === 'user' ? "text-teal-100" : "text-gray-500"
                           )}>
                             {message.timestamp.toLocaleTimeString()}
                           </div>
+                          
+                          {/* Text-to-Speech Controls */}
+                          {message.role === 'assistant' && (
+                            <div className="flex items-center gap-2 mt-2 border-t border-gray-200 pt-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (speakingMessageIndex === idx && textToSpeech.isSpeaking) {
+                                    if (textToSpeech.isPaused) {
+                                      textToSpeech.resume()
+                                    } else {
+                                      textToSpeech.pause()
+                                    }
+                                  } else {
+                                    setSpeakingMessageIndex(idx)
+                                    textToSpeech.speak(message.content)
+                                  }
+                                }}
+                                className="h-6 text-gray-600 hover:text-teal-600 px-2"
+                              >
+                                {speakingMessageIndex === idx && textToSpeech.isSpeaking && !textToSpeech.isPaused ? (
+                                  <Pause className="h-3 w-3" />
+                                ) : (
+                                  <Volume2 className="h-3 w-3" />
+                                )}
+                                <span className="text-xs ml-1">
+                                  {speakingMessageIndex === idx && textToSpeech.isSpeaking
+                                    ? textToSpeech.isPaused ? 'Resume' : 'Pause'
+                                    : 'Listen'}
+                                </span>
+                              </Button>
+                              {speakingMessageIndex === idx && textToSpeech.isSpeaking && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    textToSpeech.stop()
+                                    setSpeakingMessageIndex(null)
+                                  }}
+                                  className="h-6 text-red-600 px-2"
+                                >
+                                  <Square className="h-3 w-3" />
+                                  <span className="text-xs ml-1">Stop</span>
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {message.role === 'user' && (
                           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
@@ -1078,28 +1439,70 @@ export default function SelfLearningAssistant() {
 
               {/* Chat Input */}
               <div className="border-t p-4">
-                <form onSubmit={handleChatSubmit} className="flex gap-2">
-                  <Input
-                    placeholder="Ask about treatment procedures, techniques, materials..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    disabled={isChatLoading}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={isChatLoading || !chatInput.trim()}
-                    className="bg-teal-600 hover:bg-teal-700"
-                  >
-                    {isChatLoading ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Send className="h-5 w-5" />
-                    )}
-                  </Button>
+                <form onSubmit={handleChatSubmit} className="space-y-2">
+                  {/* Voice Recognition Indicator */}
+                  {speechRecognition.isListening && (
+                    <div className="flex items-center gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-teal-700">Listening...</span>
+                      {speechRecognition.interimTranscript && (
+                        <span className="text-xs text-gray-600 italic">
+                          "{speechRecognition.interimTranscript}"
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-2">
+                    {/* Voice Input Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        if (speechRecognition.isListening) {
+                          speechRecognition.stopListening()
+                        } else {
+                          speechRecognition.startListening()
+                        }
+                      }}
+                      disabled={isChatLoading}
+                      className={cn(
+                        speechRecognition.isListening && "bg-red-50 border-red-300"
+                      )}
+                      title={speechRecognition.isListening ? "Stop listening" : "Start voice input"}
+                    >
+                      {speechRecognition.isListening ? (
+                        <MicOff className="h-5 w-5 text-red-600" />
+                      ) : (
+                        <Mic className="h-5 w-5" />
+                      )}
+                    </Button>
+                    
+                    <Input
+                      placeholder="Ask about treatment procedures, techniques, materials... (or use voice)"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      disabled={isChatLoading}
+                      className="flex-1"
+                    />
+                    
+                    <Button
+                      type="submit"
+                      disabled={isChatLoading || !chatInput.trim()}
+                      className="bg-teal-600 hover:bg-teal-700"
+                    >
+                      {isChatLoading ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Send className="h-5 w-5" />
+                      )}
+                    </Button>
+                  </div>
                 </form>
               </div>
-            </CardContent>
+              </div>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>

@@ -14,6 +14,7 @@ import { AlertCircle, Search, Save, Plus, Loader2, X, Sparkles, Settings } from 
 import { cn } from "@/lib/utils"
 import { saveToothDiagnosis, type ToothDiagnosisData } from "@/lib/actions/tooth-diagnoses"
 import EndoAICopilotLive from "./endo-ai-copilot-live"
+import DiagnosisAICopilot from "./diagnosis-ai-copilot"
 
 interface ToothDiagnosisDialogProps {
   isOpen: boolean
@@ -46,37 +47,96 @@ export function ToothDiagnosisDialogV2({
   const [followUpRequired, setFollowUpRequired] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [manualSymptoms, setManualSymptoms] = useState<string[]>([])
+
+  // Helper function to normalize and match diagnosis names
+  const normalizeDiagnosisName = (diagnosis: string): string | null => {
+    const normalized = diagnosis.toLowerCase().trim()
+    
+    // Mapping of common variations to predefined diagnoses
+    const diagnosisMap: { [key: string]: string } = {
+      'deep dental caries': 'Deep Caries',
+      'deep caries': 'Deep Caries',
+      'dental caries': 'Moderate Caries',
+      'moderate dental caries': 'Moderate Caries',
+      'incipient dental caries': 'Incipient Caries',
+      'rampant dental caries': 'Rampant Caries',
+      'root dental caries': 'Root Caries',
+      'recurrent dental caries': 'Recurrent Caries',
+      'periapical abscess': 'Apical Abscess',
+      'tooth fracture': 'Crown Fracture (Enamel-Dentin)',
+      'pulpal involvement': 'Irreversible Pulpitis',
+      'non-restorable tooth': 'Root Fracture',
+      'previously restored tooth': 'Failed Restoration',
+      'crowned tooth': 'Crown',
+      'missing tooth': 'Missing',
+      'symptomatic tooth': 'Hypersensitivity'
+    }
+    
+    // Try exact match first
+    if (diagnosisMap[normalized]) {
+      return diagnosisMap[normalized]
+    }
+    
+    // Try partial matches
+    for (const [key, value] of Object.entries(diagnosisMap)) {
+      if (normalized.includes(key) || key.includes(normalized)) {
+        return value
+      }
+    }
+    
+    // If no match found, return original (capitalized)
+    return diagnosis.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ')
+  }
 
   // Load existing data when dialog opens
   useEffect(() => {
     if (isOpen && existingData) {
       console.log('🦷 [DIALOG] Loading existing data for tooth:', existingData)
-      
-      // IMPORTANT: Only load data that has been saved (has an ID)
-      // If existingData doesn't have an ID, it's unsaved draft data - reset instead
-      if (existingData.id) {
-        // This is saved data from the database - load it
+
+      // Check if this is voice-extracted data (has isVoiceExtracted flag but no ID)
+      const isVoiceExtracted = !!(existingData as any).isVoiceExtracted && !existingData.id
+
+      // Load data if it's either:
+      // 1. Saved in database (has ID), OR
+      // 2. Voice-extracted (has isVoiceExtracted flag)
+      if (existingData.id || isVoiceExtracted) {
         // Handle both formats: primaryDiagnosis (string) or selectedDiagnoses (array)
-        const diagnoses = existingData.primaryDiagnosis 
+        const rawDiagnoses = existingData.primaryDiagnosis
                          ? existingData.primaryDiagnosis.split(', ').filter(Boolean)
-                         : []
-        const treatments = existingData.recommendedTreatment 
+                         : (existingData as any).selectedDiagnoses || []
+        const rawTreatments = existingData.recommendedTreatment
                           ? existingData.recommendedTreatment.split(', ').filter(Boolean)
-                          : []
-        
+                          : (existingData as any).selectedTreatments || []
+
+        // Normalize diagnosis names to match predefined options
+        const diagnoses = rawDiagnoses.map((d: string) => normalizeDiagnosisName(d)).filter(Boolean) as string[]
+        console.log('🔄 [DIALOG] Normalized diagnoses from', rawDiagnoses, 'to', diagnoses)
+
+        if (isVoiceExtracted) {
+          console.log('🎤 [VOICE-EXTRACTED] Auto-populating diagnosis checkboxes from voice recognition!')
+          console.log('🎤 [VOICE-EXTRACTED] Voice extracted at:', (existingData as any).voiceExtractedAt)
+        }
+
         setSelectedDiagnoses(diagnoses)
-        setSelectedTreatments(treatments)
+        setSelectedTreatments(rawTreatments)
         setStatus(existingData.status || 'healthy')
         setTreatmentPriority(existingData.treatmentPriority || 'medium')
         setNotes(existingData.notes || "")
         setEstimatedDuration(existingData.estimatedDuration)
         setEstimatedCost(existingData.estimatedCost || "")
         setFollowUpRequired(existingData.followUpRequired || false)
-        
-        console.log('✅ [DIALOG] Loaded saved diagnoses:', diagnoses, 'treatments:', treatments)
+
+        if (isVoiceExtracted) {
+          console.log('✅ [VOICE-EXTRACTED] Pre-selected voice diagnoses:', diagnoses, 'treatments:', rawTreatments)
+        } else {
+          console.log('✅ [DIALOG] Loaded saved diagnoses:', diagnoses, 'treatments:', rawTreatments)
+        }
       } else {
-        // This is unsaved draft data - reset the form
-        console.log('⚠️ [DIALOG] No saved data (no ID), resetting form')
+        // This is unsaved draft data without voice extraction - reset the form
+        console.log('⚠️ [DIALOG] No saved data or voice extraction, resetting form')
         setSelectedDiagnoses([])
         setSelectedTreatments([])
         setStatus('healthy')
@@ -436,6 +496,21 @@ export function ToothDiagnosisDialogV2({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Voice-Extracted Data Indicator */}
+              {existingData && (existingData as any).isVoiceExtracted && !existingData.id && (
+                <div className="bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-teal-600" />
+                    <span className="text-sm font-semibold text-teal-700">
+                      🎤 Auto-populated from Voice Recognition
+                    </span>
+                  </div>
+                  <p className="text-xs text-teal-600 mt-1">
+                    Diagnosis extracted from your voice recording. Review and modify as needed.
+                  </p>
+                </div>
+              )}
+
               {/* Tooth Status */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Tooth Status</Label>
@@ -463,6 +538,72 @@ export function ToothDiagnosisDialogV2({
                   className="pl-10"
                 />
               </div>
+
+              {/* Quick Symptom Entry - Triggers AI Copilot */}
+              {(!selectedDiagnoses || selectedDiagnoses.length === 0) && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-600" />
+                    Quick Symptom Entry
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Sharp pain', 'Dull ache', 'Cold sensitivity', 'Heat sensitivity', 
+                      'Swelling', 'Pain when chewing', 'Spontaneous pain', 'Lingering pain'].map(symptom => (
+                      <Button
+                        key={symptom}
+                        variant={manualSymptoms.includes(symptom) ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          if (manualSymptoms.includes(symptom)) {
+                            setManualSymptoms(prev => prev.filter(s => s !== symptom))
+                          } else {
+                            setManualSymptoms(prev => [...prev, symptom])
+                          }
+                        }}
+                        className="text-xs h-7"
+                      >
+                        {symptom}
+                      </Button>
+                    ))}
+                  </div>
+                  {(manualSymptoms.length > 0 || (existingData?.symptoms && existingData.symptoms.length > 0)) && (
+                    <p className="text-xs text-blue-600 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      AI will suggest diagnosis based on symptoms
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* AI Diagnosis Suggestions - Show when no diagnoses selected and symptoms exist */}
+              {(!selectedDiagnoses || selectedDiagnoses.length === 0) && (
+                (existingData?.symptoms && existingData.symptoms.length > 0) ||
+                (existingData?.painCharacteristics) ||
+                (existingData?.clinicalFindings) ||
+                (manualSymptoms.length > 0)
+              ) && (
+                <div className="my-4">
+                  <DiagnosisAICopilot
+                    symptoms={[
+                      ...(existingData?.symptoms || []),
+                      ...manualSymptoms
+                    ]}
+                    painCharacteristics={existingData?.painCharacteristics}
+                    clinicalFindings={existingData?.clinicalFindings}
+                    toothNumber={toothNumber}
+                    patientContext={{
+                      age: 35
+                    }}
+                    onAcceptSuggestion={(diagnosis) => {
+                      // Find and tick the matching diagnosis checkbox
+                      const normalizedDiagnosis = normalizeDiagnosisName(diagnosis)
+                      if (normalizedDiagnosis && !selectedDiagnoses.includes(normalizedDiagnosis)) {
+                        handleDiagnosisToggle(normalizedDiagnosis)
+                      }
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Selected Diagnoses */}
               {selectedDiagnoses.length > 0 && (

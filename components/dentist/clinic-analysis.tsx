@@ -40,6 +40,16 @@ import {
   type TreatmentDistribution,
   type PatientDemographics
 } from "@/lib/actions/analytics"
+import {
+  createChatSessionAction,
+  getChatSessionsAction,
+  getChatMessagesAction,
+  saveChatMessageAction,
+  deleteChatSessionAction,
+  renameChatSessionAction,
+  autoTitleChatSessionAction
+} from "@/lib/actions/clinic-analysis-chat"
+import { ClinicChatHistorySidebar } from "./clinic-chat-history-sidebar"
 
 interface AnalyticsData {
   statistics: ClinicStatistics | null;
@@ -201,6 +211,11 @@ export function ClinicAnalysis() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
 
+  // Chat session management
+  const [chatSessions, setChatSessions] = useState<any[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
   // Memoized analytics data for performance
   const memoizedAnalyticsData = useMemo(() => analyticsData, [analyticsData]);
 
@@ -285,13 +300,129 @@ export function ClinicAnalysis() {
     }
   }, []);
 
-  // Optimized message handling with caching
+  // Load chat sessions
+  const loadChatSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    try {
+      const result = await getChatSessionsAction();
+      if (result.success && result.data) {
+        setChatSessions(result.data);
+
+        // Auto-select latest session or create new one
+        if (result.data.length > 0 && !currentSessionId) {
+          setCurrentSessionId(result.data[0].id);
+          await loadSessionMessages(result.data[0].id);
+        } else if (result.data.length === 0) {
+          // Create first session if none exist
+          await handleNewChat();
+        }
+      }
+    } catch (error) {
+      console.error('Error loading chat sessions:', error);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [currentSessionId]);
+
+  // Load messages for a specific session
+  const loadSessionMessages = useCallback(async (sessionId: string) => {
+    try {
+      const result = await getChatMessagesAction(sessionId);
+      if (result.success && result.data) {
+        // Convert database messages to component format
+        const messages = result.data.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }));
+        setChatMessages(messages);
+      }
+    } catch (error) {
+      console.error('Error loading session messages:', error);
+    }
+  }, []);
+
+  // Handle new chat creation
+  const handleNewChat = useCallback(async () => {
+    try {
+      const result = await createChatSessionAction();
+      if (result.success && result.data) {
+        setChatSessions(prev => [result.data, ...prev]);
+        setCurrentSessionId(result.data.id);
+        setChatMessages([]);
+        console.log('✅ New chat session created:', result.data.id);
+      }
+    } catch (error) {
+      console.error('Error creating new chat:', error);
+    }
+  }, []);
+
+  // Handle session selection
+  const handleSessionSelect = useCallback(async (sessionId: string) => {
+    if (sessionId === currentSessionId) return;
+    setCurrentSessionId(sessionId);
+    await loadSessionMessages(sessionId);
+  }, [currentSessionId, loadSessionMessages]);
+
+  // Handle session deletion
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    try {
+      const result = await deleteChatSessionAction(sessionId);
+      if (result.success) {
+        setChatSessions(prev => prev.filter(s => s.id !== sessionId));
+
+        // If deleted session was current, switch to another or create new
+        if (sessionId === currentSessionId) {
+          const remainingSessions = chatSessions.filter(s => s.id !== sessionId);
+          if (remainingSessions.length > 0) {
+            setCurrentSessionId(remainingSessions[0].id);
+            await loadSessionMessages(remainingSessions[0].id);
+          } else {
+            await handleNewChat();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+    }
+  }, [currentSessionId, chatSessions, loadSessionMessages, handleNewChat]);
+
+  // Handle session rename
+  const handleRenameSession = useCallback(async (sessionId: string, newTitle: string) => {
+    try {
+      const result = await renameChatSessionAction(sessionId, newTitle);
+      if (result.success && result.data) {
+        setChatSessions(prev =>
+          prev.map(s => s.id === sessionId ? { ...s, title: result.data.title } : s)
+        );
+      }
+    } catch (error) {
+      console.error('Error renaming session:', error);
+    }
+  }, []);
+
+  // Optimized message handling with caching and database persistence
   const handleSendMessage = useCallback(async (message: string) => {
+    if (!currentSessionId) {
+      console.error('No active session');
+      return;
+    }
+
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Add user message
+    // Add user message to UI
     setChatMessages(prev => [...prev, { role: 'user', content: message, timestamp }]);
     setIsChatLoading(true);
+
+    // Save user message to database
+    await saveChatMessageAction({
+      sessionId: currentSessionId,
+      role: 'user',
+      content: message,
+    });
+
+    // Auto-title session based on first message
+    await autoTitleChatSessionAction(currentSessionId, message);
 
     try {
       // Call the research AI query endpoint WITHOUT RAG (patient data only)
@@ -336,18 +467,43 @@ export function ClinicAnalysis() {
         
         // Add source badge (no evidence badge for clinic analysis)
         const sourceBadge = ' 📊 *Clinic data analysis*';
-        
+        const finalContent = responseContent + sourceBadge;
+
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: responseContent + sourceBadge,
+          content: finalContent,
           timestamp: responseTimestamp
         }]);
+
+        // Save assistant message to database
+        await saveChatMessageAction({
+          sessionId: currentSessionId,
+          role: 'assistant',
+          content: finalContent,
+          metadata: {
+            source: result.source,
+            processingTime: result.processingTime,
+            cohortSize: patientRecords.length
+          }
+        });
+
+        // Refresh sessions to update preview
+        await loadChatSessions();
       } else {
+        const errorContent = 'I apologize, but I encountered an error processing your request. Please try again.';
+
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: 'I apologize, but I encountered an error processing your request. Please try again.',
+          content: errorContent,
           timestamp: responseTimestamp
         }]);
+
+        // Save error message too
+        await saveChatMessageAction({
+          sessionId: currentSessionId,
+          role: 'assistant',
+          content: errorContent,
+        });
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -360,11 +516,12 @@ export function ClinicAnalysis() {
     } finally {
       setIsChatLoading(false);
     }
-  }, [memoizedAnalyticsData, patientRecords]);
+  }, [memoizedAnalyticsData, patientRecords, currentSessionId, loadChatSessions]);
 
-  // Real-time data refresh every 5 minutes
+  // Load analytics data and chat sessions on mount
   useEffect(() => {
     loadAnalyticsData();
+    loadChatSessions();
 
     const refreshInterval = setInterval(() => {
       console.log('🔄 [ANALYTICS] Auto-refreshing clinic data...');
@@ -372,7 +529,7 @@ export function ClinicAnalysis() {
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(refreshInterval);
-  }, [loadAnalyticsData]);
+  }, [loadAnalyticsData, loadChatSessions]);
 
   if (isLoading) {
     return (
@@ -523,17 +680,35 @@ export function ClinicAnalysis() {
         </Card>
       </div>
 
-      {/* Clinical Research Assistant */}
+      {/* Clinical Research Assistant with Chat History */}
       <div>
         <div className="mb-4">
           <h2 className="text-xl font-semibold text-gray-900">Clinical Research Assistant</h2>
           <p className="text-gray-500">Ask questions about your clinical data, treatment outcomes, and evidence-based practices</p>
         </div>
-        <ClinicalResearchChat
-          onSendMessage={handleSendMessage}
-          messages={chatMessages}
-          isLoading={isChatLoading}
-        />
+
+        {/* Chat Interface with Sidebar */}
+        <div className="flex gap-4 h-[600px]">
+          {/* Chat History Sidebar */}
+          <ClinicChatHistorySidebar
+            sessions={chatSessions}
+            currentSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            onNewChat={handleNewChat}
+            onDeleteSession={handleDeleteSession}
+            onRenameSession={handleRenameSession}
+            isLoading={sessionsLoading}
+          />
+
+          {/* Chat Component */}
+          <div className="flex-1">
+            <ClinicalResearchChat
+              onSendMessage={handleSendMessage}
+              messages={chatMessages}
+              isLoading={isChatLoading}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

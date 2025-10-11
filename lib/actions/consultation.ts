@@ -418,13 +418,15 @@ export async function getConsultationByIdAction(consultationId: string) {
 // Voice Session Management
 export async function startVoiceSessionAction(consultationId: string, sectionId: string) {
   try {
-    const supabase = await createServiceClient()
-
-    // Get current user (dentist)
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    // Get current authenticated user using the client with auth context
+    const clientSupabase = await createClient()
+    const { data: { user }, error: userError } = await clientSupabase.auth.getUser()
     if (userError || !user) {
       return { error: 'Authentication required' }
     }
+
+    // Use service client for database operations
+    const supabase = await createServiceClient()
 
     console.log(`🎤 [VOICE] Starting voice session for consultation: ${consultationId}, section: ${sectionId}`)
 

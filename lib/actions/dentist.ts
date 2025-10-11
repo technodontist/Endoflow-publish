@@ -443,3 +443,80 @@ export async function dentistRescheduleAppointment(
     }
   }
 }
+
+/**
+ * Delete a patient from the database (hard delete)
+ * This will cascade delete all related records:
+ * - Consultations
+ * - Treatments
+ * - Tooth diagnoses
+ * - Appointments
+ * - Patient files
+ * - Messages
+ * - Notifications
+ */
+export async function deletePatientAction(patientId: string) {
+  const supabase = await createClient()
+
+  try {
+    // Verify dentist authentication
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return { success: false, error: 'Not authenticated' }
+    }
+
+    // Verify user is a dentist
+    const serviceSupabase = await createServiceClient()
+    const { data: profile } = await serviceSupabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'dentist') {
+      return { success: false, error: 'Only dentists can delete patients' }
+    }
+
+    // First delete from profiles (this will cascade to api.patients via foreign key)
+    const { error: profileDeleteError } = await serviceSupabase
+      .from('profiles')
+      .delete()
+      .eq('id', patientId)
+
+    if (profileDeleteError) {
+      console.error('Error deleting patient profile:', profileDeleteError)
+      return {
+        success: false,
+        error: `Failed to delete patient: ${profileDeleteError.message}`
+      }
+    }
+
+    // Delete from auth.users (final cleanup)
+    // Note: This requires service role key
+    const { error: authDeleteError } = await serviceSupabase.auth.admin.deleteUser(patientId)
+
+    if (authDeleteError) {
+      console.warn('Warning: Failed to delete auth user (profile deleted):', authDeleteError.message)
+      // Continue anyway - profile is deleted which is the main goal
+    }
+
+    console.log('✅ [DELETE PATIENT] Successfully deleted patient:', patientId)
+
+    // Revalidate all dashboards
+    revalidatePath('/dentist')
+    revalidatePath('/assistant')
+    revalidatePath('/patient')
+
+    return {
+      success: true,
+      message: 'Patient and all related records deleted successfully'
+    }
+  } catch (error) {
+    console.error('Error deleting patient:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete patient'
+    }
+  }
+}

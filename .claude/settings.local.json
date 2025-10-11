@@ -12,7 +12,9 @@
       "Bash(npm run dev:*)",
       "Bash(ls:*)",
       "Bash(git restore .next)",
-      "Bash(pnpm build)"
+      "Bash(pnpm build)",
+      "Bash(node:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

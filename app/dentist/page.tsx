@@ -40,7 +40,7 @@ import { NotificationCenter } from "@/components/notifications/notification-cent
 import { ClinicAnalysis } from "@/components/dentist/clinic-analysis"
 import { ResearchProjects as ResearchProjectsV2 } from "@/components/dentist/research-projects-v2"
 import ResearchAiAssistant from "@/components/dentist/research-ai-assistant"
-import MedicalKnowledgeUploader from "@/components/dentist/medical-knowledge-uploader"
+import MedicalKnowledgeManager from "@/components/dentist/medical-knowledge-manager"
 import SelfLearningAssistant from "@/components/dentist/self-learning-assistant"
 import { MessagesChatInterface } from "@/components/dentist/messages-chat-interface"
 import SimpleMessagingInterface from "@/components/dentist/simple-messaging-interface"
@@ -509,7 +509,7 @@ function DentistDashboardContent() {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="upload">
-                  <MedicalKnowledgeUploader />
+                  <MedicalKnowledgeManager />
                 </TabsContent>
                 <TabsContent value="learning">
                   <SelfLearningAssistant />

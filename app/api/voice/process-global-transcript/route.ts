@@ -27,27 +27,56 @@ export async function POST(request: NextRequest) {
     // Update consultation with processed data
     const supabase = await createServiceClient()
 
-    const { error: updateError } = await supabase
-      .schema('api')
-      .from('consultations')
-      .update({
-        global_voice_transcript: transcript,
-        global_voice_processed_data: JSON.stringify(processedContent),
-        voice_recording_duration: calculateDuration(transcript),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', consultationId)
+    // Extract tooth-specific diagnoses (but don't save yet - only save when consultation is saved)
+    const toothDiagnoses = await extractToothDiagnosesFromTranscript(transcript, consultationId, processedContent)
 
-    if (updateError) {
-      console.error('❌ [GLOBAL VOICE] Failed to update consultation:', updateError)
+    // Prepare update data - only include new fields if columns exist (graceful degradation)
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    }
+
+    // Try to update new voice fields, but don't fail if columns don't exist yet
+    try {
+      // Check if the new columns exist by attempting to update them
+      const { error: updateError } = await supabase
+        .schema('api')
+        .from('consultations')
+        .update({
+          global_voice_transcript: transcript,
+          global_voice_processed_data: JSON.stringify(processedContent),
+          voice_recording_duration: calculateDuration(transcript),
+          voice_extracted_tooth_diagnoses: JSON.stringify(toothDiagnoses),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', consultationId)
+
+      if (updateError) {
+        // Check if error is due to missing columns
+        if (updateError.message?.includes('column') || updateError.code === '42703') {
+          console.warn('⚠️ [GLOBAL VOICE] New voice columns not yet migrated, using legacy fields only')
+          // Fallback to updating only existing fields
+          const { error: fallbackError } = await supabase
+            .schema('api')
+            .from('consultations')
+            .update({
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', consultationId)
+
+          if (fallbackError) {
+            throw fallbackError
+          }
+        } else {
+          throw updateError
+        }
+      }
+    } catch (error) {
+      console.error('❌ [GLOBAL VOICE] Failed to update consultation:', error)
       return NextResponse.json(
         { error: 'Failed to save processed content' },
         { status: 500 }
       )
     }
-
-    // Extract tooth-specific diagnoses (but don't save yet - only save when consultation is saved)
-    const toothDiagnoses = await extractToothDiagnosesFromTranscript(transcript, consultationId, processedContent)
 
     // Send to N8N for further processing (optional)
     if (process.env.N8N_WEBHOOK_URL) {
@@ -55,6 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ [GLOBAL VOICE] Successfully processed and saved transcript`)
+    console.log(`🦷 [GLOBAL VOICE] Extracted ${toothDiagnoses.length} voice-extracted tooth diagnoses`)
 
     return NextResponse.json({
       success: true,
@@ -554,89 +584,211 @@ async function extractToothDiagnosesFromTranscript(
       let status: ToothDiagnosisData['status'] = 'healthy'
       let primaryDiagnosis = ''
       let symptoms: string[] = []
+      let painCharacteristics: any = {}
+      let clinicalFindings = ''
       let recommendedTreatment = ''
       let treatmentPriority: ToothDiagnosisData['treatmentPriority'] = 'medium'
 
       // Check for various dental conditions
+      // Use exact diagnosis names matching the predefined options in the dialog
       if (context.includes('caries') || context.includes('cavity') || context.includes('carries')) {
         status = 'caries'
-        primaryDiagnosis = 'Dental caries'
         
         if (context.includes('deep') || context.includes('internal')) {
-          primaryDiagnosis = 'Deep dental caries'
-          recommendedTreatment = 'Root canal treatment may be required'
+          primaryDiagnosis = 'Deep Caries'  // Exact match with dialog predefined option
+          recommendedTreatment = 'Root Canal Treatment'  // Exact match with dialog predefined option
           treatmentPriority = 'high'
+        } else if (context.includes('moderate')) {
+          primaryDiagnosis = 'Moderate Caries'
+          recommendedTreatment = 'Composite Filling'
+          treatmentPriority = 'medium'
+        } else if (context.includes('incipient') || context.includes('early')) {
+          primaryDiagnosis = 'Incipient Caries'
+          recommendedTreatment = 'Fluoride Application'
+          treatmentPriority = 'low'
+        } else if (context.includes('rampant')) {
+          primaryDiagnosis = 'Rampant Caries'
+          recommendedTreatment = 'Multiple restorations required'
+          treatmentPriority = 'urgent'
+        } else if (context.includes('root')) {
+          primaryDiagnosis = 'Root Caries'
+          recommendedTreatment = 'Composite Filling'
+          treatmentPriority = 'medium'
+        } else if (context.includes('recurrent') || context.includes('secondary')) {
+          primaryDiagnosis = 'Recurrent Caries'
+          recommendedTreatment = 'Composite Filling'
+          treatmentPriority = 'medium'
         } else {
-          recommendedTreatment = 'Composite filling'
+          primaryDiagnosis = 'Moderate Caries'  // Default to moderate
+          recommendedTreatment = 'Composite Filling'
           treatmentPriority = 'medium'
         }
       } else if (context.includes('abscess')) {
         status = 'attention'
-        primaryDiagnosis = 'Periapical abscess'
-        recommendedTreatment = 'Root canal treatment or extraction'
+        if (context.includes('apical') || context.includes('periapical')) {
+          primaryDiagnosis = 'Apical Abscess'  // Exact match
+        } else {
+          primaryDiagnosis = 'Apical Abscess'
+        }
+        recommendedTreatment = 'Root Canal Treatment'
+        treatmentPriority = 'urgent'
+      } else if (context.includes('pulpitis')) {
+        status = 'attention'
+        if (context.includes('irreversible')) {
+          primaryDiagnosis = 'Irreversible Pulpitis'
+          recommendedTreatment = 'Root Canal Treatment'
+          treatmentPriority = 'high'
+        } else if (context.includes('reversible')) {
+          primaryDiagnosis = 'Reversible Pulpitis'
+          recommendedTreatment = 'Pulp Capping'
+          treatmentPriority = 'medium'
+        } else {
+          primaryDiagnosis = 'Irreversible Pulpitis'
+          recommendedTreatment = 'Root Canal Treatment'
+          treatmentPriority = 'high'
+        }
+      } else if (context.includes('necrosis')) {
+        status = 'attention'
+        primaryDiagnosis = 'Pulp Necrosis'
+        recommendedTreatment = 'Root Canal Treatment'
         treatmentPriority = 'urgent'
       } else if (context.includes('fracture') || context.includes('broken')) {
         status = 'attention'
-        primaryDiagnosis = 'Tooth fracture'
-        recommendedTreatment = 'Crown or composite restoration'
+        if (context.includes('crown')) {
+          primaryDiagnosis = 'Crown Fracture (Enamel-Dentin)'
+          recommendedTreatment = 'Full Crown (Zirconia)'
+        } else if (context.includes('root')) {
+          primaryDiagnosis = 'Root Fracture'
+          recommendedTreatment = 'Extraction'
+        } else {
+          primaryDiagnosis = 'Crown Fracture (Enamel-Dentin)'
+          recommendedTreatment = 'Composite Filling'
+        }
         treatmentPriority = 'high'
       } else if (context.includes('extraction') || context.includes('remove')) {
         status = 'extraction_needed'
-        primaryDiagnosis = 'Non-restorable tooth'
-        recommendedTreatment = 'Extraction'
+        primaryDiagnosis = 'Root Fracture'  // Using this as "non-restorable" category
+        recommendedTreatment = 'Simple Extraction'
         treatmentPriority = 'high'
       } else if (context.includes('root canal') || context.includes('endodontic')) {
         status = 'root_canal'
-        primaryDiagnosis = 'Pulpal involvement'
-        recommendedTreatment = 'Root canal treatment'
+        primaryDiagnosis = 'Irreversible Pulpitis'  // Exact match
+        recommendedTreatment = 'Root Canal Treatment'
         treatmentPriority = 'high'
-      } else if (context.includes('filling')) {
+      } else if (context.includes('filling') || context.includes('restoration')) {
         status = 'filled'
-        primaryDiagnosis = 'Previously restored tooth'
-        recommendedTreatment = 'Monitor'
-        treatmentPriority = 'routine'
-      } else if (context.includes('crown')) {
+        if (context.includes('failed') || context.includes('broken')) {
+          primaryDiagnosis = 'Failed Restoration'
+          recommendedTreatment = 'Composite Filling'
+          treatmentPriority = 'medium'
+        } else {
+          primaryDiagnosis = 'Failed Restoration'
+          recommendedTreatment = 'Monitor'
+          treatmentPriority = 'routine'
+        }
+      } else if (context.includes('crown') && !context.includes('fracture')) {
         status = 'crown'
-        primaryDiagnosis = 'Crowned tooth'
+        primaryDiagnosis = 'Failed Restoration'  // Using as proxy for crowned tooth
         recommendedTreatment = 'Monitor'
         treatmentPriority = 'routine'
       } else if (context.includes('missing')) {
         status = 'missing'
-        primaryDiagnosis = 'Missing tooth'
+        primaryDiagnosis = 'Failed Restoration'  // Using as proxy for missing
         recommendedTreatment = 'Consider implant or bridge'
         treatmentPriority = 'low'
-      } else if (context.includes('pain') || context.includes('sensitive') || context.includes('hurt')) {
+      } else if (context.includes('gingivitis')) {
         status = 'attention'
-        primaryDiagnosis = 'Symptomatic tooth'
-        symptoms = ['Pain', 'Sensitivity']
+        primaryDiagnosis = 'Gingivitis'
+        recommendedTreatment = 'Scaling & Root Planing'
+        treatmentPriority = 'medium'
+      } else if (context.includes('periodontitis')) {
+        status = 'attention'
+        if (context.includes('chronic')) {
+          primaryDiagnosis = 'Chronic Periodontitis'
+        } else if (context.includes('aggressive')) {
+          primaryDiagnosis = 'Aggressive Periodontitis'
+        } else {
+          primaryDiagnosis = 'Chronic Periodontitis'
+        }
+        recommendedTreatment = 'Scaling & Root Planing'
+        treatmentPriority = 'high'
+      } else if (context.includes('hypersensitiv') && (context.includes('diagnos') || context.includes('confirm'))) {
+        // Only auto-diagnose hypersensitivity if explicitly stated as diagnosis
+        status = 'attention'
+        primaryDiagnosis = 'Hypersensitivity'
+        recommendedTreatment = 'Fluoride Application'
+        treatmentPriority = 'low'
+      } else if (context.includes('pain') || context.includes('sensitive') || context.includes('hurt')) {
+        // Only extract symptoms, DO NOT auto-diagnose
+        status = 'attention'
+        primaryDiagnosis = ''  // No auto-diagnosis from symptoms
+        symptoms = []
+        
+        // Extract detailed pain characteristics
+        if (context.includes('sharp')) symptoms.push('Sharp pain')
+        if (context.includes('dull')) symptoms.push('Dull ache')
+        if (context.includes('throbbing')) symptoms.push('Throbbing pain')
+        if (context.includes('shooting')) symptoms.push('Shooting pain')
+        if (context.includes('lingering') || context.includes('linger')) symptoms.push('Lingering pain')
+        if (context.includes('spontaneous')) symptoms.push('Spontaneous pain')
+        
+        if (context.includes('cold') || context.includes('ice')) symptoms.push('Cold sensitivity')
+        if (context.includes('hot') || context.includes('heat')) symptoms.push('Heat sensitivity')
+        if (context.includes('sweet')) symptoms.push('Sweet sensitivity')
+        if (context.includes('chewing') || context.includes('bite') || context.includes('biting')) symptoms.push('Pain when chewing')
+        
+        // Don't assign diagnosis - let AI Copilot suggest based on symptoms
         recommendedTreatment = 'Further investigation required'
         treatmentPriority = 'high'
       }
 
-      // Extract symptoms from context
-      if (context.includes('pain')) symptoms.push('Pain')
-      if (context.includes('sensitive') || context.includes('sensitivity')) symptoms.push('Sensitivity')
+      // Extract symptoms from context (if not already added)
+      if (context.includes('pain') && !symptoms.some(s => s.toLowerCase().includes('pain'))) symptoms.push('Pain')
+      if ((context.includes('sensitive') || context.includes('sensitivity')) && !symptoms.some(s => s.toLowerCase().includes('sensit'))) symptoms.push('Sensitivity')
       if (context.includes('swelling')) symptoms.push('Swelling')
       if (context.includes('bleeding')) symptoms.push('Bleeding')
       if (context.includes('mobile') || context.includes('loose')) symptoms.push('Mobility')
 
+      // Extract pain characteristics for AI Copilot
+      painCharacteristics = {
+        quality: context.includes('sharp') ? 'Sharp' : context.includes('dull') ? 'Dull' : context.includes('throbbing') ? 'Throbbing' : undefined,
+        triggers: [
+          context.includes('cold') && 'Cold',
+          context.includes('hot') && 'Hot',
+          context.includes('chewing') && 'Chewing',
+          context.includes('sweet') && 'Sweet'
+        ].filter(Boolean),
+        duration: context.includes('lingering') ? 'Lingering (>30s)' : context.includes('spontaneous') ? 'Spontaneous' : undefined
+      }
+
+      // Extract clinical findings from context
+      if (context.includes('deep') && context.includes('caries')) {
+        clinicalFindings = 'Deep caries visible on examination'
+      } else if (context.includes('swelling')) {
+        clinicalFindings = 'Swelling observed'
+      } else if (context.includes('visible')) {
+        clinicalFindings = context.substring(0, 150)
+      }
+
       // Remove duplicates from symptoms
       symptoms = [...new Set(symptoms)]
 
-      // Only save if we found a meaningful diagnosis
-      if (primaryDiagnosis) {
+      // Save if we found a meaningful diagnosis OR symptoms (for AI Copilot)
+      if (primaryDiagnosis || symptoms.length > 0) {
         const toothDiagnosisData: ToothDiagnosisData = {
           consultationId,
           patientId,
           toothNumber,
           status,
-          primaryDiagnosis,
-          diagnosisDetails: `Extracted from voice transcript: "${context.substring(0, 200)}"`,
+          primaryDiagnosis: primaryDiagnosis || undefined,  // undefined if no explicit diagnosis
+          diagnosisDetails: primaryDiagnosis ? `Extracted from voice transcript: "${context.substring(0, 200)}"` : undefined,
           symptoms,
-          recommendedTreatment,
+          painCharacteristics: Object.keys(painCharacteristics).length > 0 ? painCharacteristics : undefined,
+          clinicalFindings: clinicalFindings || undefined,
+          recommendedTreatment: recommendedTreatment || undefined,
           treatmentPriority,
           examinationDate: new Date().toISOString().split('T')[0],
-          notes: 'Auto-extracted from voice recording'
+          notes: primaryDiagnosis ? 'Auto-extracted from voice recording' : 'Symptoms extracted - awaiting diagnosis'
         }
 
         console.log(`📋 [TOOTH EXTRACTION] Extracted diagnosis for tooth ${toothNumber}:`, {

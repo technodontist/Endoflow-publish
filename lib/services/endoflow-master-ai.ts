@@ -80,7 +80,9 @@ export async function classifyIntent(
 
 TASK: Classify the user's query into ONE of these categories:
 1. clinical_research - Questions about patients, cohorts, statistics, diagnoses, treatments
-2. appointment_scheduling - Schedule management, booking, rescheduling, availability
+2. appointment_scheduling - BOTH viewing schedules AND creating/booking appointments
+   - Viewing: "How many patients today?", "What's my schedule?", "Show appointments"
+   - Creating: "Schedule appointment for John", "Book RCT tomorrow"
 3. treatment_planning - Treatment suggestions, protocols, clinical recommendations
 4. patient_inquiry - Specific patient information, history, records
 5. general_question - General dental questions, how-to queries
@@ -115,6 +117,12 @@ Input: "Find patients with RCT on tooth 36 and 46 last month"
 Output: {"type": "clinical_research", "confidence": 0.98, "entities": {"toothNumber": "36", "treatmentType": "RCT", "dateRange": {...}}, "requiresClarification": false}
 
 Input: "What's my schedule today"
+Output: {"type": "appointment_scheduling", "confidence": 0.95, "entities": {}, "requiresClarification": false}
+
+Input: "How many patients do I have today in my appointment"
+Output: {"type": "appointment_scheduling", "confidence": 0.95, "entities": {}, "requiresClarification": false}
+
+Input: "Show me today's appointments"
 Output: {"type": "appointment_scheduling", "confidence": 0.95, "entities": {}, "requiresClarification": false}
 
 Input: "Schedule RCT for John tomorrow at 2 PM"
@@ -273,13 +281,36 @@ async function delegateToScheduler(
   try {
     console.log('📅 [SCHEDULER AGENT] Processing query...')
 
-    // Check if this is a query about schedule or a booking request
-    const isBooking = userQuery.toLowerCase().includes('schedule') ||
-                      userQuery.toLowerCase().includes('book') ||
-                      userQuery.toLowerCase().includes('create appointment')
+    // Check if this is a booking request (schedule, book, create appointment)
+    const isBookingRequest =
+      userQuery.toLowerCase().includes('book') ||
+      userQuery.toLowerCase().includes('create appointment') ||
+      userQuery.toLowerCase().includes('schedule appointment') ||
+      userQuery.toLowerCase().includes('set up appointment') ||
+      userQuery.toLowerCase().includes('make appointment')
 
-    if (isBooking && entities.patientName) {
-      // Use AI appointment scheduler
+    // Check if this is a schedule query (view schedule, my schedule, today's appointments)
+    const isScheduleQuery =
+      userQuery.toLowerCase().includes('my schedule') ||
+      userQuery.toLowerCase().includes('today\'s schedule') ||
+      userQuery.toLowerCase().includes('show schedule') ||
+      userQuery.toLowerCase().includes('view schedule') ||
+      userQuery.toLowerCase().includes('what\'s my schedule') ||
+      userQuery.toLowerCase().includes('how many patients') ||
+      userQuery.toLowerCase().includes('how many appointments') ||  // NEW - specifically for appointment count queries
+      userQuery.toLowerCase().includes('today\'s appointments') ||
+      userQuery.toLowerCase().includes('today appointment') ||
+      userQuery.toLowerCase().includes('today in my appointment') ||
+      userQuery.toLowerCase().includes('appointments today') ||
+      (userQuery.toLowerCase().includes('count') && userQuery.toLowerCase().includes('appointment')) ||
+      (userQuery.toLowerCase().includes('list') && userQuery.toLowerCase().includes('appointment')) ||
+      (userQuery.toLowerCase().includes('how many') && userQuery.toLowerCase().includes('today'))
+
+    console.log('🔍 [SCHEDULER AGENT] Query analysis:', { isBookingRequest, isScheduleQuery, query: userQuery })
+
+    if (isBookingRequest) {
+      // Attempt to create appointment - let scheduleAppointmentWithAI handle validation
+      console.log('🎯 [SCHEDULER AGENT] Detected booking request, calling AI scheduler...')
       const result = await scheduleAppointmentWithAI(userQuery, dentistId)
 
       return {
@@ -289,8 +320,9 @@ async function delegateToScheduler(
         error: result.error,
         processingTime: Date.now() - startTime
       }
-    } else {
+    } else if (isScheduleQuery) {
       // Query schedule - fetch appointments and patients separately
+      console.log('📅 [SCHEDULER AGENT] Detected schedule query, fetching appointments...')
       const supabase = await createServiceClient()
       const today = new Date().toISOString().split('T')[0]
 
@@ -330,6 +362,18 @@ async function delegateToScheduler(
         agentName: 'Appointment Scheduler AI',
         success: true,
         data: { appointments: enrichedAppointments, query: 'schedule_view' },
+        processingTime: Date.now() - startTime
+      }
+    } else {
+      // Fallback: Unclear intent - attempt to book anyway
+      console.log('⚠️ [SCHEDULER AGENT] Unclear intent, attempting AI scheduler as fallback...')
+      const result = await scheduleAppointmentWithAI(userQuery, dentistId)
+
+      return {
+        agentName: 'Appointment Scheduler AI',
+        success: result.success,
+        data: result,
+        error: result.error,
         processingTime: Date.now() - startTime
       }
     }

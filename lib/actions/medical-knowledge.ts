@@ -480,3 +480,34 @@ export async function uploadMedicalKnowledgeFromPDFAction(pdfData: {
     return { success: false, error: `Failed to upload PDF: ${error instanceof Error ? error.message : 'Unknown error'}` }
   }
 }
+
+/**
+ * Get all medical knowledge entries (for listing/management)
+ */
+export async function getMedicalKnowledgeListAction() {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'dentist' || user.status !== 'active') {
+      return { success: false, error: 'Only active dentists can view medical knowledge' }
+    }
+
+    const supabase = await createServiceClient()
+
+    const { data, error } = await supabase
+      .schema('api')
+      .from('medical_knowledge')
+      .select('id, title, source_type, specialty, authors, publication_year, journal, topics, created_at, uploaded_by')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('❌ [MEDICAL KNOWLEDGE] Failed to fetch list:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, data }
+  } catch (error) {
+    console.error('❌ [MEDICAL KNOWLEDGE] Error:', error)
+    return { success: false, error: 'Failed to fetch medical knowledge list' }
+  }
+}
+

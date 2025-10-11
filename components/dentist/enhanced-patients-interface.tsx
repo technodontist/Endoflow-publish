@@ -1,13 +1,23 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { GripVertical, Activity, FileText, Calendar, Stethoscope, Camera, Bluetooth as Tooth } from "lucide-react"
+import { GripVertical, Activity, FileText, Calendar, Stethoscope, Camera, Bluetooth as Tooth, Trash2, AlertTriangle } from "lucide-react"
 import { useResizable } from "@/hooks/use-resizable"
 import { PatientQueueList, type QueuePatient } from "@/components/dentist/patient-queue-list"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { InteractiveDentalChart } from "./interactive-dental-chart"
 import { PatientFilesViewer } from "@/components/patient-files-viewer"
 import { PatientTimeline } from "@/components/dentist/patient-timeline"
@@ -17,6 +27,8 @@ import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { getPatientToothDiagnoses } from "@/lib/actions/tooth-diagnoses"
 import { getPatientFollowUpOverviewAction } from "@/lib/actions/followup-overview"
+import { deletePatientAction } from "@/lib/actions/dentist"
+import { toast } from "sonner"
 
 interface Patient {
   id: string
@@ -63,6 +75,10 @@ export function EnhancedPatientsInterface() {
   const [consultations, setConsultations] = useState<any[]>([])
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [version, setVersion] = useState(0)
+
+  // Delete dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Load patient data when selected patient changes
   useEffect(() => {
@@ -222,6 +238,33 @@ export function EnhancedPatientsInterface() {
     }
   }
 
+  const handleDeletePatient = async () => {
+    if (!selectedPatient?.id) return
+
+    setIsDeleting(true)
+    try {
+      const result = await deletePatientAction(selectedPatient.id)
+
+      if (result.success) {
+        toast.success("Patient Deleted", {
+          description: `${selectedPatient.firstName} ${selectedPatient.lastName} and all related records have been permanently deleted.`,
+        })
+        setSelectedPatient(null)
+        setShowDeleteDialog(false)
+      } else {
+        toast.error("Delete Failed", {
+          description: result.error || "Failed to delete patient",
+        })
+      }
+    } catch (error) {
+      toast.error("Error", {
+        description: "An unexpected error occurred while deleting the patient",
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const patientForComponents: Patient | null = selectedPatient ? {
     id: selectedPatient.id,
     firstName: selectedPatient.firstName,
@@ -327,6 +370,15 @@ export function EnhancedPatientsInterface() {
                     </Button>
                     <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
                       New Appointment
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => setShowDeleteDialog(true)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete Patient
                     </Button>
                   </div>
                 </div>
@@ -539,6 +591,59 @@ export function EnhancedPatientsInterface() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Delete Patient Permanently?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p className="font-medium text-gray-900">
+                Are you sure you want to delete{" "}
+                <span className="font-bold">
+                  {selectedPatient?.firstName} {selectedPatient?.lastName}
+                </span>
+                ?
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-900">
+                <p className="font-semibold mb-2">⚠️ This action cannot be undone!</p>
+                <p className="text-xs">The following data will be permanently deleted:</p>
+                <ul className="list-disc list-inside text-xs mt-2 space-y-1">
+                  <li>All consultations and medical records</li>
+                  <li>All treatments and tooth diagnoses</li>
+                  <li>All appointments (past and future)</li>
+                  <li>All uploaded medical files and images</li>
+                  <li>All messages and notifications</li>
+                  <li>Patient profile and account</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeletePatient}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Permanently
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

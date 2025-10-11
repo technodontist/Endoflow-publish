@@ -14,6 +14,14 @@ export interface ToothDiagnosisData {
   primaryDiagnosis?: string
   diagnosisDetails?: string
   symptoms?: string[] // Will be stored as JSON
+  painCharacteristics?: {
+    quality?: string
+    intensity?: number
+    location?: string
+    duration?: string
+    triggers?: string[]
+  } // Pain details for AI Copilot
+  clinicalFindings?: string // Clinical observations from voice
   recommendedTreatment?: string
   treatmentPriority: 'urgent' | 'high' | 'medium' | 'low' | 'routine'
   treatmentDetails?: string

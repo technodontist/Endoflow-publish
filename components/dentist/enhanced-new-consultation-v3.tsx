@@ -2402,7 +2402,10 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 treatmentPriority: diag.treatmentPriority,
                 notes: diag.notes,
                 diagnosisDetails: diag.diagnosisDetails,
+                // NEW: Pass symptoms and pain characteristics for AI Copilot
                 symptoms: diag.symptoms || [],
+                painCharacteristics: diag.painCharacteristics,
+                clinicalFindings: diag.clinicalFindings,
                 estimatedDuration: diag.estimatedDuration,
                 estimatedCost: diag.estimatedCost,
                 followUpRequired: false,
@@ -2411,7 +2414,10 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 selectedDiagnoses: diag.primaryDiagnosis ? [diag.primaryDiagnosis] : [],
                 selectedTreatments: diag.recommendedTreatment ? [diag.recommendedTreatment] : [],
                 priority: diag.treatmentPriority,
-                treatmentNotes: diag.notes
+                treatmentNotes: diag.notes,
+                // Voice extraction flag
+                isVoiceExtracted: true,
+                voiceExtractedAt: new Date().toISOString()
               }
             })
             console.log('✅ [VOICE] Updated toothData with', toothDiagnoses.length, 'voice diagnoses (temporary)')

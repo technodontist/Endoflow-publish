@@ -1,0 +1,216 @@
+-- Migration: Add Clinic Analysis Chat Sessions
+-- Purpose: Store chat history for Clinic Analysis AI chatbot (Gemini-style)
+-- Created: 2025-01-10
+
+-- ============================================
+-- Table 1: Chat Sessions (Threads)
+-- ============================================
+CREATE TABLE IF NOT EXISTS api.clinic_analysis_chat_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dentist_id UUID NOT NULL, -- References auth.users.id
+
+    -- Session metadata
+    title TEXT NOT NULL DEFAULT 'New Chat',
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW() NOT NULL,
+
+    -- Session summary
+    message_count INTEGER NOT NULL DEFAULT 0,
+    last_message_preview TEXT, -- First 100 chars of last message
+    last_activity_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- ============================================
+-- Table 2: Chat Messages
+-- ============================================
+CREATE TABLE IF NOT EXISTS api.clinic_analysis_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES api.clinic_analysis_chat_sessions(id) ON DELETE CASCADE,
+
+    -- Message content
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT NOW() NOT NULL,
+
+    -- Metadata (optional)
+    metadata JSONB, -- cohort_size, analysis_type, processing_time, source, etc.
+
+    -- Ordering
+    sequence_number INTEGER NOT NULL DEFAULT 0
+);
+
+-- ============================================
+-- Indexes for Performance
+-- ============================================
+
+-- Session indexes
+CREATE INDEX IF NOT EXISTS idx_clinic_chat_sessions_dentist_id
+    ON api.clinic_analysis_chat_sessions(dentist_id);
+
+CREATE INDEX IF NOT EXISTS idx_clinic_chat_sessions_updated_at
+    ON api.clinic_analysis_chat_sessions(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_clinic_chat_sessions_last_activity
+    ON api.clinic_analysis_chat_sessions(last_activity_at DESC);
+
+-- Message indexes
+CREATE INDEX IF NOT EXISTS idx_clinic_chat_messages_session_id
+    ON api.clinic_analysis_messages(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_clinic_chat_messages_timestamp
+    ON api.clinic_analysis_messages(timestamp ASC);
+
+CREATE INDEX IF NOT EXISTS idx_clinic_chat_messages_sequence
+    ON api.clinic_analysis_messages(session_id, sequence_number);
+
+-- ============================================
+-- Row Level Security (RLS)
+-- ============================================
+
+-- Enable RLS
+ALTER TABLE api.clinic_analysis_chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api.clinic_analysis_messages ENABLE ROW LEVEL SECURITY;
+
+-- Sessions: Dentists can view only their own sessions
+CREATE POLICY "Dentists can view their own chat sessions"
+    ON api.clinic_analysis_chat_sessions
+    FOR SELECT
+    TO authenticated
+    USING (
+        dentist_id = auth.uid()
+        AND EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+            AND role = 'dentist'
+            AND status = 'active'
+        )
+    );
+
+-- Sessions: Dentists can insert their own sessions
+CREATE POLICY "Dentists can insert their own chat sessions"
+    ON api.clinic_analysis_chat_sessions
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        dentist_id = auth.uid()
+        AND EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+            AND role = 'dentist'
+            AND status = 'active'
+        )
+    );
+
+-- Sessions: Dentists can update their own sessions
+CREATE POLICY "Dentists can update their own chat sessions"
+    ON api.clinic_analysis_chat_sessions
+    FOR UPDATE
+    TO authenticated
+    USING (
+        dentist_id = auth.uid()
+        AND EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+            AND role = 'dentist'
+            AND status = 'active'
+        )
+    );
+
+-- Sessions: Dentists can delete their own sessions
+CREATE POLICY "Dentists can delete their own chat sessions"
+    ON api.clinic_analysis_chat_sessions
+    FOR DELETE
+    TO authenticated
+    USING (
+        dentist_id = auth.uid()
+        AND EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+            AND role = 'dentist'
+            AND status = 'active'
+        )
+    );
+
+-- Messages: Dentists can view messages from their own sessions
+CREATE POLICY "Dentists can view messages from their own sessions"
+    ON api.clinic_analysis_messages
+    FOR SELECT
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM api.clinic_analysis_chat_sessions
+            WHERE id = session_id
+            AND dentist_id = auth.uid()
+        )
+    );
+
+-- Messages: Dentists can insert messages to their own sessions
+CREATE POLICY "Dentists can insert messages to their own sessions"
+    ON api.clinic_analysis_messages
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM api.clinic_analysis_chat_sessions
+            WHERE id = session_id
+            AND dentist_id = auth.uid()
+        )
+    );
+
+-- Messages: Dentists can delete messages from their own sessions
+CREATE POLICY "Dentists can delete messages from their own sessions"
+    ON api.clinic_analysis_messages
+    FOR DELETE
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM api.clinic_analysis_chat_sessions
+            WHERE id = session_id
+            AND dentist_id = auth.uid()
+        )
+    );
+
+-- ============================================
+-- Permissions
+-- ============================================
+GRANT SELECT, INSERT, UPDATE, DELETE ON api.clinic_analysis_chat_sessions TO authenticated;
+GRANT SELECT, INSERT, DELETE ON api.clinic_analysis_messages TO authenticated;
+GRANT USAGE ON SCHEMA api TO authenticated;
+
+-- ============================================
+-- Helper Function: Update Session Metadata
+-- ============================================
+CREATE OR REPLACE FUNCTION api.update_clinic_chat_session_metadata()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update message count and last activity
+    UPDATE api.clinic_analysis_chat_sessions
+    SET
+        message_count = (
+            SELECT COUNT(*)
+            FROM api.clinic_analysis_messages
+            WHERE session_id = NEW.session_id
+        ),
+        last_message_preview = LEFT(NEW.content, 100),
+        last_activity_at = NEW.timestamp,
+        updated_at = NOW()
+    WHERE id = NEW.session_id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger: Auto-update session metadata when new message is added
+CREATE TRIGGER trigger_update_clinic_chat_session_metadata
+    AFTER INSERT ON api.clinic_analysis_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION api.update_clinic_chat_session_metadata();
+
+-- ============================================
+-- Comments for Documentation
+-- ============================================
+COMMENT ON TABLE api.clinic_analysis_chat_sessions IS 'Chat sessions for Clinic Analysis AI chatbot - Gemini-style conversation threads';
+COMMENT ON TABLE api.clinic_analysis_messages IS 'Individual messages within clinic analysis chat sessions';
+COMMENT ON COLUMN api.clinic_analysis_chat_sessions.last_message_preview IS 'First 100 characters of last message for sidebar preview';
+COMMENT ON COLUMN api.clinic_analysis_messages.metadata IS 'JSON metadata: cohort_size, analysis_type, processing_time, source, etc.';
+COMMENT ON COLUMN api.clinic_analysis_messages.sequence_number IS 'Message ordering within session for proper chronological display';

@@ -266,3 +266,103 @@
     height: 95vh !important;
   }
 }
+
+/* Markdown styling for AI responses in self-learning chat */
+.prose {
+  color: #374151;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  color: #1f2937;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  line-height: 1.4;
+}
+
+.prose h1 { font-size: 1.5em; }
+.prose h2 { font-size: 1.3em; }
+.prose h3 { font-size: 1.1em; }
+
+.prose p {
+  margin-bottom: 0.75em;
+  line-height: 1.6;
+}
+
+.prose ul, .prose ol {
+  margin-left: 1.25em;
+  margin-bottom: 0.75em;
+  padding-left: 0.5em;
+}
+
+.prose li {
+  margin-bottom: 0.25em;
+  line-height: 1.5;
+}
+
+.prose code {
+  background: #f3f4f6;
+  padding: 0.125em 0.35em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+  font-family: 'Courier New', monospace;
+  color: #be123c;
+}
+
+.prose pre {
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 1em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.prose pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose a {
+  color: #0d9488;
+  text-decoration: underline;
+}
+
+.prose a:hover {
+  color: #0f766e;
+}
+
+.prose blockquote {
+  border-left: 3px solid #0d9488;
+  padding-left: 1em;
+  margin: 0.75em 0;
+  font-style: italic;
+  color: #4b5563;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+}
+
+.prose th, .prose td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5em;
+  text-align: left;
+}
+
+.prose th {
+  background: #f3f4f6;
+  font-weight: 600;
+}

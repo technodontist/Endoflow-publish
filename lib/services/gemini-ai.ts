@@ -174,6 +174,125 @@ export async function generateChatCompletion(
  * @param patientContext - Patient-specific information
  * @returns Structured AI treatment suggestion
  */
+/**
+ * Generate diagnosis suggestion based on symptoms and clinical findings
+ * Uses Gemini with RAG from medical knowledge base
+ */
+export async function generateDiagnosisSuggestion(params: {
+  symptoms: string[]
+  painCharacteristics?: {
+    quality?: string
+    intensity?: number
+    location?: string
+    duration?: string
+  }
+  clinicalFindings?: string
+  toothNumber?: string
+  medicalContext: Array<{ title: string; content: string; journal?: string; year?: number; doi?: string }>
+  patientContext?: {
+    age?: number
+    medicalHistory?: string
+  }
+}): Promise<{
+  diagnosis: string
+  confidence: number
+  reasoning: string
+  clinicalSignificance: string
+  differentialDiagnoses: string[]
+  recommendedTests?: string[]
+  sources: Array<{ title: string; journal: string; year: number; doi?: string }>
+}> {
+  const { symptoms, painCharacteristics, clinicalFindings, toothNumber, medicalContext, patientContext } = params
+
+  // Build context from retrieved medical knowledge
+  const context = medicalContext
+    .map(
+      (doc, idx) =>
+        `[Source ${idx + 1}]\n` +
+        `Title: ${doc.title}\n` +
+        `Journal: ${doc.journal || 'N/A'} (${doc.year || 'N/A'})\n` +
+        `Content: ${doc.content.substring(0, 1500)}...\n`
+    )
+    .join('\n---\n\n')
+
+  const systemInstruction = `You are an expert dental diagnostician AI assistant. Based on evidence from research papers and textbooks, provide diagnostic recommendations.
+
+IMPORTANT: Respond ONLY with valid JSON in this exact format:
+{
+  "diagnosis": "Primary diagnosis name",
+  "confidence": 85,
+  "reasoning": "Evidence-based explanation citing the research",
+  "clinicalSignificance": "Clinical significance and prognosis",
+  "differentialDiagnoses": ["Differential diagnosis 1", "Differential diagnosis 2", "Differential diagnosis 3"],
+  "recommendedTests": ["Test 1", "Test 2"],
+  "sources": [
+    {"title": "Paper title", "journal": "Journal name", "year": 2023, "doi": "optional"}
+  ]
+}
+
+Confidence score should be 0-100 based on evidence strength.`
+
+  const painText = painCharacteristics
+    ? `Pain Quality: ${painCharacteristics.quality || 'Not specified'}
+Pain Intensity: ${painCharacteristics.intensity || 'Not specified'}/10
+Pain Location: ${painCharacteristics.location || 'Not specified'}
+Duration: ${painCharacteristics.duration || 'Not specified'}`
+    : 'No pain characteristics provided'
+
+  // Build user prompt differently based on whether we have medical context
+  const userPrompt = medicalContext.length > 0
+    ? `Based on this medical evidence:\n\n${context}\n\nProvide diagnostic recommendation for:
+Symptoms: ${symptoms.join(', ')}
+${painText}
+Clinical Findings: ${clinicalFindings || 'Not provided'}
+${toothNumber ? `Tooth Number: ${toothNumber}` : ''}
+${
+    patientContext
+      ? `Patient Age: ${patientContext.age}\nMedical History: ${patientContext.medicalHistory}`
+      : ''
+  }
+
+Focus on dental diagnoses from the predefined categories: Caries & Cavities, Pulpal Conditions, Periapical Conditions, Periodontal, Restorative, Developmental Anomalies, Traumatic Injuries, Wear & Erosion, Tooth Resorption, and Other Conditions.`
+    : `Using your extensive knowledge of dental medicine, provide diagnostic recommendation for:
+
+Symptoms: ${symptoms.join(', ')}
+${painText}
+Clinical Findings: ${clinicalFindings || 'Not provided'}
+${toothNumber ? `Tooth Number: ${toothNumber}` : ''}
+${
+    patientContext
+      ? `Patient Age: ${patientContext.age}\nMedical History: ${patientContext.medicalHistory}`
+      : ''
+  }
+
+Focus on dental diagnoses from the predefined categories: Caries & Cavities, Pulpal Conditions, Periapical Conditions, Periodontal, Restorative, Developmental Anomalies, Traumatic Injuries, Wear & Erosion, Tooth Resorption, and Other Conditions.
+
+Provide your best diagnostic recommendation based on dental medical knowledge and evidence-based guidelines.`
+
+  const messages: GeminiChatMessage[] = [
+    {
+      role: 'user',
+      parts: [{ text: userPrompt }]
+    }
+  ]
+
+  const responseText = await generateChatCompletion(messages, {
+    model: 'gemini-2.0-flash',
+    temperature: 0.3,
+    systemInstruction,
+    responseFormat: 'json'
+  })
+
+  // Parse JSON response
+  try {
+    const suggestion = JSON.parse(responseText)
+    return suggestion
+  } catch (parseError) {
+    console.error('❌ [GEMINI] Failed to parse JSON response:', responseText)
+    throw new Error('AI returned invalid JSON format')
+  }
+}
+
 export async function generateTreatmentSuggestion(params: {
   diagnosis: string
   toothNumber: string
@@ -482,7 +601,7 @@ Always structure your response as JSON in this format:
       if (c.diagnosis) {
         try {
           const diagData = typeof c.diagnosis === 'string' ? JSON.parse(c.diagnosis) : c.diagnosis
-          
+
           // Handle different diagnosis formats
           if (Array.isArray(diagData)) {
             // Format: ["Pulpitis", "Root canal needed"]
@@ -502,6 +621,16 @@ Always structure your response as JSON in this format:
         }
       }
     })
+
+    // Extract tooth-level diagnoses (CRITICAL for detailed dental analysis)
+    const toothDiagnoses = patient.toothDiagnoses?.map((td: any) => ({
+      tooth: td.tooth_number || td.toothNumber,
+      diagnosis: td.primary_diagnosis || td.primaryDiagnosis,
+      status: td.status,
+      details: td.diagnosis_details || td.diagnosisDetails,
+      treatment: td.recommended_treatment || td.recommendedTreatment,
+      priority: td.treatment_priority || td.treatmentPriority
+    })) || []
     
     // Extract treatments
     const treatments = patient.treatments?.map((t: any) => ({
@@ -525,7 +654,9 @@ Always structure your response as JSON in this format:
       consultationsCount: patient.consultations?.length || 0,
       treatmentsCount: patient.treatments?.length || 0,
       appointmentsCount: patient.appointments?.length || 0,
+      toothDiagnosesCount: patient.toothDiagnoses?.length || 0,
       diagnoses,
+      toothDiagnoses,
       treatments,
       appointments,
       medicalHistory: patient.medical_history_summary || patient.medicalHistorySummary || 'None recorded'
@@ -541,11 +672,14 @@ Always structure your response as JSON in this format:
       treatmentsCount: cohortData[0].treatments?.length || 0,
       hasAppointments: !!cohortData[0].appointments,
       appointmentsCount: cohortData[0].appointments?.length || 0,
+      hasToothDiagnoses: !!cohortData[0].toothDiagnoses,
+      toothDiagnosesCount: cohortData[0].toothDiagnoses?.length || 0,
       sampleTreatment: cohortData[0].treatments?.[0] || null,
       sampleConsultation: cohortData[0].consultations?.[0] ? {
         hasDiagnosis: !!cohortData[0].consultations[0].diagnosis,
         diagnosisType: typeof cohortData[0].consultations[0].diagnosis
-      } : null
+      } : null,
+      sampleToothDiagnosis: cohortData[0].toothDiagnoses?.[0] || null
     }, null, 2))
   }
   
@@ -580,8 +714,9 @@ DETAILED PATIENT RECORDS (showing all ${detailedPatients.length} patients):
 ${detailedPatients.map(p => `
 Patient #${p.patientNumber}: ${p.name}
 - Age: ${p.age}
-- Consultations: ${p.consultationsCount} | Treatments: ${p.treatmentsCount} | Appointments: ${p.appointmentsCount}
-- Diagnoses: ${p.diagnoses.length > 0 ? p.diagnoses.join(', ') : 'None recorded'}
+- Consultations: ${p.consultationsCount} | Treatments: ${p.treatmentsCount} | Appointments: ${p.appointmentsCount} | Tooth Diagnoses: ${p.toothDiagnosesCount}
+- General Diagnoses: ${p.diagnoses.length > 0 ? p.diagnoses.join(', ') : 'None recorded'}
+- Tooth-Level Diagnoses: ${p.toothDiagnoses.length > 0 ? p.toothDiagnoses.map((td: any) => `Tooth ${td.tooth}: ${td.diagnosis || td.status}${td.treatment ? ` (Treatment: ${td.treatment})` : ''}`).join(' | ') : 'None recorded'}
 - Recent Treatments: ${p.treatments.slice(0, 3).map(t => `${t.type} (${t.status})`).join(', ') || 'None'}
 - Recent Appointments: ${p.appointments.slice(0, 3).map(a => `${a.type} - ${a.status}`).join(', ') || 'None'}
 - Medical History: ${p.medicalHistory}`).join('\n')}
