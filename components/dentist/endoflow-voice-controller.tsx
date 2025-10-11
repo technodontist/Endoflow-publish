@@ -204,10 +204,15 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
         } else {
           setTranscript(transcriptRef.current + interimTranscript)
           setInputValue(transcriptRef.current + interimTranscript)
+          
+          // Update last speech time for interim results too
+          if (interimTranscript) {
+            lastSpeechTimeRef.current = Date.now()
+          }
         }
         
-        // Reset silence timer when speech is detected
-        if (autoModeRef.current && !autoSubmitRef.current) {
+        // Reset silence timer when any speech is detected (both final and interim)
+        if ((finalTranscript || interimTranscript) && autoModeRef.current && !autoSubmitRef.current && isListeningRef.current) {
           console.log('⏱️ [AUTO MODE] Resetting silence timer')
           resetSilenceTimer()
         }
@@ -567,15 +572,10 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
 
   // Handle automated submission
   const handleAutoSubmit = async () => {
-    // Check if already submitting
-    if (autoSubmitRef.current) {
-      console.log('⚠️ [AUTO MODE] Already submitting, skipping')
-      return
-    }
-    
     const query = transcriptRef.current.trim()
     if (!query || isProcessing) {
       console.log('⚠️ [AUTO MODE] Cannot submit - query empty or processing')
+      autoSubmitRef.current = false // Reset flag if cannot submit
       return
     }
     
