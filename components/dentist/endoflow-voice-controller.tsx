@@ -58,6 +58,10 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   const [autoMode, setAutoMode] = useState(true) // Automated conversation mode
   const [silenceTimeout, setSilenceTimeout] = useState<number | null>(null)
   
+  // Refs for wake word state checks (prevent stale closure issues)
+  const isExpandedRef = useRef(false)
+  const isWakeWordActiveRef = useRef(true)
+  
   // Sync autoMode state with ref for closure access
   useEffect(() => {
     autoModeRef.current = autoMode
@@ -69,6 +73,16 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     isListeningRef.current = isListening
     console.log('🎤 [LISTENING STATE] Changed to:', isListening)
   }, [isListening])
+  
+  // Sync isExpanded state with ref for closure access
+  useEffect(() => {
+    isExpandedRef.current = isExpanded
+  }, [isExpanded])
+  
+  // Sync isWakeWordActive state with ref for closure access
+  useEffect(() => {
+    isWakeWordActiveRef.current = isWakeWordActive
+  }, [isWakeWordActive])
   
   // Fallback: Auto-submit if we have text but user stopped speaking
   useEffect(() => {
@@ -383,26 +397,26 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
         }
 
         wakeWordRecognitionRef.current.onend = () => {
-          console.log('🔄 [WAKE WORD] Recognition ended. Active:', isWakeWordActive, 'Expanded:', isExpanded, 'Listening:', isListening)
+          console.log('🔄 [WAKE WORD] Recognition ended. Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
           
           // Always update state on end
           const wasListening = isWakeWordListeningRef.current
           isWakeWordListeningRef.current = false
           setIsListeningForWakeWord(false)
           
-          // Auto-restart wake word detection if still active and not expanded
-          if (wasListening && isWakeWordActive && !isExpanded && !isListening) {
+          // Auto-restart wake word detection if still active and not expanded - USE REFS for current state!
+          if (wasListening && isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current) {
             setTimeout(() => {
-              // Double-check conditions before restart
-              if (isWakeWordActive && !isExpanded && !isListening && !isWakeWordListeningRef.current) {
+              // Double-check conditions before restart - USE REFS!
+              if (isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !isWakeWordListeningRef.current) {
                 console.log('♻️ [WAKE WORD] Restarting wake word detection...')
                 startWakeWordListening()
               } else {
-                console.log('⏸️ [WAKE WORD] Skipping restart - conditions not met')
+                console.log('⏸️ [WAKE WORD] Skipping restart - Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
               }
             }, 500)
           } else {
-            console.log('⏹️ [WAKE WORD] Not restarting - wasListening:', wasListening, 'conditions not met')
+            console.log('⏹️ [WAKE WORD] Not restarting - wasListening:', wasListening, 'Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
           }
         }
 
