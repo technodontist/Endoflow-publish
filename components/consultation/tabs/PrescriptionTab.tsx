@@ -93,7 +93,10 @@ export function PrescriptionTab({ data, onChange, isReadOnly = false, onSave }: 
     allergies: (data?.allergies || []) as string[]
   }), [data])
 
-  const previous = (data?.previous_prescriptions || []) as MedicationItem[]
+  const previous = useMemo(() => {
+    const prev = data?.previous_prescriptions
+    return Array.isArray(prev) ? prev : []
+  }, [data?.previous_prescriptions]) as MedicationItem[]
 
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
@@ -194,11 +197,11 @@ export function PrescriptionTab({ data, onChange, isReadOnly = false, onSave }: 
           {/* Previous prescriptions viewer */}
           <div>
             <Label>Previous Prescriptions</Label>
-            {previous.length === 0 ? (
+            {(!Array.isArray(previous) || previous.length === 0) ? (
               <div className="text-sm text-gray-500 mt-2">No previous prescriptions found</div>
             ) : (
               <div className="space-y-2 mt-2">
-                {previous.map((p, idx) => (
+                {Array.isArray(previous) && previous.map((p, idx) => (
                   <div key={idx} className="text-sm text-gray-700">
                     • {p.name}{p.dosage ? ` - ${p.dosage}` : ''}{p.frequency ? `, ${p.frequency}` : ''}{p.duration ? ` for ${p.duration}` : ''}
                   </div>

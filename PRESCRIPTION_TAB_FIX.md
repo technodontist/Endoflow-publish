@@ -178,15 +178,52 @@ interface Props {
 - `components/consultation/tabs/PrescriptionTab.tsx` - Main file fixed
 - `components/dentist/enhanced-new-consultation-v3.tsx` - Parent component calling PrescriptionTab
 
+## Additional Fix: previous.map is not a function
+
+The same issue occurred with the `previous` variable (previous prescriptions).
+
+### Changes Made
+
+#### 8. **Fixed previous prescriptions** (Lines 96-99)
+```typescript
+// Before
+const previous = (data?.previous_prescriptions || []) as MedicationItem[]
+
+// After
+const previous = useMemo(() => {
+  const prev = data?.previous_prescriptions
+  return Array.isArray(prev) ? prev : []
+}, [data?.previous_prescriptions]) as MedicationItem[]
+```
+
+#### 9. **Fixed previous prescriptions render** (Lines 200, 204)
+```typescript
+// Before
+{previous.length === 0 ? (
+  <div className="text-sm text-gray-500 mt-2">No previous prescriptions found</div>
+) : (
+  <div className="space-y-2 mt-2">
+    {previous.map((p, idx) => (
+
+// After
+{(!Array.isArray(previous) || previous.length === 0) ? (
+  <div className="text-sm text-gray-500 mt-2">No previous prescriptions found</div>
+) : (
+  <div className="space-y-2 mt-2">
+    {Array.isArray(previous) && previous.map((p, idx) => (
+```
+
 ## Commit Message
 ```
-fix: Ensure medications is always an array in PrescriptionTab
+fix: Ensure medications and previous are always arrays in PrescriptionTab
 
 - Add Array.isArray() validation in state initialization
 - Add runtime array checks before using array methods
 - Prevent "medications.some is not a function" error
+- Prevent "previous.map is not a function" error
 - Handle malformed prescription data gracefully
 - Add defensive checks in all medication functions
+- Use useMemo for previous prescriptions with array validation
 ```
 
 ---

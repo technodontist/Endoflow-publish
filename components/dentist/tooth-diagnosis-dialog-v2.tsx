@@ -48,6 +48,7 @@ export function ToothDiagnosisDialogV2({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [manualSymptoms, setManualSymptoms] = useState<string[]>([])
+  const [activeAITab, setActiveAITab] = useState<'diagnosis' | 'treatment'>('diagnosis')
 
   // Helper function to normalize and match diagnosis names
   const normalizeDiagnosisName = (diagnosis: string): string | null => {
@@ -328,8 +329,12 @@ export function ToothDiagnosisDialogV2({
       const diagnosisText = newDiagnoses.join(', ')
       const autoStatus = getStatusFromDiagnosis(diagnosisText)
       setStatus(autoStatus)
+      // Auto-switch to treatment tab when diagnosis is selected
+      setActiveAITab('treatment')
     } else if (newDiagnoses.length === 0) {
       setStatus('healthy')
+      // Switch back to diagnosis tab when no diagnosis selected
+      setActiveAITab('diagnosis')
     }
   }
 
@@ -539,72 +544,6 @@ export function ToothDiagnosisDialogV2({
                 />
               </div>
 
-              {/* Quick Symptom Entry - Triggers AI Copilot */}
-              {(!selectedDiagnoses || selectedDiagnoses.length === 0) && (
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-blue-600" />
-                    Quick Symptom Entry
-                  </Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Sharp pain', 'Dull ache', 'Cold sensitivity', 'Heat sensitivity', 
-                      'Swelling', 'Pain when chewing', 'Spontaneous pain', 'Lingering pain'].map(symptom => (
-                      <Button
-                        key={symptom}
-                        variant={manualSymptoms.includes(symptom) ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          if (manualSymptoms.includes(symptom)) {
-                            setManualSymptoms(prev => prev.filter(s => s !== symptom))
-                          } else {
-                            setManualSymptoms(prev => [...prev, symptom])
-                          }
-                        }}
-                        className="text-xs h-7"
-                      >
-                        {symptom}
-                      </Button>
-                    ))}
-                  </div>
-                  {(manualSymptoms.length > 0 || (existingData?.symptoms && existingData.symptoms.length > 0)) && (
-                    <p className="text-xs text-blue-600 flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" />
-                      AI will suggest diagnosis based on symptoms
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* AI Diagnosis Suggestions - Show when no diagnoses selected and symptoms exist */}
-              {(!selectedDiagnoses || selectedDiagnoses.length === 0) && (
-                (existingData?.symptoms && existingData.symptoms.length > 0) ||
-                (existingData?.painCharacteristics) ||
-                (existingData?.clinicalFindings) ||
-                (manualSymptoms.length > 0)
-              ) && (
-                <div className="my-4">
-                  <DiagnosisAICopilot
-                    symptoms={[
-                      ...(existingData?.symptoms || []),
-                      ...manualSymptoms
-                    ]}
-                    painCharacteristics={existingData?.painCharacteristics}
-                    clinicalFindings={existingData?.clinicalFindings}
-                    toothNumber={toothNumber}
-                    patientContext={{
-                      age: 35
-                    }}
-                    onAcceptSuggestion={(diagnosis) => {
-                      // Find and tick the matching diagnosis checkbox
-                      const normalizedDiagnosis = normalizeDiagnosisName(diagnosis)
-                      if (normalizedDiagnosis && !selectedDiagnoses.includes(normalizedDiagnosis)) {
-                        handleDiagnosisToggle(normalizedDiagnosis)
-                      }
-                    }}
-                  />
-                </div>
-              )}
-
               {/* Selected Diagnoses */}
               {selectedDiagnoses.length > 0 && (
                 <div className="space-y-3">
@@ -653,47 +592,147 @@ export function ToothDiagnosisDialogV2({
             </CardContent>
           </Card>
 
-          {/* Middle Column - AI Co-Pilot */}
+          {/* Middle Column - AI Co-Pilot with Tabs */}
           <Card className="lg:row-span-2">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-teal-600" />
                 Endo AI Co-pilot
               </CardTitle>
+              {/* Tab Switcher */}
+              <div className="flex gap-2 mt-3">
+                <Button
+                  variant={activeAITab === 'diagnosis' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveAITab('diagnosis')}
+                  className="flex-1"
+                >
+                  🔍 Diagnosis Assistant
+                </Button>
+                <Button
+                  variant={activeAITab === 'treatment' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveAITab('treatment')}
+                  className="flex-1"
+                >
+                  💊 Treatment Assistant
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {selectedDiagnoses.length > 0 ? (
-                <div className="bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-xl shadow-lg p-1">
-                  <div className="bg-white/80 backdrop-blur rounded-lg p-4">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="flex items-center justify-center w-10 h-10 bg-teal-500 rounded-full">
-                        <Sparkles className="h-6 w-6 text-white" />
-                      </div>
+              {/* Diagnosis Tab Content */}
+              {activeAITab === 'diagnosis' && (
+                <div className="space-y-4">
+                  {/* Quick Symptom Entry - Always visible in Diagnosis tab */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-blue-600" />
+                      Quick Symptom Entry
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {['Sharp pain', 'Dull ache', 'Cold sensitivity', 'Heat sensitivity', 
+                        'Swelling', 'Pain when chewing', 'Spontaneous pain', 'Lingering pain'].map(symptom => (
+                        <Button
+                          key={symptom}
+                          variant={manualSymptoms.includes(symptom) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            if (manualSymptoms.includes(symptom)) {
+                              setManualSymptoms(prev => prev.filter(s => s !== symptom))
+                            } else {
+                              setManualSymptoms(prev => [...prev, symptom])
+                            }
+                          }}
+                          className="text-xs h-7"
+                        >
+                          {symptom}
+                        </Button>
+                      ))}
+                    </div>
+                    {(manualSymptoms.length > 0 || (existingData?.symptoms && existingData.symptoms.length > 0)) && (
+                      <p className="text-xs text-blue-600 flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" />
+                        AI will suggest diagnosis based on symptoms
+                      </p>
+                    )}
+                  </div>
+
+                  {/* AI Diagnosis Suggestions - Show when symptoms exist */}
+                  {(
+                    (existingData?.symptoms && existingData.symptoms.length > 0) ||
+                    (existingData?.painCharacteristics) ||
+                    (existingData?.clinicalFindings) ||
+                    (manualSymptoms.length > 0)
+                  ) ? (
+                    <div className="mt-4">
+                      <DiagnosisAICopilot
+                        symptoms={[
+                          ...(existingData?.symptoms || []),
+                          ...manualSymptoms
+                        ]}
+                        painCharacteristics={existingData?.painCharacteristics}
+                        clinicalFindings={existingData?.clinicalFindings}
+                        toothNumber={toothNumber}
+                        patientContext={{
+                          age: 35
+                        }}
+                        onAcceptSuggestion={(diagnosis) => {
+                          const normalizedDiagnosis = normalizeDiagnosisName(diagnosis)
+                          if (normalizedDiagnosis && !selectedDiagnoses.includes(normalizedDiagnosis)) {
+                            handleDiagnosisToggle(normalizedDiagnosis)
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-48 flex items-center justify-center p-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
                       <div>
-                        <h3 className="text-xl font-bold text-teal-700">AI Treatment Suggestions</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs bg-teal-100 text-teal-600 px-2 py-1 rounded-full font-semibold">POWERED BY GEMINI</span>
-                          <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-medium">Diagnosis: {selectedDiagnoses[0]}</span>
-                        </div>
+                        <Sparkles className="h-10 w-10 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600 font-medium text-sm">Select symptoms above</p>
+                        <p className="text-xs text-gray-500 mt-1">AI diagnosis suggestions will appear here</p>
                       </div>
                     </div>
-                    <EndoAICopilotLive
-                      diagnosis={selectedDiagnoses[0]}
-                      toothNumber={toothNumber}
-                      onAcceptSuggestion={handleAcceptAISuggestion}
-                      patientContext={{
-                        age: 35
-                      }}
-                    />
-                  </div>
+                  )}
                 </div>
-              ) : (
-                <div className="h-full flex items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                  <div>
-                    <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-600 font-medium">Select a diagnosis</p>
-                    <p className="text-sm text-gray-500 mt-1">AI suggestions will appear here</p>
-                  </div>
+              )}
+
+              {/* Treatment Tab Content */}
+              {activeAITab === 'treatment' && (
+                <div>
+                  {selectedDiagnoses.length > 0 ? (
+                    <div className="bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-xl shadow-lg p-1">
+                      <div className="bg-white/80 backdrop-blur rounded-lg p-4">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex items-center justify-center w-10 h-10 bg-teal-500 rounded-full">
+                            <Sparkles className="h-6 w-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold text-teal-700">AI Treatment Suggestions</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs bg-teal-100 text-teal-600 px-2 py-1 rounded-full font-semibold">POWERED BY GEMINI</span>
+                              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-medium">Diagnosis: {selectedDiagnoses[0]}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <EndoAICopilotLive
+                          diagnosis={selectedDiagnoses[0]}
+                          toothNumber={toothNumber}
+                          onAcceptSuggestion={handleAcceptAISuggestion}
+                          patientContext={{
+                            age: 35
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                      <div>
+                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                        <p className="text-gray-600 font-medium">Select a diagnosis first</p>
+                        <p className="text-sm text-gray-500 mt-1">Choose a diagnosis from the left panel to get AI treatment suggestions</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
