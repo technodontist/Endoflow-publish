@@ -46,7 +46,7 @@ import {
   updateAppointmentStatusAction
 } from "@/lib/actions/appointments"
 import { linkAppointmentToTreatmentAction } from "@/lib/actions/treatments"
-import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, isToday, isFuture } from 'date-fns'
+import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, isToday, isFuture, startOfMonth, endOfMonth, eachWeekOfInterval, getDay } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -378,6 +378,65 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
     }
   }
 
+  const getAppointmentCardClass = (type: string, status: string) => {
+    const t = (type || '').toLowerCase()
+
+    // Base classes based on appointment type
+    let baseClass = ''
+    let borderClass = ''
+
+    switch (t) {
+      case 'first_visit':
+        baseClass = 'bg-purple-50'
+        borderClass = 'border-l-purple-500'
+        break
+      case 'consultation':
+        baseClass = 'bg-indigo-50'
+        borderClass = 'border-l-indigo-500'
+        break
+      case 'follow_up':
+        baseClass = 'bg-amber-50'
+        borderClass = 'border-l-amber-500'
+        break
+      case 'treatment':
+        baseClass = 'bg-emerald-50'
+        borderClass = 'border-l-emerald-500'
+        break
+      default:
+        baseClass = 'bg-slate-50'
+        borderClass = 'border-l-slate-500'
+    }
+
+    // Overlay status-based modifications
+    if (status === 'completed') {
+      baseClass = baseClass.replace('-50', '-100')
+      borderClass = borderClass.replace('border-l-', 'border-l-green-500 ring-1 ring-green-200 ')
+    } else if (status === 'cancelled') {
+      baseClass = 'bg-red-50'
+      borderClass = 'border-l-red-500'
+    } else if (status === 'in_progress') {
+      borderClass = borderClass + ' ring-2 ring-blue-200'
+    }
+
+    return `${baseClass} ${borderClass}`
+  }
+
+  const getMonthViewAppointmentClass = (type: string, status: string) => {
+    const t = (type || '').toLowerCase()
+
+    // Return darker colors for month view preview
+    if (status === 'cancelled') return 'bg-red-100 text-red-800'
+    if (status === 'completed') return 'bg-green-100 text-green-800'
+
+    switch (t) {
+      case 'first_visit': return 'bg-purple-100 text-purple-800'
+      case 'consultation': return 'bg-indigo-100 text-indigo-800'
+      case 'follow_up': return 'bg-amber-100 text-amber-800'
+      case 'treatment': return 'bg-emerald-100 text-emerald-800'
+      default: return 'bg-slate-100 text-slate-800'
+    }
+  }
+
   const handleStatusUpdate = async (appointmentId: string, newStatus: string, notes?: string) => {
     try {
       const result = await updateAppointmentStatusAction(appointmentId, newStatus, dentistId, notes)
@@ -440,98 +499,255 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
 
   const renderDayView = () => {
     const dayAppointments = getDayAppointments(currentDate)
-    const timeSlots = Array.from({ length: 22 }, (_, i) => {
-      const hour = Math.floor(i / 2) + 8
-      const minute = i % 2 === 0 ? 0 : 30
-      return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+    const timeSlots = Array.from({ length: 24 }, (_, i) => {
+      const hour = i + 7 // Start from 7 AM
+      return `${hour.toString().padStart(2, '0')}:00`
     })
 
-    return (
-      <div className="space-y-1 max-h-[600px] overflow-y-auto">
-        {timeSlots.map((timeSlot) => {
-          const appointment = dayAppointments.find(apt =>
-            apt.scheduled_time.startsWith(timeSlot)
-          )
+    const scrollToCurrentTime = () => {
+      const now = new Date()
+      const currentHour = now.getHours()
+      const element = document.getElementById(`time-slot-${currentHour}`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
 
-          return (
-            <div key={timeSlot} className="flex items-start border-b border-gray-100 py-3">
-              <div className="w-20 text-sm text-gray-500 pt-1">{timeSlot}</div>
-              <div className="flex-1">
-                {appointment ? (
+    return (
+      <div className="relative">
+        {/* Scroll to Now Button */}
+        <div className="absolute top-0 right-0 z-10">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={scrollToCurrentTime}
+            className="bg-white shadow-sm hover:bg-teal-50"
+          >
+            <Clock className="w-4 h-4 mr-2" />
+            Jump to Now
+          </Button>
+        </div>
+
+        {/* Timeline View with Sticky Time Column */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div className="grid grid-cols-[80px_1fr] gap-0">
+            {/* Time Column (Sticky) */}
+            <div className="sticky left-0 bg-gray-50 z-10">
+              {timeSlots.map((timeSlot) => (
+                <div
+                  key={`time-${timeSlot}`}
+                  id={`time-slot-${parseInt(timeSlot)}`}
+                  className="h-16 border-b border-gray-200 px-3 py-2 text-sm font-medium text-gray-600"
+                >
+                  {timeSlot}
+                </div>
+              ))}
+            </div>
+
+            {/* Appointments Column */}
+            <div className="relative">
+              {timeSlots.map((timeSlot) => {
+                const appointment = dayAppointments.find(apt =>
+                  apt.scheduled_time.startsWith(timeSlot.slice(0, 2))
+                )
+
+                return (
                   <div
-                    className={`ml-4 p-4 border-l-4 rounded-lg cursor-pointer hover:shadow-md transition-all ${
-                      appointment.status === 'in_progress' ? 'border-l-blue-500 bg-blue-50' :
-                      appointment.status === 'completed' ? 'border-l-green-500 bg-green-50' :
-                      appointment.status === 'cancelled' ? 'border-l-red-500 bg-red-50' :
-                      'border-l-teal-500 bg-teal-50'
-                    }`}
-                    onClick={() => {
-                      setSelectedAppointment(appointment)
-                      setShowAppointmentDetails(true)
-                    }}
+                    key={`slot-${timeSlot}`}
+                    className="h-16 border-b border-gray-100 relative"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback className="bg-teal-100 text-teal-700">
-                            {appointment.patients?.first_name?.[0]}{appointment.patients?.last_name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-semibold text-gray-900">
-                            {appointment.patients?.first_name} {appointment.patients?.last_name}
+                    {appointment ? (
+                      <div
+                        className={`absolute inset-0 m-1 p-2 border-l-4 rounded cursor-pointer hover:shadow-md transition-all overflow-hidden ${getAppointmentCardClass(appointment.appointment_type, appointment.status)}`}
+                        onClick={() => {
+                          setSelectedAppointment(appointment)
+                          setShowAppointmentDetails(true)
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Avatar className="w-6 h-6 flex-shrink-0">
+                              <AvatarFallback className="bg-teal-100 text-teal-700 text-[10px]">
+                                {appointment.patients?.first_name?.[0]}{appointment.patients?.last_name?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-sm text-gray-900 truncate">
+                                {appointment.patients?.first_name} {appointment.patients?.last_name}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-gray-600">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${getTypeBadgeClass(appointment.appointment_type)}`}>
+                                  {appointment.appointment_type || 'other'}
+                                </span>
+                                <span>{appointment.duration_minutes}m</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <span className={`px-2 py-0.5 rounded border ${getTypeBadgeClass(appointment.appointment_type)} text-[11px]`}>{appointment.appointment_type || 'other'}</span>
-                          </div>
+                          <Badge className={`${getStatusColor(appointment.status)} text-[10px] px-1.5 py-0.5 flex-shrink-0`}>
+                            {getStatusIcon(appointment.status)}
+                          </Badge>
                         </div>
                       </div>
-                      <Badge className={`${getStatusColor(appointment.status)} flex items-center gap-1`}>
-                        {getStatusIcon(appointment.status)}
-                        {getStatusLabel(appointment.status)}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Timer className="w-3 h-3" />
-                        {appointment.duration_minutes} min
-                      </span>
-                      {appointment.patients?.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          {appointment.patients.phone}
-                        </span>
-                      )}
-                    </div>
-                    {/* Teeth badges */}
-                    {Array.isArray(teethByAppointment[appointment.id]) && teethByAppointment[appointment.id].length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-700">
-                        <span className="text-gray-500">Teeth:</span>
-                        {teethByAppointment[appointment.id].map((t, i) => (
-                          <Badge key={`${appointment.id}-tooth-${i}`} variant="outline" className="text-[10px]">
-                            {t.tooth_number}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    {appointment.notes && (
-                      <div className="mt-2 text-sm text-gray-600 bg-white/70 p-2 rounded">
-                        {appointment.notes}
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-300 text-xs">
+                        <Plus className="w-3 h-3" />
                       </div>
                     )}
                   </div>
-                ) : (
-                  <div className="ml-4 p-4 text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      Available - Click to schedule
-                    </div>
-                  </div>
-                )}
-              </div>
+                )
+              })}
             </div>
-          )
-        })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderMonthView = () => {
+    const monthStart = startOfMonth(currentDate)
+    const monthEnd = endOfMonth(currentDate)
+    const startDate = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
+
+    const weeks = eachWeekOfInterval({ start: startDate, end: endDate }, { weekStartsOn: 1 })
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+    return (
+      <div className="relative">
+        {/* Day Headers */}
+        <div className="grid grid-cols-7 gap-0 border-b-2 border-gray-300 mb-2">
+          {dayNames.map((dayName) => (
+            <div
+              key={dayName}
+              className="text-center py-3 font-semibold text-sm text-gray-700 bg-gray-50"
+            >
+              {dayName}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="space-y-0">
+          {weeks.map((weekStart, weekIndex) => {
+            const days = eachDayOfInterval({
+              start: weekStart,
+              end: endOfWeek(weekStart, { weekStartsOn: 1 })
+            })
+
+            return (
+              <div key={weekIndex} className="grid grid-cols-7 gap-0">
+                {days.map((day) => {
+                  const dayAppointments = getDayAppointments(day)
+                  const isToday = isSameDay(day, new Date())
+                  const isCurrentMonth = day.getMonth() === currentDate.getMonth()
+
+                  // Count appointments by status
+                  const scheduled = dayAppointments.filter(a => a.status === 'scheduled').length
+                  const inProgress = dayAppointments.filter(a => a.status === 'in_progress').length
+                  const completed = dayAppointments.filter(a => a.status === 'completed').length
+
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className={`min-h-[120px] border border-gray-200 p-2 ${
+                        !isCurrentMonth ? 'bg-gray-50' : 'bg-white'
+                      } ${isToday ? 'ring-2 ring-teal-500 ring-inset' : ''} hover:bg-gray-50 transition-colors cursor-pointer`}
+                      onClick={() => {
+                        setCurrentDate(day)
+                        setViewMode('day')
+                      }}
+                    >
+                      {/* Day Number */}
+                      <div className="flex items-start justify-between mb-1">
+                        <span
+                          className={`text-sm font-semibold ${
+                            isToday
+                              ? 'bg-teal-600 text-white rounded-full w-6 h-6 flex items-center justify-center'
+                              : isCurrentMonth
+                              ? 'text-gray-900'
+                              : 'text-gray-400'
+                          }`}
+                        >
+                          {format(day, 'd')}
+                        </span>
+
+                        {/* Appointment Count Badge */}
+                        {dayAppointments.length > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 h-5 bg-teal-100 text-teal-700 border-teal-300"
+                          >
+                            {dayAppointments.length}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Status Dots */}
+                      {dayAppointments.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {scheduled > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-teal-500"></div>
+                              <span className="text-[10px] text-gray-600">{scheduled}</span>
+                            </div>
+                          )}
+                          {inProgress > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                              <span className="text-[10px] text-gray-600">{inProgress}</span>
+                            </div>
+                          )}
+                          {completed > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                              <span className="text-[10px] text-gray-600">{completed}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Appointment Preview (first 2) */}
+                      <div className="space-y-1">
+                        {dayAppointments.slice(0, 2).map((apt) => (
+                          <div
+                            key={apt.id}
+                            className={`text-[10px] px-1.5 py-1 rounded truncate ${getMonthViewAppointmentClass(apt.appointment_type, apt.status)}`}
+                            title={`${apt.scheduled_time.slice(0, 5)} - ${apt.patients?.first_name} ${apt.patients?.last_name} [${apt.appointment_type}]`}
+                          >
+                            {apt.scheduled_time.slice(0, 5)} {apt.patients?.first_name}
+                          </div>
+                        ))}
+                        {dayAppointments.length > 2 && (
+                          <div className="text-[10px] text-gray-500 px-1.5">
+                            +{dayAppointments.length - 2} more
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Legend */}
+        <div className="mt-4 flex items-center gap-4 text-xs text-gray-600 bg-gray-50 p-3 rounded">
+          <span className="font-semibold">Status:</span>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-teal-500"></div>
+            <span>Scheduled</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+            <span>In Progress</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span>Completed</span>
+          </div>
+          <span className="ml-auto text-gray-500">Click any day to view details</span>
+        </div>
       </div>
     )
   }
@@ -540,142 +756,170 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
     const start = startOfWeek(currentDate, { weekStartsOn: 1 })
     const end = endOfWeek(currentDate, { weekStartsOn: 1 })
     const days = eachDayOfInterval({ start, end })
+    const timeSlots = Array.from({ length: 15 }, (_, i) => {
+      const hour = i + 7 // Start from 7 AM to 9 PM
+      return `${hour.toString().padStart(2, '0')}:00`
+    })
 
     return (
-      <div className="grid grid-cols-7 gap-2">
-        {days.map((day) => {
-          const dayAppointments = getDayAppointments(day)
-          const isToday = isSameDay(day, new Date())
+      <div className="relative">
+        {/* Sticky Day Headers */}
+        <div className="sticky top-0 z-20 bg-white border-b-2 border-gray-200 shadow-sm">
+          <div className="grid grid-cols-[80px_repeat(7,1fr)] gap-0">
+            <div className="bg-gray-50 border-r border-gray-200"></div>
+            {days.map((day) => {
+              const isToday = isSameDay(day, new Date())
+              const dayAppointments = getDayAppointments(day)
 
-          return (
-            <div key={day.toISOString()} className={`space-y-2 ${isToday ? 'bg-teal-50 rounded-lg p-2' : ''}`}>
-              <div className={`text-center p-3 border-b-2 ${isToday ? 'border-teal-500' : 'border-gray-200'}`}>
-                <div className="text-sm font-medium text-gray-600">{format(day, 'EEE')}</div>
-                <div className={`text-xl font-bold ${
-                  isToday ? 'text-teal-600' :
-                  isFuture(day) ? 'text-gray-900' : 'text-gray-400'
-                }`}>
-                  {format(day, 'd')}
-                </div>
-                <div className="text-xs text-gray-500">{format(day, 'MMM')}</div>
-                {dayAppointments.length > 0 && (
-                  <div className="mt-1">
-                    <Badge variant="outline" className="text-xs bg-teal-100 text-teal-700">
-                      {dayAppointments.length} apt{dayAppointments.length !== 1 ? 's' : ''}
+              return (
+                <div
+                  key={day.toISOString()}
+                  className={`text-center p-2 border-r border-gray-200 ${
+                    isToday ? 'bg-teal-50' : 'bg-white'
+                  }`}
+                >
+                  <div className="text-xs font-medium text-gray-600">{format(day, 'EEE')}</div>
+                  <div className={`text-lg font-bold ${
+                    isToday ? 'text-teal-600' : 'text-gray-900'
+                  }`}>
+                    {format(day, 'd')}
+                  </div>
+                  <div className="text-[10px] text-gray-500">{format(day, 'MMM')}</div>
+                  {dayAppointments.length > 0 && (
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 mt-1 bg-teal-100 text-teal-700">
+                      {dayAppointments.length}
                     </Badge>
-                  </div>
-                )}
-              </div>
-              <div className="space-y-2 min-h-[500px] max-h-[500px] overflow-y-auto">
-                {dayAppointments.map((appointment) => (
-                  <div
-                    key={appointment.id}
-                    className={`p-3 border-l-3 rounded-lg cursor-pointer hover:shadow-md transition-all text-xs ${
-                      appointment.status === 'in_progress' ? 'border-l-blue-500 bg-blue-50 hover:bg-blue-100' :
-                      appointment.status === 'completed' ? 'border-l-green-500 bg-green-50 hover:bg-green-100' :
-                      appointment.status === 'cancelled' ? 'border-l-red-500 bg-red-50 hover:bg-red-100' :
-                      'border-l-teal-500 bg-white hover:bg-teal-50'
-                    } border shadow-sm`}
-                    onClick={() => {
-                      setSelectedAppointment(appointment)
-                      setShowAppointmentDetails(true)
-                    }}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="font-semibold text-gray-900">
-                        {appointment.scheduled_time.slice(0, 5)}
-                      </div>
-                      <Badge className={`${getStatusColor(appointment.status)} text-xs flex items-center gap-1`}>
-                        {getStatusIcon(appointment.status)}
-                        {appointment.status}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="font-medium text-gray-800 truncate">
-                        {appointment.patients?.first_name} {appointment.patients?.last_name}
-                      </div>
-                      <div className="truncate">
-                        <Badge className={`${getTypeBadgeClass(appointment.appointment_type)} text-[10px]`}>{appointment.appointment_type || 'other'}</Badge>
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-500">
-                        <Timer className="w-3 h-3" />
-                        <span>{appointment.duration_minutes}m</span>
-                      </div>
-                      {Array.isArray(teethByAppointment[appointment.id]) && teethByAppointment[appointment.id].length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-700">
-                          <span className="text-gray-500">Teeth:</span>
-                          {teethByAppointment[appointment.id].map((t, i) => (
-                            <Badge key={`${appointment.id}-wk-${i}`} variant="outline" className="text-[10px]">
-                              {t.tooth_number}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {dayAppointments.length === 0 && (
-                  <div className="text-center py-8 text-gray-400">
-                    <Calendar className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs">No appointments</p>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Timeline Grid with Unified Scroll */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 340px)' }}>
+          <div className="grid grid-cols-[80px_repeat(7,1fr)] gap-0">
+            {/* Time Column */}
+            <div className="sticky left-0 bg-gray-50 z-10">
+              {timeSlots.map((timeSlot) => (
+                <div
+                  key={`time-${timeSlot}`}
+                  className="h-20 border-b border-gray-200 px-2 py-1 text-xs font-medium text-gray-600"
+                >
+                  {timeSlot}
+                </div>
+              ))}
             </div>
-          )
-        })}
+
+            {/* Days Columns */}
+            {days.map((day) => {
+              const isToday = isSameDay(day, new Date())
+
+              return (
+                <div key={`day-${day.toISOString()}`} className="relative">
+                  {timeSlots.map((timeSlot) => {
+                    const dayAppointments = getDayAppointments(day)
+                    const appointment = dayAppointments.find(apt =>
+                      apt.scheduled_time.startsWith(timeSlot.slice(0, 2))
+                    )
+
+                    return (
+                      <div
+                        key={`${day.toISOString()}-${timeSlot}`}
+                        className={`h-20 border-b border-r border-gray-100 relative ${
+                          isToday ? 'bg-teal-50/20' : ''
+                        }`}
+                      >
+                        {appointment ? (
+                          <div
+                            className={`absolute inset-0 m-0.5 p-1.5 border-l-3 rounded cursor-pointer hover:shadow-md transition-all overflow-hidden ${getAppointmentCardClass(appointment.appointment_type, appointment.status)}`}
+                            onClick={() => {
+                              setSelectedAppointment(appointment)
+                              setShowAppointmentDetails(true)
+                            }}
+                          >
+                            <div className="flex flex-col h-full justify-between">
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-[11px] text-gray-900 truncate leading-tight">
+                                    {appointment.patients?.first_name} {appointment.patients?.last_name}
+                                  </div>
+                                  <div className="text-[10px] text-gray-600 truncate">
+                                    {appointment.scheduled_time.slice(0, 5)}
+                                  </div>
+                                </div>
+                                <Badge className={`${getStatusColor(appointment.status)} text-[9px] px-1 py-0 h-4 flex-shrink-0`}>
+                                  {getStatusIcon(appointment.status)}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className={`px-1 py-0 rounded text-[9px] truncate ${getTypeBadgeClass(appointment.appointment_type)}`}>
+                                  {appointment.appointment_type}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header with Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* Header with Stats - Compact Version */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-gradient-to-r from-teal-500 to-teal-600 text-white">
-          <CardContent className="p-4">
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-teal-100 text-sm">Today's Appointments</p>
-                <p className="text-3xl font-bold">{appointmentStats.today}</p>
+                <p className="text-teal-100 text-xs">Today's Appointments</p>
+                <p className="text-2xl font-bold">{appointmentStats.today}</p>
               </div>
-              <CalendarDays className="w-8 h-8 text-teal-200" />
+              <CalendarDays className="w-7 h-7 text-teal-200" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-          <CardContent className="p-4">
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm">In Progress</p>
-                <p className="text-3xl font-bold">{appointmentStats.inProgress}</p>
+                <p className="text-blue-100 text-xs">In Progress</p>
+                <p className="text-2xl font-bold">{appointmentStats.inProgress}</p>
               </div>
-              <Activity className="w-8 h-8 text-blue-200" />
+              <Activity className="w-7 h-7 text-blue-200" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-          <CardContent className="p-4">
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-sm">Completed</p>
-                <p className="text-3xl font-bold">{appointmentStats.completed}</p>
+                <p className="text-green-100 text-xs">Completed</p>
+                <p className="text-2xl font-bold">{appointmentStats.completed}</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-200" />
+              <CheckCircle className="w-7 h-7 text-green-200" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-          <CardContent className="p-4">
+          <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-sm">Pending Requests</p>
-                <p className="text-3xl font-bold">{pendingRequests.length}</p>
+                <p className="text-orange-100 text-xs">Pending Requests</p>
+                <p className="text-2xl font-bold">{pendingRequests.length}</p>
               </div>
-              <UserCheck className="w-8 h-8 text-orange-200" />
+              <UserCheck className="w-7 h-7 text-orange-200" />
             </div>
           </CardContent>
         </Card>
@@ -829,7 +1073,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
             <Badge className="px-2 py-1 border bg-emerald-100 text-emerald-800 border-emerald-200">Treatment</Badge>
           </div>
 
-          <div className="border rounded-lg p-4 min-h-[600px]">
+          <div className="border rounded-lg p-4" style={{ minHeight: 'calc(100vh - 380px)' }}>
             {isLoading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
@@ -841,20 +1085,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
               <>
                 {viewMode === 'day' && renderDayView()}
                 {viewMode === 'week' && renderWeekView()}
-                {viewMode === 'month' && (
-                  <div className="text-center py-16">
-                    <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-700 mb-2">Month View</h3>
-                    <p className="text-gray-500">Calendar month view will be available soon</p>
-                    <Button
-                      variant="outline"
-                      onClick={() => setViewMode('week')}
-                      className="mt-4"
-                    >
-                      Switch to Week View
-                    </Button>
-                  </div>
-                )}
+                {viewMode === 'month' && renderMonthView()}
               </>
             )}
           </div>

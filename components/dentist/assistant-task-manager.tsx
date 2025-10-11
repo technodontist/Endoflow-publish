@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Users, Clock, AlertCircle, CheckCircle } from 'lucide-react'
+import { Plus, Users, Clock, AlertCircle, CheckCircle, Sparkles, X } from 'lucide-react'
 import { CreateTaskDialog } from './create-task-dialog'
 import { TaskDetailsDialog } from './task-details-dialog'
+import AITaskScheduler from './ai-task-scheduler'
 import { getTasksAction, getTaskStatsAction } from '@/lib/actions/assistant-tasks'
 import { useSupabaseRealtime } from '@/hooks/use-supabase-realtime'
 import { format } from 'date-fns'
@@ -64,8 +65,10 @@ export function AssistantTaskManager() {
   })
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [aiSchedulerOpen, setAiSchedulerOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
+  const [currentUserId, setCurrentUserId] = useState<string>('')
 
   // Real-time subscription
   useSupabaseRealtime({
@@ -114,6 +117,21 @@ export function AssistantTaskManager() {
       setLoading(false)
     }
     loadData()
+
+    // Get current user ID from session
+    const getCurrentUser = async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setCurrentUserId(user.id)
+        }
+      } catch (error) {
+        console.error('Error getting current user:', error)
+      }
+    }
+    getCurrentUser()
   }, [])
 
   const filteredTasks = tasks.filter(task => {
@@ -127,6 +145,13 @@ export function AssistantTaskManager() {
     loadTasks()
     loadStats()
     setCreateTaskOpen(false)
+  }
+
+  const handleAITaskCreated = (taskId: string) => {
+    console.log('AI Task created:', taskId)
+    loadTasks()
+    loadStats()
+    // Keep AI scheduler open for creating more tasks
   }
 
   if (loading) {
@@ -145,13 +170,32 @@ export function AssistantTaskManager() {
           <h1 className="text-2xl font-bold text-gray-900">Assistant Tasks</h1>
           <p className="text-gray-600">Manage and assign tasks to your assistants</p>
         </div>
-        <Button
-          onClick={() => setCreateTaskOpen(true)}
-          className="bg-teal-600 hover:bg-teal-700 text-white"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Task
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setAiSchedulerOpen(!aiSchedulerOpen)}
+            variant={aiSchedulerOpen ? "default" : "outline"}
+            className={aiSchedulerOpen ? "bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white" : "border-teal-600 text-teal-600 hover:bg-teal-50"}
+          >
+            {aiSchedulerOpen ? (
+              <>
+                <X className="w-4 h-4 mr-2" />
+                Close AI Scheduler
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI Task Scheduler
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={() => setCreateTaskOpen(true)}
+            className="bg-teal-600 hover:bg-teal-700 text-white"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Task
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -198,6 +242,16 @@ export function AssistantTaskManager() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Task Scheduler Section */}
+      {aiSchedulerOpen && currentUserId && (
+        <div className="h-[600px]">
+          <AITaskScheduler
+            createdById={currentUserId}
+            onTaskCreated={handleAITaskCreated}
+          />
+        </div>
+      )}
 
       {/* Filter Buttons */}
       <div className="flex flex-wrap gap-2">
