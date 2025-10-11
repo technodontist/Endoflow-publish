@@ -204,18 +204,11 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
         } else {
           setTranscript(transcriptRef.current + interimTranscript)
           setInputValue(transcriptRef.current + interimTranscript)
-          
-          // Reset timer for interim results too (Fix for deployed silence detection)
-          if (interimTranscript && autoModeRef.current && !autoSubmitRef.current) {
-            lastSpeechTimeRef.current = Date.now()
-            console.log('⏱️ [AUTO MODE] Resetting silence timer (interim)')
-            resetSilenceTimer()
-          }
         }
         
-        // Reset silence timer when speech is detected (final results)
-        if (finalTranscript && autoModeRef.current && !autoSubmitRef.current) {
-          console.log('⏱️ [AUTO MODE] Resetting silence timer (final)')
+        // Reset silence timer when speech is detected
+        if (autoModeRef.current && !autoSubmitRef.current) {
+          console.log('⏱️ [AUTO MODE] Resetting silence timer')
           resetSilenceTimer()
         }
       }
