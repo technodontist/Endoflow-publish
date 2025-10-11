@@ -35,7 +35,10 @@ interface PrescriptionTabProps {
 
 export function PrescriptionTab({ data, onChange, isReadOnly = false, onSave }: PrescriptionTabProps) {
   // Local state: medications list
-  const [medications, setMedications] = useState<MedicationItem[]>(() => data?.prescriptions || [])
+  const [medications, setMedications] = useState<MedicationItem[]>(() => {
+    const prescriptions = data?.prescriptions
+    return Array.isArray(prescriptions) ? prescriptions : []
+  })
   const [newMedName, setNewMedName] = useState('')
   const [newMedDosage, setNewMedDosage] = useState('')
   const [newMedFrequency, setNewMedFrequency] = useState('')
@@ -58,19 +61,22 @@ export function PrescriptionTab({ data, onChange, isReadOnly = false, onSave }: 
       duration: preset ? undefined : newMedDuration || undefined,
       instructions: preset ? undefined : newMedInstructions || undefined,
     }
-    const next = [...medications, item]
+    const currentMeds = Array.isArray(medications) ? medications : []
+    const next = [...currentMeds, item]
     setMedications(next)
     onChange?.({ prescriptions: next })
   }
 
   const removeMedication = (id: string) => {
-    const next = medications.filter(m => m.id !== id)
+    const currentMeds = Array.isArray(medications) ? medications : []
+    const next = currentMeds.filter(m => m.id !== id)
     setMedications(next)
     onChange?.({ prescriptions: next })
   }
 
   const updateMedication = (id: string, field: keyof MedicationItem, value: string) => {
-    const next = medications.map(m => (m.id === id ? { ...m, [field]: value } : m))
+    const currentMeds = Array.isArray(medications) ? medications : []
+    const next = currentMeds.map(m => (m.id === id ? { ...m, [field]: value } : m))
     setMedications(next)
     onChange?.({ prescriptions: next })
   }
@@ -126,13 +132,13 @@ export function PrescriptionTab({ data, onChange, isReadOnly = false, onSave }: 
             <div className="grid grid-cols-2 gap-2 mt-2">
               {commonMedications.map(name => {
                 const id = `med-${slug(name)}`
-                const isSelected = medications.some(m => m.name === name)
+                const isSelected = Array.isArray(medications) && medications.some(m => m.name === name)
                 return (
                   <div key={name} className="flex items-center space-x-2">
                     <Checkbox id={id} checked={isSelected} onCheckedChange={(checked) => {
                       if (checked) addMedication(name, true)
                       else {
-                        const target = medications.find(m => m.name === name)
+                        const target = Array.isArray(medications) ? medications.find(m => m.name === name) : undefined
                         if (target) removeMedication(target.id)
                       }
                     }} disabled={isReadOnly}/>
@@ -168,10 +174,10 @@ export function PrescriptionTab({ data, onChange, isReadOnly = false, onSave }: 
           {/* Current prescription list */}
           <div className="space-y-3">
             <Label>Current Prescription</Label>
-            {medications.length === 0 && (
+            {(!Array.isArray(medications) || medications.length === 0) && (
               <div className="text-sm text-gray-500">No medications added</div>
             )}
-            {medications.map(m => (
+            {Array.isArray(medications) && medications.map(m => (
               <Card key={m.id} className="p-3">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-center">
                   <Input value={m.name} onChange={(e) => updateMedication(m.id, 'name', e.target.value)} disabled={isReadOnly} />
