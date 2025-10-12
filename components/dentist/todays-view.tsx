@@ -193,9 +193,19 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
     )
   }
 
+  // Get next appointment
+  const nextAppointment = todaysAppointments.find(
+    apt => apt.status === 'scheduled' && !isUpcoming(apt)
+  ) || todaysAppointments.find(apt => isUpcoming(apt))
+
+  // Calculate total duration
+  const totalMinutes = todaysAppointments.reduce((sum, apt) => 
+    sum + (apt.duration_minutes ?? apt.durationMinutes ?? 60), 0
+  )
+
   return (
     <div className="space-y-6">
-      {/* Current Status Card */}
+      {/* Enhanced Current Status Card */}
       <Card className="bg-gradient-to-r from-teal-50 to-cyan-50 border-teal-200">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
@@ -203,237 +213,314 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
               <h3 className="text-lg font-semibold text-teal-900">
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </h3>
-              <p className="text-teal-600">
-                {format(currentTime, 'h:mm a')} • {todaysAppointments.length} appointments today
+              <p className="text-teal-600 flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                {format(currentTime, 'h:mm a')} • {todaysAppointments.length} appointments • {totalMinutes} min total
               </p>
             </div>
 
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-teal-900">{completedCount}</div>
-                <div className="text-sm text-teal-600">Completed</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-700">{inProgressCount}</div>
-                <div className="text-sm text-green-600">In Progress</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-700">{scheduledCount}</div>
-                <div className="text-sm text-gray-600">Scheduled</div>
+            <div className="text-right">
+              <div className="text-sm text-teal-600 mb-1">Progress</div>
+              <div className="flex items-center gap-2">
+                <div className="text-2xl font-bold text-teal-900">
+                  {completedCount}/{todaysAppointments.length}
+                </div>
+                <div className="text-sm text-teal-700">
+                  ({todaysAppointments.length > 0 ? Math.round((completedCount / todaysAppointments.length) * 100) : 0}%)
+                </div>
               </div>
             </div>
           </div>
 
           {currentAppointment && (
-            <div className="mt-4 p-4 bg-white rounded-lg border border-teal-200">
+            <div className="mt-4 p-4 bg-white rounded-lg border border-teal-200 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                <div>
-                  <div className="font-medium">
-                    Current Patient: {currentAppointment.patients?.first_name} {currentAppointment.patients?.last_name}
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">
+                    🔴 Current Patient: {currentAppointment.patients?.first_name} {currentAppointment.patients?.last_name}
                   </div>
                   <div className="text-sm text-gray-600">
-                    {currentAppointment.appointment_type} • Started {currentAppointment.scheduled_time.slice(0, 5)}
+                    {currentAppointment.appointment_type} • Started {currentAppointment.scheduled_time?.slice(0, 5)}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {!currentAppointment && nextAppointment && (
+            <div className="mt-4 p-4 bg-white rounded-lg border border-blue-200 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Clock className="w-5 h-5 text-blue-600" />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">
+                    ⏰ Next: {nextAppointment.patients?.first_name} {nextAppointment.patients?.last_name}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {nextAppointment.appointment_type} • {nextAppointment.scheduled_time?.slice(0, 5)}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                  onClick={() => handleStatusUpdate(nextAppointment.id, 'in_progress')}
+                >
+                  <Play className="w-4 h-4 mr-1" />
+                  Start Now
+                </Button>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Appointments List */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Scheduled Appointments */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-teal-600" />
-              Today's Schedule
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {todaysAppointments.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                <p>No appointments scheduled for today</p>
-                <p className="text-sm">Enjoy your free day!</p>
-              </div>
-            ) : (
-              todaysAppointments.map((appointment) => {
-                const isCurrent = isCurrentAppointment(appointment)
-                const isNext = isUpcoming(appointment)
-
-                return (
-                  <div
-                    key={appointment.id}
-                    className={`p-4 border rounded-lg transition-all ${
-                      isCurrent ? 'border-green-300 bg-green-50 shadow-md' :
-                      isNext ? 'border-teal-300 bg-teal-50' :
-                      'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3">
-                        <Avatar className="w-10 h-10">
-                          <AvatarFallback className="bg-teal-100 text-teal-600">
-                            {appointment.patients?.first_name?.[0]}{appointment.patients?.last_name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium">
-                              {appointment.patients?.first_name} {appointment.patients?.last_name}
-                            </h4>
-                            {isCurrent && (
-                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                                Current
-                              </Badge>
-                            )}
-                            {isNext && (
-                              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                                Next
-                              </Badge>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {appointment.scheduled_time.slice(0, 5)}
-                            </span>
-                            <span>
-                              {appointment.duration_minutes} min
-                            </span>
-                          </div>
-
-                          <div className="mt-1">
-                            <span className="text-sm font-medium text-gray-700">
-                              {appointment.appointment_type}
-                            </span>
-                          </div>
-
-                          {appointment.notes && (
-                            <div className="mt-2 text-xs text-gray-600 p-2 bg-gray-50 rounded">
-                              {appointment.notes}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-2">
-                        <Badge className={getStatusColor(appointment.status)}>
-                          {getStatusIcon(appointment.status)}
-                          <span className="ml-1">{getStatusLabel(appointment.status)}</span>
-                        </Badge>
-
-                        <div className="flex gap-1">
-                          {appointment.status === 'scheduled' && (
-                            <>
-                              <Button
-                                size="sm"
-                                className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700"
-                                onClick={() => handleStatusUpdate(appointment.id, 'in_progress')}
-                              >
-                                <Play className="w-3 h-3 mr-1" />
-                                Start
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => handleNoShow(appointment.id)}
-                              >
-                                No Show
-                              </Button>
-                            </>
-                          )}
-
-                          {appointment.status === 'in_progress' && (
-                            <Button
-                              size="sm"
-                              className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700"
-                              onClick={() => handleStatusUpdate(appointment.id, 'completed')}
-                            >
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Complete
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions & Insights */}
-        <div className="space-y-6">
-          {/* Quick Actions */}
+      {/* Main Layout: Schedule + Sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Today's Schedule - Expanded */}
+        <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-blue-600" />
-                Quick Actions
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-teal-600" />
+                  Today's Schedule
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {scheduledCount} remaining
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button className="w-full justify-start" variant="outline">
+              {todaysAppointments.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No appointments scheduled for today</p>
+                  <p className="text-sm mt-1">Enjoy your free day! 🌟</p>
+                </div>
+              ) : (
+                todaysAppointments.map((appointment) => {
+                  const isCurrent = isCurrentAppointment(appointment)
+                  const isNext = isUpcoming(appointment)
+
+                  return (
+                    <div
+                      key={appointment.id}
+                      className={`p-4 border rounded-lg transition-all hover:shadow-md ${
+                        isCurrent ? 'border-green-400 bg-green-50 shadow-md ring-2 ring-green-200' :
+                        isNext ? 'border-blue-300 bg-blue-50' :
+                        appointment.status === 'completed' ? 'border-gray-300 bg-gray-50 opacity-75' :
+                        'border-gray-200 hover:border-teal-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <Avatar className="w-11 h-11 border-2 border-white shadow-sm">
+                            <AvatarFallback className={`text-white font-semibold ${
+                              isCurrent ? 'bg-green-500' :
+                              isNext ? 'bg-blue-500' :
+                              'bg-teal-500'
+                            }`}>
+                              {appointment.patients?.first_name?.[0]}{appointment.patients?.last_name?.[0]}
+                            </AvatarFallback>
+                          </Avatar>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-gray-900">
+                                {appointment.patients?.first_name} {appointment.patients?.last_name}
+                              </h4>
+                              {isCurrent && (
+                                <Badge className="text-xs bg-green-500 text-white border-0">
+                                  🔴 In Session
+                                </Badge>
+                              )}
+                              {isNext && (
+                                <Badge className="text-xs bg-blue-500 text-white border-0">
+                                  ⏰ Up Next
+                                </Badge>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-600">
+                              <span className="flex items-center gap-1 font-medium">
+                                <Clock className="w-3.5 h-3.5 text-teal-600" />
+                                {appointment.scheduled_time?.slice(0, 5)}
+                              </span>
+                              <span className="text-gray-400">•</span>
+                              <span>{appointment.duration_minutes ?? appointment.durationMinutes ?? 60} min</span>
+                            </div>
+
+                            <div className="mt-1.5">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                {appointment.appointment_type ?? appointment.appointmentType}
+                              </span>
+                            </div>
+
+                            {appointment.notes && (
+                              <div className="mt-2 text-xs text-gray-700 p-2.5 bg-amber-50 border border-amber-200 rounded-md">
+                                <span className="font-medium">📝 Note: </span>{appointment.notes}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2 ml-3">
+                          <Badge className={`${getStatusColor(appointment.status)} border`}>
+                            {getStatusIcon(appointment.status)}
+                            <span className="ml-1 text-xs font-medium">{getStatusLabel(appointment.status)}</span>
+                          </Badge>
+
+                          <div className="flex gap-1.5">
+                            {appointment.status === 'scheduled' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700 shadow-sm"
+                                  onClick={() => handleStatusUpdate(appointment.id, 'in_progress')}
+                                >
+                                  <Play className="w-3.5 h-3.5 mr-1" />
+                                  Start
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-3 text-xs hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                  onClick={() => handleNoShow(appointment.id)}
+                                >
+                                  <XCircle className="w-3.5 h-3.5 mr-1" />
+                                  No Show
+                                </Button>
+                              </>
+                            )}
+
+                            {appointment.status === 'in_progress' && (
+                              <Button
+                                size="sm"
+                                className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 shadow-sm"
+                                onClick={() => handleStatusUpdate(appointment.id, 'completed')}
+                              >
+                                <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                                Complete
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Smart Sidebar */}
+        <div className="space-y-6">
+          {/* Contextual Quick Actions */}
+          <Card className="border-teal-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="w-5 h-5 text-teal-600" />
+                Quick Actions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {nextAppointment && (
+                <Button 
+                  className="w-full justify-start bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                  onClick={() => handleStatusUpdate(nextAppointment.id, 'in_progress')}
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Start Next Appointment
+                </Button>
+              )}
+              <Button className="w-full justify-start" variant="outline" onClick={() => window.location.href = '/dentist?tab=patients'}>
                 <User className="w-4 h-4 mr-2" />
-                View Patient Queue
+                Patient Records
               </Button>
-              <Button className="w-full justify-start" variant="outline">
+              <Button className="w-full justify-start" variant="outline" onClick={() => window.location.href = '/dentist?tab=organizer'}>
                 <Calendar className="w-4 h-4 mr-2" />
-                Schedule New Appointment
+                Schedule Appointment
               </Button>
               <Button className="w-full justify-start" variant="outline">
-                <FileText className="w-4 h-4 mr-2" />
-                Access Patient Records
+                <AlertCircle className="w-4 h-4 mr-2" />
+                Emergency Walk-in
               </Button>
-              <Button className="w-full justify-start" variant="outline">
+              <Button className="w-full justify-start" variant="outline" onClick={() => window.location.href = '/dentist?tab=messages'}>
                 <MessageCircle className="w-4 h-4 mr-2" />
-                Send Message to Staff
+                Send Reminders
               </Button>
             </CardContent>
           </Card>
 
-          {/* Daily Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-blue-600" />
-                Daily Summary
+          {/* Performance Metrics */}
+          <Card className="border-blue-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="w-5 h-5 text-blue-600" />
+                Today's Performance
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Total Appointments</span>
-                  <span className="font-medium">{todaysAppointments.length}</span>
+              <div className="space-y-4">
+                {/* Progress Ring */}
+                <div className="flex items-center justify-center py-4">
+                  <div className="relative">
+                    <svg className="w-32 h-32 transform -rotate-90">
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="56"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        className="text-gray-200"
+                      />
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="56"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        strokeDasharray={`${2 * Math.PI * 56}`}
+                        strokeDashoffset={`${2 * Math.PI * 56 * (1 - (todaysAppointments.length > 0 ? completedCount / todaysAppointments.length : 0))}`}
+                        className="text-teal-600 transition-all duration-500"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold text-gray-900">
+                          {todaysAppointments.length > 0 ? Math.round((completedCount / todaysAppointments.length) * 100) : 0}%
+                        </div>
+                        <div className="text-xs text-gray-500">Complete</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Completed</span>
-                  <span className="font-medium text-green-600">{completedCount}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">In Progress</span>
-                  <span className="font-medium text-blue-600">{inProgressCount}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Remaining</span>
-                  <span className="font-medium text-gray-600">{scheduledCount}</span>
-                </div>
-                <div className="pt-2 border-t">
+
+                <div className="space-y-2.5 pt-2 border-t">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Completion Rate</span>
-                    <span className="font-bold text-blue-600">
-                      {todaysAppointments.length > 0
-                        ? Math.round((completedCount / todaysAppointments.length) * 100)
-                        : 0}%
+                    <span className="text-sm text-gray-600 flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      Completed
                     </span>
+                    <span className="font-semibold text-green-600">{completedCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 flex items-center gap-1.5">
+                      <Play className="w-4 h-4 text-blue-600" />
+                      In Progress
+                    </span>
+                    <span className="font-semibold text-blue-600">{inProgressCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-gray-600" />
+                      Remaining
+                    </span>
+                    <span className="font-semibold text-gray-700">{scheduledCount}</span>
                   </div>
                 </div>
               </div>

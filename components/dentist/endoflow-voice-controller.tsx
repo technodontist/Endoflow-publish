@@ -9,7 +9,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Mic,
   MicOff,
-  Sparkles,
   Send,
   Loader2,
   Volume2,
@@ -26,6 +25,7 @@ import {
 import { processEndoFlowQuery } from '@/lib/actions/endoflow-master'
 import { cn } from '@/lib/utils'
 import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
+import Image from 'next/image'
 
 interface Message {
   id: string
@@ -1344,20 +1344,23 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
         <Button
           onClick={toggleExpand}
           size="lg"
-          className="h-16 w-16 rounded-full bg-gradient-to-br from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 shadow-2xl transition-all hover:scale-110"
+          className="h-16 w-16 rounded-full bg-white hover:bg-gray-50 shadow-2xl transition-all hover:scale-110 border-2 border-teal-500 p-2 flex items-center justify-center overflow-hidden"
         >
-          <Sparkles className="h-8 w-8 text-white" />
+          <Image
+            src="/tooth-logo.png"
+            alt="Endoflow Master AI"
+            width={56}
+            height={56}
+            className="w-full h-full object-contain scale-105"
+          />
         </Button>
-        {isListeningForWakeWord ? (
-          <div className="absolute -top-14 right-0 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm px-4 py-2 rounded-lg animate-pulse shadow-2xl border-2 border-green-400">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-ping"></div>
-              <span className="font-semibold">🎤 Listening for "Hey EndoFlow"...</span>
+        {/* Elegant listening indicator - only show pulsing animation when listening */}
+        {isListeningForWakeWord && (
+          <div className="absolute -top-2 -right-2 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow-lg">
+            <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
             </div>
-          </div>
-        ) : (
-          <div className="absolute -top-12 right-0 bg-gray-800 text-white text-sm px-3 py-2 rounded-lg shadow-lg whitespace-nowrap border border-gray-600">
-            <span className="font-medium">Say: "Hey EndoFlow"</span>
           </div>
         )}
         {/* Wake word toggle button */}
@@ -1366,7 +1369,7 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
           size="sm"
           variant={isWakeWordActive ? "default" : "outline"}
           className={cn(
-            "absolute -left-16 top-0 h-16 w-14 rounded-lg shadow-lg transition-all",
+            "absolute -left-16 top-1/2 -translate-y-1/2 h-16 w-14 rounded-lg shadow-lg transition-all",
             isWakeWordActive ? "bg-green-600 hover:bg-green-700 text-white" : "bg-white hover:bg-gray-100"
           )}
           title={isWakeWordActive ? "Disable wake word detection" : "Enable wake word detection"}
@@ -1391,8 +1394,14 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       <CardHeader className="bg-gradient-to-r from-teal-600 to-blue-600 text-white border-b-2 border-teal-300 flex-shrink-0 p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-5 h-5 text-white" />
+<div className="w-10 h-10 rounded-full bg-white border-2 border-teal-400 flex items-center justify-center flex-shrink-0 p-1">
+              <Image
+                src="/tooth-logo.png"
+                alt="Endoflow AI"
+                width={36}
+                height={36}
+                className="w-full h-full object-contain scale-105"
+              />
             </div>
             <div className="min-w-0 flex-1">
               <CardTitle className="text-base font-bold flex items-center gap-1 leading-tight">
@@ -1523,14 +1532,22 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                 {message.role !== 'user' && (
                   <div
                     className={cn(
-                      'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
-                      message.role === 'system' ? 'bg-blue-600' : 'bg-teal-600'
+                      'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center',
+                      message.role === 'system' ? 'bg-blue-600' : 'bg-white border-2 border-teal-500'
                     )}
                   >
-                    {message.role === 'system' ? (
-                      <MessageSquare className="h-4 w-4 text-white" />
+{message.role === 'system' ? (
+                      <MessageSquare className="h-5 w-5 text-white" />
                     ) : (
-                      <Sparkles className="h-4 w-4 text-white" />
+                      <div className="w-full h-full flex items-center justify-center p-1">
+                        <Image
+                          src="/tooth-logo.png"
+                          alt="Endoflow AI"
+                          width={32}
+                          height={32}
+                          className="w-full h-full object-contain scale-105"
+                        />
+                      </div>
                     )}
                   </div>
                 )}
@@ -1576,8 +1593,14 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
 
             {isProcessing && (
               <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 text-white animate-pulse" />
+<div className="flex-shrink-0 w-10 h-10 rounded-full bg-white border-2 border-teal-500 flex items-center justify-center p-1">
+                  <Image
+                    src="/tooth-logo.png"
+                    alt="Endoflow AI"
+                    width={32}
+                    height={32}
+                    className="w-full h-full object-contain scale-105"
+                  />
                 </div>
                 <div className="bg-white rounded-lg px-4 py-3 shadow-sm border border-gray-200">
                   <div className="flex items-center gap-2 text-gray-600">

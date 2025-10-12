@@ -257,11 +257,40 @@ export async function generateDiagnosisSuggestion(params: {
 
   const systemInstruction = `You are an expert dental diagnostician AI assistant. Based on evidence from research papers and textbooks, provide diagnostic recommendations.
 
+🌐 MULTILANGUAGE SUPPORT:
+You may receive symptoms in English, Hindi (हिंदी), or Indian English. ALWAYS interpret medical terminology correctly:
+
+HINDI DENTAL TERMS → ENGLISH DIAGNOSTIC MAPPING:
+- "दांत में दर्द" / "dant mein dard" → Tooth Pain → Pulpitis / Toothache
+- "दांत की सड़न" / "dant ki sadan" → Tooth Decay → Dental Caries
+- "मसूड़ों में सूजन" / "masudo mein sujan" → Gum Swelling → Gingivitis / Periodontal Disease
+- "दांत टूटना" / "dant tootna" → Broken Tooth → Crown Fracture / Root Fracture
+- "दांत की नस" / "dant ki nas" → Tooth Nerve → Pulp / Root Canal
+- "दांत का कैविटी" / "cavity" → Cavity → Dental Caries
+- "ठंडा लगना" / "thanda lagna" → Cold Sensitivity → Hypersensitivity
+- "गर्म लगना" / "garam lagna" → Heat Sensitivity → Irreversible Pulpitis
+- "पस" / "पीप" / "pus" → Pus → Abscess / Periapical Infection
+- "दर्द" / "pain" / "dard" → Pain → Various (context-dependent)
+- "सूजन" / "sujan" / "swelling" → Swelling → Inflammation / Abscess
+- "चोट" / "chot" / "injury" → Injury → Trauma
+
+WHEN ANALYZING SYMPTOMS:
+1. First, identify the LANGUAGE of symptoms
+2. Translate Hindi/Hinglish dental terms to English medical concepts
+3. Map to predefined diagnostic categories:
+   - Caries & Cavities
+   - Pulpal Conditions (Pulpitis, Necrosis)
+   - Periapical Conditions (Abscess, Periodontitis)
+   - Periodontal (Gingivitis, Periodontitis)
+   - Traumatic Injuries (Fractures)
+   - Other Conditions
+4. Provide diagnosis in ENGLISH using standard dental terminology
+
 IMPORTANT: Respond ONLY with valid JSON in this exact format:
 {
-  "diagnosis": "Primary diagnosis name",
+  "diagnosis": "Primary diagnosis name IN ENGLISH (e.g., 'Irreversible Pulpitis', 'Deep Caries')",
   "confidence": 85,
-  "reasoning": "Evidence-based explanation citing the research",
+  "reasoning": "Evidence-based explanation citing the research (mention if symptoms were in Hindi/regional language)",
   "clinicalSignificance": "Clinical significance and prognosis",
   "differentialDiagnoses": ["Differential diagnosis 1", "Differential diagnosis 2", "Differential diagnosis 3"],
   "recommendedTests": ["Test 1", "Test 2"],
@@ -279,10 +308,22 @@ Pain Location: ${painCharacteristics.location || 'Not specified'}
 Duration: ${painCharacteristics.duration || 'Not specified'}`
     : 'No pain characteristics provided'
 
+  // Detect if symptoms contain Hindi/non-English text
+  const symptomsText = symptoms.join(', ')
+  const containsHindi = /[\u0900-\u097F]/.test(symptomsText) // Devanagari Unicode range
+  const languageNote = containsHindi 
+    ? '\n\n⚠️ NOTE: Symptoms are provided in HINDI (Devanagari script). TRANSLATE Hindi dental terms to English medical terminology before diagnosis.'
+    : ''
+
+  if (containsHindi) {
+    console.log('🌐 [AI DIAGNOSIS] Hindi symptoms detected! Symptoms:', symptomsText)
+    console.log('🌐 [AI DIAGNOSIS] Language note added to AI prompt for translation')
+  }
+
   // Build user prompt differently based on whether we have medical context
   const userPrompt = medicalContext.length > 0
     ? `Based on this medical evidence:\n\n${context}\n\nProvide diagnostic recommendation for:
-Symptoms: ${symptoms.join(', ')}
+Symptoms: ${symptoms.join(', ')}${languageNote}
 ${painText}
 Clinical Findings: ${clinicalFindings || 'Not provided'}
 ${toothNumber ? `Tooth Number: ${toothNumber}` : ''}
@@ -295,7 +336,7 @@ ${
 Focus on dental diagnoses from the predefined categories: Caries & Cavities, Pulpal Conditions, Periapical Conditions, Periodontal, Restorative, Developmental Anomalies, Traumatic Injuries, Wear & Erosion, Tooth Resorption, and Other Conditions.`
     : `Using your extensive knowledge of dental medicine, provide diagnostic recommendation for:
 
-Symptoms: ${symptoms.join(', ')}
+Symptoms: ${symptoms.join(', ')}${languageNote}
 ${painText}
 Clinical Findings: ${clinicalFindings || 'Not provided'}
 ${toothNumber ? `Tooth Number: ${toothNumber}` : ''}

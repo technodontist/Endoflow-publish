@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CheckCircle, XCircle, Loader2, Copy, Eye, EyeOff } from "lucide-react"
 import { manualPatientRegistration } from "@/lib/actions/patient-registration"
 
@@ -15,6 +16,7 @@ export function PatientRegistrationForm() {
   const [credentials, setCredentials] = useState<{ email: string, password: string } | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [selectedGender, setSelectedGender] = useState<string>('')
 
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true)
@@ -27,6 +29,7 @@ export function PatientRegistrationForm() {
         email: formData.get('email') as string,
         phone: formData.get('phone') as string,
         dateOfBirth: formData.get('dateOfBirth') as string,
+        gender: selectedGender as 'male' | 'female' | 'other' | 'prefer_not_to_say' | undefined,
         medicalHistory: formData.get('medicalHistory') as string,
         emergencyContact: formData.get('emergencyContact') as string,
         emergencyPhone: formData.get('emergencyPhone') as string,
@@ -42,6 +45,7 @@ export function PatientRegistrationForm() {
         // Reset form
         const form = document.getElementById('patient-registration-form') as HTMLFormElement
         form?.reset()
+        setSelectedGender('')
       } else {
         setNotification({ type: 'error', message: result.error || 'Registration failed' })
         setCredentials(null)
@@ -228,14 +232,34 @@ The patient should change their password after first login.`
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="dateOfBirth">Date of Birth</Label>
-            <Input
-              id="dateOfBirth"
-              name="dateOfBirth"
-              type="date"
-              disabled={isSubmitting}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="dateOfBirth">Date of Birth</Label>
+              <Input
+                id="dateOfBirth"
+                name="dateOfBirth"
+                type="date"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gender">Gender</Label>
+              <Select value={selectedGender} onValueChange={setSelectedGender} disabled={isSubmitting}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select gender (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Optional - Helps us provide appropriate care
+              </p>
+            </div>
           </div>
         </div>
 

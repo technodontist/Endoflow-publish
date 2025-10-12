@@ -36,7 +36,7 @@ export default function SimplePatientMessaging({ patientId, patientName }: Simpl
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Use real-time hooks
-  const { messages, loading, error } = useRealtimeMessages(patientId)
+  const { messages, loading, error, refreshMessages } = useRealtimeMessages(patientId)
   const { unreadCount, hasNewMessage, clearNewMessageFlag } = useRealtimeMessageNotifications(patientId)
 
   // Auto-scroll to bottom when messages change
@@ -87,27 +87,34 @@ export default function SimplePatientMessaging({ patientId, patientName }: Simpl
   const sendMessage = async () => {
     if (!newMessage.trim() || sending) return
 
+    const messageText = newMessage.trim()
     setSending(true)
+    setNewMessage('') // Clear input immediately for better UX
+    
     try {
       const result = await sendMessageAction({
         patientId: patientId,
-        message: newMessage.trim()
+        message: messageText
       })
 
       if (result.success) {
-        setNewMessage('')
-        // Force scroll to bottom after sending
+        // Message sent successfully
+        console.log('✅ [PATIENT] Message sent successfully')
+        
+        // Manually refresh messages as fallback (real-time should also trigger)
         setTimeout(() => {
+          refreshMessages()
           forceScrollToBottom()
-        }, 100)
-        // Real-time updates will handle showing the new message
+        }, 300)
       } else {
         console.error('Failed to send message:', result.error)
         alert('Failed to send message. Please try again.')
+        setNewMessage(messageText) // Restore message on error
       }
     } catch (error) {
       console.error('Error sending message:', error)
       alert('Error sending message. Please try again.')
+      setNewMessage(messageText) // Restore message on error
     } finally {
       setSending(false)
     }
@@ -208,7 +215,25 @@ export default function SimplePatientMessaging({ patientId, patientName }: Simpl
                       <span className={`text-xs opacity-70 ${
                         message.is_from_patient ? 'text-teal-100' : 'text-gray-500'
                       }`}>
-                        {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+                        {(() => {
+                          try {
+                            // Handle both ISO string and timestamp formats
+                            const timestamp = message.created_at
+                            const date = typeof timestamp === 'string' 
+                              ? new Date(timestamp) 
+                              : new Date(timestamp)
+                            
+                            // Check if date is valid
+                            if (isNaN(date.getTime())) {
+                              return 'just now'
+                            }
+                            
+                            return formatDistanceToNow(date, { addSuffix: true })
+                          } catch (e) {
+                            console.error('Error formatting timestamp:', e, message.created_at)
+                            return 'just now'
+                          }
+                        })()}
                       </span>
                     </div>
                   </div>

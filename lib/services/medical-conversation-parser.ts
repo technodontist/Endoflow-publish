@@ -96,16 +96,38 @@ export interface VoiceTranscriptAnalysis {
  * Extracts structured Chief Complaint and HOPI data from dentist-patient conversation
  *
  * @param transcript - Raw voice transcript text
+ * @param language - Language code (en-US, en-IN, hi-IN)
  * @returns Structured medical data with confidence scores
  */
 export async function analyzeMedicalConversation(
-  transcript: string
+  transcript: string,
+  language: string = 'en-US'
 ): Promise<VoiceTranscriptAnalysis> {
   console.log('🤖 [MEDICAL PARSER] Starting Gemini AI analysis...')
   console.log('📝 [MEDICAL PARSER] Transcript length:', transcript.length, 'characters')
+  console.log('🌐 [MEDICAL PARSER] Language:', language)
+
+  // Language-specific context
+  const languageContext = language === 'hi-IN'
+    ? `\n\nLANGUAGE CONTEXT: The conversation is in HINDI (हिंदी). Common medical terms in Hindi/Hinglish:
+- दर्द (dard) = pain
+- दांत (daant) = tooth
+- सूजन (sujan) = swelling
+- खून (khoon) = bleeding/blood
+- मसूड़े (masoode) = gums
+- तेज़ दर्द (tez dard) = sharp pain
+- भारी दर्द (bhaari dard) = severe pain
+- ठंडा (thanda) = cold
+- गर्म (garam) = hot
+- खाने में (khaane mein) = while eating
+Medical terms may be code-switched (mixing Hindi and English).
+IMPORTANT: Respond in English JSON structure, but understand Hindi input.`
+    : language === 'en-IN'
+    ? `\n\nLANGUAGE CONTEXT: The conversation is in INDIAN ENGLISH. Expect Indian accent patterns, Hindi loanwords, and code-switching between English and Hindi.`
+    : ''
 
   const systemInstruction = `You are an expert dental AI assistant analyzing dentist-patient conversations.
-Your task is to extract structured medical information from voice transcripts.
+Your task is to extract structured medical information from voice transcripts.${languageContext}
 
 EXTRACTION RULES:
 1. Extract information if explicitly mentioned OR can be reasonably inferred from context

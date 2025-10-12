@@ -26,7 +26,12 @@ import {
   MessageSquare,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Sparkles,
+  FlaskConical,
+  BookOpen,
+  ClipboardList,
+  Inbox
 } from "lucide-react"
 import { EnhancedAppointmentOrganizer } from "@/components/dentist/enhanced-appointment-organizer"
 import { DentistTodaysView } from "@/components/dentist/todays-view"
@@ -42,7 +47,6 @@ import { ResearchProjects as ResearchProjectsV2 } from "@/components/dentist/res
 import ResearchAiAssistant from "@/components/dentist/research-ai-assistant"
 import MedicalKnowledgeManager from "@/components/dentist/medical-knowledge-manager"
 import SelfLearningAssistant from "@/components/dentist/self-learning-assistant"
-import { MessagesChatInterface } from "@/components/dentist/messages-chat-interface"
 import SimpleMessagingInterface from "@/components/dentist/simple-messaging-interface"
 import { getCurrentDentist, getTodaysAppointments, getWeekAppointments, getDentistAppointmentsAction } from "@/lib/actions/dentist"
 import { logout } from "@/lib/actions/auth"
@@ -54,6 +58,7 @@ import { AssistantTaskManager } from "@/components/dentist/assistant-task-manage
 import { DentistPatientsTwoColumn } from "@/components/dentist/patients-two-column"
 import { EnhancedPatientsInterface } from "@/components/dentist/enhanced-patients-interface"
 import { EndoFlowVoiceController } from "@/components/dentist/endoflow-voice-controller"
+import { AIFeaturesIntro } from "@/components/dentist/ai-features-intro"
 
 interface DentistData {
   id: string
@@ -78,7 +83,7 @@ const navigationTabs = [
   { id: "analysis", label: "Clinic Analysis", icon: TrendingUp },
   { id: "research-v2", label: "Research Projects", icon: Search },
   { id: "medical-knowledge", label: "Medical Knowledge", icon: FileText },
-  { id: "messages", label: "Messages & Chat", icon: MessageSquare },
+  { id: "messages", label: "Messages", icon: MessageSquare },
   { id: "templates", label: "Templates", icon: FileText },
   { id: "tasks", label: "Assistant Tasks", icon: CheckCircle },
 ]
@@ -99,10 +104,17 @@ function DentistDashboardContent() {
   const [allAppointments, setAllAppointments] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showAIIntro, setShowAIIntro] = useState(false)
 
   useEffect(() => {
     loadDentistData()
     loadAppointmentStats()
+    
+    // Check if AI intro should be shown
+    const aiIntroDismissed = localStorage.getItem('endoflow_ai_intro_dismissed')
+    if (!aiIntroDismissed) {
+      setShowAIIntro(true)
+    }
   }, [])
 
   // Honor deep links like /dentist?tab=consultation&patientId=...&appointmentId=...
@@ -242,7 +254,10 @@ function DentistDashboardContent() {
             <div className="flex items-center gap-3">
               <EndoflowLogo size="lg" showText={false} />
               <h1 className="text-2xl font-bold text-teal-600">ENDOFLOW</h1>
-              <span className="text-gray-500">Dental Clinic Management</span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-gradient-to-r from-teal-100 to-cyan-100 text-teal-700 font-medium text-xs">
+                🤖 AI-Powered
+              </span>
+              <span className="text-sm text-gray-500">Dental Clinic Scribe & Assistant</span>
             </div>
 
             <div className="flex items-center gap-4">
@@ -266,7 +281,7 @@ function DentistDashboardContent() {
                 </Button>
 
                 {showProfileMenu && (
-                  <div className="absolute right-0 top-12 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                  <div className="absolute right-0 top-12 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                     <div className="p-2">
                       <Button
                         variant="ghost"
@@ -278,6 +293,19 @@ function DentistDashboardContent() {
                       >
                         <Settings className="w-4 h-4 mr-2" />
                         Settings
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                        onClick={() => {
+                          setShowProfileMenu(false)
+                          setShowAIIntro(true)
+                          localStorage.removeItem('endoflow_ai_intro_dismissed')
+                        }}
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Show AI Features
                       </Button>
                       <Button
                         variant="ghost"
@@ -338,103 +366,183 @@ function DentistDashboardContent() {
                   <p className="text-gray-500">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button variant="outline" size="sm">
-                    <Phone className="w-4 h-4 mr-2" />
-                    Emergency Contact
-                  </Button>
-<Button size="sm" className="bg-teal-600 hover:bg-teal-700">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Appointment
-                  </Button>
-<a href={`/dentist/contextual-appointment?dentistId=${dentistData.id}`} className="ml-2">
-                    <Button size="sm" variant="outline">
-                      Contextual Appointment
+                  <a href={`/dentist/contextual-appointment?dentistId=${dentistData.id}`}>
+                    <Button size="sm" className="bg-teal-600 hover:bg-teal-700 shadow-sm">
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Appointment
                     </Button>
                   </a>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="border-teal-300 text-teal-700 hover:bg-teal-50 hover:border-teal-400 shadow-sm"
+                    onClick={() => {
+                      setShowAIIntro(true)
+                      localStorage.removeItem('endoflow_ai_intro_dismissed')
+                      // Smooth scroll to top where intro appears
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    AI Features
+                  </Button>
                 </div>
               </div>
 
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                <Card>
-                  <CardContent className="p-6">
+              {/* AI Features Intro - Show on first visit */}
+              {showAIIntro && (
+                <div className="mb-6 animate-in fade-in slide-in-from-top duration-500">
+                  <AIFeaturesIntro onDismiss={() => setShowAIIntro(false)} />
+                </div>
+              )}
+
+              {/* Stats Cards Row 1 - Main Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
+                  <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600">Today's Appointments</p>
-                        <p className="text-3xl font-bold text-gray-900">{appointmentStats.today}</p>
-                        <p className="text-sm text-gray-500">3 completed, 5 remaining</p>
+                        <p className="text-sm font-medium text-teal-700">Today's Appointments</p>
+                        <p className="text-3xl font-bold text-teal-900 mt-1">{appointmentStats.today}</p>
+                        <p className="text-xs text-teal-600 mt-1">
+                          {appointmentStats.completed} done • {appointmentStats.pending} pending
+                        </p>
                       </div>
-                      <div className="w-8 h-8 text-gray-400">
-                        <Calendar className="w-full h-full" />
+                      <div className="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center">
+                        <Calendar className="w-6 h-6 text-white" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-6">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                  <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600">Completion Rate</p>
-                        <p className="text-3xl font-bold text-gray-900">38%</p>
-                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                          <div className="bg-teal-600 h-2 rounded-full" style={{width: '38%'}}></div>
-                        </div>
+                        <p className="text-sm font-medium text-blue-700">Week's Total</p>
+                        <p className="text-3xl font-bold text-blue-900 mt-1">{appointmentStats.week}</p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          Last 7 days activity
+                        </p>
                       </div>
-                      <div className="w-8 h-8 text-gray-400">
-                        <Activity className="w-full h-full" />
+                      <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                        <CalendarDays className="w-6 h-6 text-white" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-6">
+                <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                  <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600">Today's Revenue</p>
-                        <p className="text-3xl font-bold text-gray-900">₹2,450</p>
-                        <p className="text-sm text-green-600">+12% from yesterday</p>
+                        <p className="text-sm font-medium text-green-700">Today's Revenue</p>
+                        <p className="text-3xl font-bold text-green-900 mt-1">₹2,450</p>
+                        <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" /> +12% from yesterday
+                        </p>
                       </div>
-                      <div className="w-8 h-8 text-gray-400">
-                        <TrendingUp className="w-full h-full" />
+                      <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                        <TrendingUp className="w-6 h-6 text-white" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-6">
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                  <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-600">New Patients</p>
-                        <p className="text-3xl font-bold text-gray-900">2</p>
-                        <p className="text-sm text-gray-500">Welcome consultations</p>
+                        <p className="text-sm font-medium text-purple-700">New Patients</p>
+                        <p className="text-3xl font-bold text-purple-900 mt-1">2</p>
+                        <p className="text-xs text-purple-600 mt-1">
+                          Welcome consultations
+                        </p>
                       </div>
-                      <div className="w-8 h-8 text-gray-400">
-                        <Users className="w-full h-full" />
+                      <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
+                        <Users className="w-6 h-6 text-white" />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Main Content Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <DentistTodaysView
-                    dentistId={dentistData.id}
-                    onRefreshStats={loadAppointmentStats}
-                  />
-                </div>
-                <div>
-                  <RealtimeAppointments
-                    dentistId={dentistData.id}
-                    initialAppointments={allAppointments}
-                    onAppointmentUpdate={handleAppointmentUpdate}
-                  />
-                </div>
+              {/* Stats Cards Row 2 - Extended Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-orange-700">Research Projects</p>
+                        <p className="text-3xl font-bold text-orange-900 mt-1">3</p>
+                        <p className="text-xs text-orange-600 mt-1">
+                          Ongoing studies
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+                        <FlaskConical className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-indigo-700">Medical Papers</p>
+                        <p className="text-3xl font-bold text-indigo-900 mt-1">12</p>
+                        <p className="text-xs text-indigo-600 mt-1">
+                          Uploaded documents
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 bg-indigo-500 rounded-full flex items-center justify-center">
+                        <BookOpen className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-pink-50 to-pink-100 border-pink-200">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-pink-700">Active Tasks</p>
+                        <p className="text-3xl font-bold text-pink-900 mt-1">7</p>
+                        <p className="text-xs text-pink-600 mt-1">
+                          Assigned to assistant
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 bg-pink-500 rounded-full flex items-center justify-center">
+                        <ClipboardList className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-amber-700">Unread Messages</p>
+                        <p className="text-3xl font-bold text-amber-900 mt-1">5</p>
+                        <p className="text-xs text-amber-600 mt-1">
+                          Pending responses
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center">
+                        <Inbox className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
+
+              {/* Main Content - Full Width Today's View */}
+              <DentistTodaysView
+                dentistId={dentistData.id}
+                onRefreshStats={loadAppointmentStats}
+              />
             </div>
           )}
 
@@ -538,18 +646,12 @@ function DentistDashboardContent() {
             <div>
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Messages & Chat</h1>
+                  <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
                   <p className="text-gray-500">Patient communication and chat center</p>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <MessagesChatInterface />
-                <div className="border-t border-gray-200 pt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Messages</h3>
-                  <SimpleMessagingInterface />
-                </div>
-              </div>
+              <SimpleMessagingInterface />
             </div>
           )}
 

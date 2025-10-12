@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Mic, MicOff, Square, Play, Pause, Volume2, AlertCircle, Sparkles, Activity } from "lucide-react"
+import { Mic, MicOff, Square, Play, Pause, Volume2, AlertCircle, Sparkles, Activity, Globe } from "lucide-react"
 import { detectKeywords, analyzeConversationCompleteness } from '@/lib/services/medical-conversation-parser'
 import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
+import { cn } from '@/lib/utils'
 
 interface VoiceRecording {
   isRecording: boolean
@@ -60,6 +61,7 @@ export function GlobalVoiceRecorder({
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt')
+  const [selectedLanguage, setSelectedLanguage] = useState<'en-US' | 'en-IN' | 'hi-IN'>('en-US') // Language selection
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -99,7 +101,8 @@ export function GlobalVoiceRecorder({
 
       recognitionRef.current.continuous = true
       recognitionRef.current.interimResults = true
-      recognitionRef.current.lang = 'en-US'
+      recognitionRef.current.lang = selectedLanguage // Use selected language
+      console.log('🌐 [GLOBAL VOICE] Language set to:', selectedLanguage)
 
       recognitionRef.current.onresult = (event: any) => {
         let interimTranscript = ''
@@ -153,6 +156,33 @@ export function GlobalVoiceRecorder({
       }
     }
   }
+
+  // Handle language change - restart recognition if currently recording
+  useEffect(() => {
+    if (recording.isRecording && recognitionRef.current) {
+      console.log('🌐 [LANGUAGE CHANGE] Restarting recognition with new language:', selectedLanguage)
+
+      // Stop current recognition
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {
+        // Already stopped
+      }
+
+      // Update language and restart
+      setTimeout(() => {
+        if (recognitionRef.current && recording.isRecording) {
+          recognitionRef.current.lang = selectedLanguage
+          try {
+            recognitionRef.current.start()
+            console.log('✅ [LANGUAGE CHANGE] Recognition restarted with', selectedLanguage)
+          } catch (e) {
+            console.error('❌ [LANGUAGE CHANGE] Failed to restart:', e)
+          }
+        }
+      }, 300)
+    }
+  }, [selectedLanguage])
 
   const requestMicrophoneAccess = async (): Promise<MediaStream | null> => {
     try {
@@ -390,6 +420,8 @@ export function GlobalVoiceRecorder({
       formData.append('transcript', transcript)
       formData.append('consultationId', consultationId)
       formData.append('sessionId', recording.sessionId || '')
+      formData.append('language', selectedLanguage) // Pass selected language for AI processing
+      console.log('🌐 [PROCESS] Sending transcript with language:', selectedLanguage)
 
       const response = await fetch('/api/voice/process-global-transcript', {
         method: 'POST',
@@ -512,18 +544,86 @@ export function GlobalVoiceRecorder({
               )}
             </div>
 
+            {/* Language Selector */}
+            {!recording.isRecording && (
+              <div className="relative group">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 text-gray-700 hover:bg-gray-100 border-gray-300"
+                  title="Select language"
+                  disabled={!isEnabled}
+                >
+                  <Globe className="w-4 h-4 mr-2" />
+                  <span className="text-xs">
+                    {selectedLanguage === 'en-US' ? 'English (US)' : selectedLanguage === 'en-IN' ? 'English (India)' : 'हिंदी'}
+                  </span>
+                </Button>
+                {/* Dropdown menu */}
+                <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[200px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <button
+                    onClick={() => setSelectedLanguage('en-US')}
+                    className={cn(
+                      "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
+                      selectedLanguage === 'en-US' && "bg-teal-100 text-teal-800 font-semibold"
+                    )}
+                  >
+                    <Globe className="w-4 h-4" />
+                    <div>
+                      <div>English (US)</div>
+                      <div className="text-xs text-gray-500">Standard American</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedLanguage('en-IN')}
+                    className={cn(
+                      "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
+                      selectedLanguage === 'en-IN' && "bg-teal-100 text-teal-800 font-semibold"
+                    )}
+                  >
+                    <Globe className="w-4 h-4" />
+                    <div>
+                      <div>English (India)</div>
+                      <div className="text-xs text-gray-500">Indian English accent</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedLanguage('hi-IN')}
+                    className={cn(
+                      "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
+                      selectedLanguage === 'hi-IN' && "bg-teal-100 text-teal-800 font-semibold"
+                    )}
+                  >
+                    <Globe className="w-4 h-4" />
+                    <div>
+                      <div>हिंदी (Hindi)</div>
+                      <div className="text-xs text-gray-500">Hindi language</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-3">
               <Badge variant="outline" className={getStatusColor()}>
                 {getRecordingStatus()}
               </Badge>
 
               {recording.isRecording && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-mono">
-                    {formatDuration(recording.duration)}
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-mono">
+                      {formatDuration(recording.duration)}
+                    </span>
+                  </div>
+
+                  {/* Language Badge during recording */}
+                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
+                    <Globe className="h-3 w-3 mr-1" />
+                    {selectedLanguage === 'en-US' ? 'English (US)' : selectedLanguage === 'en-IN' ? 'English (India)' : 'हिंदी (Hindi)'}
+                  </Badge>
+                </>
               )}
 
               {recording.transcript && (

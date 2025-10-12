@@ -47,8 +47,8 @@ export default function SimpleMessagingInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Use real-time hooks
-  const { conversations, loading: conversationsLoading, error: conversationsError } = useRealtimeConversations()
-  const { messages, loading: messagesLoading, error: messagesError } = useRealtimeMessages(selectedPatientId)
+  const { conversations, loading: conversationsLoading, error: conversationsError, refreshConversations } = useRealtimeConversations()
+  const { messages, loading: messagesLoading, error: messagesError, refreshMessages } = useRealtimeMessages(selectedPatientId)
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -62,23 +62,34 @@ export default function SimpleMessagingInterface() {
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedPatientId || sending) return
 
+    const messageText = newMessage.trim()
     setSending(true)
+    setNewMessage('') // Clear input immediately for better UX
+    
     try {
       const result = await sendMessageAction({
         patientId: selectedPatientId,
-        message: newMessage.trim()
+        message: messageText
       })
 
       if (result.success) {
-        setNewMessage('')
-        // Real-time updates will handle showing the new message
+        // Message sent successfully
+        console.log('✅ Message sent successfully')
+        
+        // Manually refresh messages as fallback (real-time should also trigger)
+        setTimeout(() => {
+          refreshMessages()
+          refreshConversations()
+        }, 300)
       } else {
         console.error('Failed to send message:', result.error)
         alert('Failed to send message. Please try again.')
+        setNewMessage(messageText) // Restore message on error
       }
     } catch (error) {
       console.error('Error sending message:', error)
       alert('Error sending message. Please try again.')
+      setNewMessage(messageText) // Restore message on error
     } finally {
       setSending(false)
     }
@@ -158,7 +169,14 @@ export default function SimpleMessagingInterface() {
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-xs text-gray-500 flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
+                            {(() => {
+                              try {
+                                const date = new Date(conversation.last_message_at)
+                                return isNaN(date.getTime()) ? 'just now' : formatDistanceToNow(date, { addSuffix: true })
+                              } catch (e) {
+                                return 'just now'
+                              }
+                            })()}
                           </span>
                           {conversation.unread_count > 0 && (
                             <Badge variant="destructive" className="text-xs">
@@ -239,7 +257,15 @@ export default function SimpleMessagingInterface() {
                         <p className={`text-xs mt-1 ${
                           message.is_from_patient ? 'text-gray-500' : 'text-blue-100'
                         }`}>
-                          {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+                          {(() => {
+                            try {
+                              const date = new Date(message.created_at)
+                              return isNaN(date.getTime()) ? 'just now' : formatDistanceToNow(date, { addSuffix: true })
+                            } catch (e) {
+                              console.error('Error formatting timestamp:', e, message.created_at)
+                              return 'just now'
+                            }
+                          })()}
                         </p>
                       </div>
                     </div>

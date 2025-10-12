@@ -158,13 +158,6 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   const [pendingVoiceToothDiagnoses, setPendingVoiceToothDiagnoses] = useState<any[]>([])
 
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  
-  // NEW: Ref to track voice-extracted teeth that shouldn't be overwritten by DB reloads
-  const voiceExtractedTeethRef = useRef<Set<string>>(new Set())
-  
-  // NEW: Ref to track initial teeth when patient selected (for real-time display filtering)
-  const initialTeethRef = useRef<Set<string>>(new Set())
-  const sessionModifiedTeethRef = useRef<Set<string>>(new Set())
 
   // Function to reload tooth diagnoses from database
   const reloadToothDiagnoses = async () => {
@@ -1559,14 +1552,9 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   }, [selectedPatient?.id])
 
   // Reload latest tooth data on realtime bumps (so tabs reflect changes without manual reload)
-  // FIXED: Merge with voice-extracted teeth instead of replacing entirely
   useEffect(() => {
     const run = async () => {
       if (!selectedPatient?.id) return
-      
-      console.log('🔄 [REALTIME-EFFECT] Triggered by historyVersion:', historyVersion)
-      console.log('🦷 [REALTIME-EFFECT] Voice-extracted teeth to preserve:', Array.from(voiceExtractedTeethRef.current))
-      
       try {
         const supabase = createClient()
         const { data, error } = await supabase
@@ -1575,17 +1563,12 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
           .select('tooth_number, status, primary_diagnosis, recommended_treatment, examination_date, notes, updated_at')
           .eq('patient_id', selectedPatient.id)
           .order('updated_at', { ascending: false })
-        if (error) {
-          console.warn('⚠️ [REALTIME-EFFECT] Database query error:', error)
-          return
-        }
-        
+        if (error) return
         const latestByTooth: Record<string, any> = {}
         for (const row of (data || [])) {
           const t = String((row as any).tooth_number)
           if (latestByTooth[t]) continue // keep first (latest)
           latestByTooth[t] = {
-            status: (row as any).status || 'healthy',  // FIXED: Add status field for InteractiveDentalChart
             currentStatus: (row as any).status || 'healthy',
             selectedDiagnoses: ((row as any).primary_diagnosis || '')?.split(',').map((s: string) => s.trim()).filter(Boolean),
             selectedTreatments: ((row as any).recommended_treatment || '')?.split(',').map((s: string) => s.trim()).filter(Boolean),
@@ -1601,38 +1584,8 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
             diagnosticNotes: (row as any).notes
           }
         }
-        
-        console.log('💾 [REALTIME-EFFECT] Loaded', Object.keys(latestByTooth).length, 'teeth from database')
-        
-        // CRITICAL FIX: Merge with current toothData to preserve voice-extracted teeth
-        setToothData(prev => {
-          console.log('🔀 [REALTIME-EFFECT] Merging DB data with existing toothData')
-          console.log('  📊 Previous toothData count:', Object.keys(prev).length)
-          console.log('  📊 DB loaded teeth count:', Object.keys(latestByTooth).length)
-          
-          // Start with database data
-          const merged = { ...latestByTooth }
-          
-          // Preserve voice-extracted teeth that aren't in the database yet
-          voiceExtractedTeethRef.current.forEach(toothNum => {
-            if (prev[toothNum] && !merged[toothNum]) {
-              console.log(`  ✅ [REALTIME-EFFECT] Preserving voice-extracted tooth #${toothNum}`)
-              merged[toothNum] = prev[toothNum]
-            } else if (prev[toothNum] && merged[toothNum]) {
-              console.log(`  ⚠️ [REALTIME-EFFECT] Tooth #${toothNum} now in DB, using DB version`)
-              // If voice-extracted tooth is now in DB, remove from tracking
-              voiceExtractedTeethRef.current.delete(toothNum)
-            }
-          })
-          
-          console.log('  📊 Final merged toothData count:', Object.keys(merged).length)
-          console.log('  🦷 Remaining voice-extracted teeth:', Array.from(voiceExtractedTeethRef.current))
-          
-          return merged
-        })
-      } catch (err) {
-        console.error('❌ [REALTIME-EFFECT] Exception:', err)
-      }
+        setToothData(latestByTooth)
+      } catch {}
     }
     run()
   }, [historyVersion, selectedPatient?.id])
@@ -1731,19 +1684,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
           toothCount: r.data.toothData ? Object.keys(r.data.toothData).length : 0
         })
         setConsultationData(r.data.consultationData)
-        
-        // CRITICAL FIX: Merge draft consultation teeth with existing teeth, don't replace!
-        if (r.data.toothData && Object.keys(r.data.toothData).length > 0) {
-          console.log('🔀 [LOAD-CONSULTATION] Merging', Object.keys(r.data.toothData).length, 'draft teeth with existing teeth')
-          setToothData(prev => {
-            const merged = { ...prev, ...r.data.toothData }
-            console.log('✅ [LOAD-CONSULTATION] Merged result:', Object.keys(merged).length, 'total teeth')
-            return merged
-          })
-        } else {
-          console.log('ℹ️ [LOAD-CONSULTATION] No draft tooth data to merge')
-        }
-        
+        setToothData(r.data.toothData || {})
         const toothCount = r.data.toothData ? Object.keys(r.data.toothData).length : 0
         if (toothCount > 0) {
           console.log(`✅ Previous consultation loaded with ${toothCount} teeth records`)
@@ -1786,74 +1727,22 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   }, [selectedPatient?.id, historyVersion])
 
   const handlePatientSelect = async (patient: Patient) => {
-    console.log('🔵 [PATIENT-SELECT] Starting patient selection for:', patient.id)
     setSelectedPatient(patient)
     setConsultationData(prev => ({ ...prev, patientId: patient.id }))
     setSearchTerm("")
     setPatients([])
     onPatientSelect?.(patient)
     
-    // CRITICAL FIX: Load patient's existing tooth diagnoses FIRST before anything else
-    console.log('🦷 [PATIENT-SELECT] Step 1: Loading all existing tooth diagnoses for patient')
-    try {
-      const toothResult = await getPatientLatestToothDiagnoses(patient.id)
-      if (toothResult.success && toothResult.data) {
-        const teeth = toothResult.data
-        console.log('✅ [PATIENT-SELECT] Loaded', Object.keys(teeth).length, 'teeth from database')
-        
-        // Convert to format expected by UI
-        const formattedToothData: {[key: string]: any} = {}
-        Object.entries(teeth).forEach(([toothNumber, diagnosis]: [string, any]) => {
-          formattedToothData[toothNumber] = {
-            status: diagnosis.status,
-            currentStatus: diagnosis.status,
-            primaryDiagnosis: diagnosis.primaryDiagnosis,
-            recommendedTreatment: diagnosis.recommendedTreatment,
-            treatmentPriority: diagnosis.treatmentPriority,
-            notes: diagnosis.notes,
-            diagnosisDetails: diagnosis.diagnosisDetails,
-            symptoms: diagnosis.symptoms || [],
-            estimatedDuration: diagnosis.estimatedDuration,
-            estimatedCost: diagnosis.estimatedCost,
-            followUpRequired: diagnosis.followUpRequired || false,
-            examinationDate: diagnosis.examinationDate,
-            selectedDiagnoses: diagnosis.primaryDiagnosis ? [diagnosis.primaryDiagnosis] : [],
-            selectedTreatments: diagnosis.recommendedTreatment ? [diagnosis.recommendedTreatment] : [],
-            priority: diagnosis.treatmentPriority,
-            treatmentNotes: diagnosis.notes,
-            colorCode: diagnosis.colorCode
-          }
-        })
-        
-        // Set toothData IMMEDIATELY with all existing teeth
-        console.log('💾 [PATIENT-SELECT] Setting toothData with', Object.keys(formattedToothData).length, 'existing teeth')
-        setToothData(formattedToothData)
-        console.log('🦷 [PATIENT-SELECT] Existing teeth loaded:', Object.keys(formattedToothData).sort((a, b) => parseInt(a) - parseInt(b)).join(', '))
-        
-        // Track initial teeth for session-based filtering in real-time display
-        initialTeethRef.current = new Set(Object.keys(formattedToothData))
-        sessionModifiedTeethRef.current.clear()
-        console.log('📸 [PATIENT-SELECT] Snapshot taken - tracking', initialTeethRef.current.size, 'initial teeth')
-      } else {
-        console.log('ℹ️ [PATIENT-SELECT] No existing tooth diagnoses found for patient')
-        setToothData({}) // Start fresh if no existing teeth
-        initialTeethRef.current.clear()
-        sessionModifiedTeethRef.current.clear()
-      }
-    } catch (error) {
-      console.error('❌ [PATIENT-SELECT] Error loading existing tooth diagnoses:', error)
-      setToothData({}) // Fallback to empty on error
-      initialTeethRef.current.clear()
-      sessionModifiedTeethRef.current.clear()
-    }
-    
-    // Load previous consultation data (this might update toothData if there's draft data)
-    console.log('🦷 [PATIENT-SELECT] Step 2: Loading previous consultation data (if any)')
+    // Load previous consultation data (this will load toothData if exists)
     await loadPreviousConsultationData(patient.id)
+    
+    // Also load latest tooth diagnoses (this ensures we always have the latest data)
+    console.log('🦷 [SELECT] Loading latest tooth diagnoses for patient:', patient.id)
+    await reloadToothDiagnoses()
     
     // Auto-create a draft consultation to enable voice recording
     if (!savedConsultationId) {
-      console.log('🎤 [PATIENT-SELECT] Step 3: Creating draft consultation for voice recording...')
+      console.log('🎤 [AUTO-DRAFT] Creating draft consultation for voice recording...')
       try {
         const result = await saveConsultationSectionAction({
           patientId: patient.id,
@@ -1869,8 +1758,6 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         console.error('❌ [AUTO-DRAFT] Failed to create draft consultation:', error)
       }
     }
-    
-    console.log('✅ [PATIENT-SELECT] Patient selection complete')
   }
 
   const handleSaveConsultation = async (status: 'draft' | 'completed' = 'draft') => {
@@ -2331,10 +2218,6 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
             onToothStatusChange={async (toothNumber, status, data) => {
               console.log('🦷 [RIGHT-CLICK] Status change:', { toothNumber, status, data })
               
-              // Track as session-modified tooth
-              sessionModifiedTeethRef.current.add(toothNumber)
-              console.log('📝 [RIGHT-CLICK] Marked tooth', toothNumber, 'as modified in this session')
-              
               // Update local state immediately for instant UI feedback
               setToothData(prev => ({
                 ...prev,
@@ -2352,15 +2235,9 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
           />
           <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg border border-blue-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-blue-700">🦷 Real-time Dental Chart Data (This Session Only)</h3>
+              <h3 className="text-sm font-semibold text-blue-700">🦷 Real-time Dental Chart Data</h3>
               <Badge className="bg-blue-100 text-blue-800 text-xs">
-                {(() => {
-                  // Count only teeth modified in this session
-                  const sessionTeeth = Object.keys(toothData).filter(toothNum => 
-                    !initialTeethRef.current.has(toothNum) || sessionModifiedTeethRef.current.has(toothNum)
-                  )
-                  return sessionTeeth.length
-                })()} Teeth Modified
+                {Object.keys(toothData).length} Teeth with Data
               </Badge>
             </div>
             <div className="space-y-4">
@@ -2369,9 +2246,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 <div className="grid grid-cols-8 gap-1">
                   {[18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28].map(toothNum => {
                     const toothInfo = (toothData as any)[toothNum.toString()]
-                    // Only show if new or modified in this session
-                    const isNewOrModified = !initialTeethRef.current.has(toothNum.toString()) || sessionModifiedTeethRef.current.has(toothNum.toString())
-                    const hasData = !!toothInfo && isNewOrModified
+                    const hasData = !!toothInfo
                     const isSelected = selectedTooth === toothNum.toString()
                     return (
                       <div
@@ -2423,9 +2298,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 <div className="grid grid-cols-8 gap-1">
                   {[48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38].map(toothNum => {
                     const toothInfo = (toothData as any)[toothNum.toString()]
-                    // Only show if new or modified in this session
-                    const isNewOrModified = !initialTeethRef.current.has(toothNum.toString()) || sessionModifiedTeethRef.current.has(toothNum.toString())
-                    const hasData = !!toothInfo && isNewOrModified
+                    const hasData = !!toothInfo
                     const isSelected = selectedTooth === toothNum.toString()
                     return (
                       <div
@@ -2501,15 +2374,6 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         }}
         onToothDiagnosesExtracted={(toothDiagnoses) => {
           console.log('🦷 [VOICE] Received tooth diagnoses from voice:', toothDiagnoses)
-          
-          // Track voice-extracted teeth to prevent them from being overwritten by DB reloads
-          toothDiagnoses.forEach(diag => {
-            voiceExtractedTeethRef.current.add(diag.toothNumber)
-            sessionModifiedTeethRef.current.add(diag.toothNumber)  // Also mark as session-modified
-            console.log(`🎙️ [VOICE] Tracking tooth #${diag.toothNumber} as voice-extracted and session-modified`)
-          })
-          console.log('🎙️ [VOICE] Total voice-extracted teeth being tracked:', Array.from(voiceExtractedTeethRef.current))
-          
           // Store in pending state - will be saved when consultation is saved
           setPendingVoiceToothDiagnoses(prev => {
             // Merge with existing pending diagnoses, updating if tooth already exists
@@ -2527,13 +2391,8 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
           
           // Update toothData for immediate UI display (temporary, not saved)
           setToothData(prev => {
-            console.log('🔀 [VOICE] Merging voice diagnoses into toothData')
-            console.log('  📊 [VOICE] Current toothData count:', Object.keys(prev).length)
-            console.log('  📊 [VOICE] Incoming voice diagnoses:', toothDiagnoses.length)
-            
-            const updated = { ...prev }  // PRESERVE all existing teeth
+            const updated = { ...prev }
             toothDiagnoses.forEach(diag => {
-              console.log(`  🦷 [VOICE] Adding/updating tooth #${diag.toothNumber} with status='${diag.status}'`)
               // Format data to match both dialog and FDI chart expectations
               updated[diag.toothNumber] = {
                 // For dialog (ToothDiagnosisDialogV2)
@@ -2561,11 +2420,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 voiceExtractedAt: new Date().toISOString()
               }
             })
-            
-            console.log('✅ [VOICE] Updated toothData with', toothDiagnoses.length, 'voice diagnoses')
-            console.log('  📊 [VOICE] Final toothData count:', Object.keys(updated).length)
-            console.log('  🦷 [VOICE] All teeth in toothData:', Object.keys(updated).sort((a, b) => parseInt(a) - parseInt(b)).join(', '))
-            
+            console.log('✅ [VOICE] Updated toothData with', toothDiagnoses.length, 'voice diagnoses (temporary)')
             return updated
           })
         }}

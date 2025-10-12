@@ -33,6 +33,7 @@ export type IntentType =
   | 'appointment_scheduling' // "What's my schedule today", "Book appointment"
   | 'treatment_planning'     // "Suggest treatment for pulpitis", "Follow-up protocol"
   | 'patient_inquiry'        // "Tell me about John Doe", "Patient history"
+  | 'task_management'        // "Create task to verify patient", "Show pending tasks"
   | 'general_question'       // "How do I...", "What is..."
   | 'clarification_needed'   // Ambiguous query requiring more info
 
@@ -98,9 +99,11 @@ TASK: Classify the user's query into ONE of these categories:
 3. appointment_booking - Creating/scheduling NEW appointments
    - Examples: "Schedule appointment for John", "Book RCT tomorrow", "Create appointment"
 4. treatment_planning - Treatment suggestions, protocols, clinical recommendations
-5. patient_inquiry - Specific patient information, history, records  
-6. general_question - General dental questions, how-to queries
-7. clarification_needed - Ambiguous query that needs more information
+5. patient_inquiry - Specific patient information, history, records
+6. task_management - Creating, assigning, viewing, or managing assistant tasks
+   - Examples: "Create task to verify patient", "Show pending tasks", "Assign task to assistant", "How many tasks?", "Task statistics"
+7. general_question - General dental questions, how-to queries
+8. clarification_needed - Ambiguous query that needs more information
 
 IMPORTANT: Also extract relevant entities:
 - patientName: Full name of patient mentioned
@@ -159,6 +162,18 @@ Output: {"type": "patient_inquiry", "confidence": 0.85, "entities": {"patientNam
 
 Input: "What should I do for pulpitis on tooth 46"
 Output: {"type": "treatment_planning", "confidence": 0.92, "entities": {"diagnosis": "pulpitis", "toothNumber": "46"}, "requiresClarification": false}
+
+Input: "Create urgent task to verify Sarah's insurance by tomorrow"
+Output: {"type": "task_management", "confidence": 0.96, "entities": {"patientName": "Sarah"}, "requiresClarification": false}
+
+Input: "Assign task to John to call patient about appointment"
+Output: {"type": "task_management", "confidence": 0.94, "entities": {}, "requiresClarification": false}
+
+Input: "Show me pending tasks"
+Output: {"type": "task_management", "confidence": 0.92, "entities": {}, "requiresClarification": false}
+
+Input: "How many tasks are urgent?"
+Output: {"type": "task_management", "confidence": 0.90, "entities": {}, "requiresClarification": false}
 
 Input: "Schedule appointment"
 Output: {"type": "appointment_booking", "confidence": 0.70, "entities": {}, "requiresClarification": true, "clarificationQuestion": "Sure! I can help schedule an appointment. Could you please tell me: 1) Patient name, 2) Date and time, and 3) Type of appointment (consultation, treatment, follow-up)?"}
@@ -1006,6 +1021,204 @@ async function delegateToPatientInquiry(
 }
 
 /**
+ * Delegate to Task Management AI Agent
+ * Handles: task creation, assignment, status updates, queries
+ */
+async function delegateToTaskManagement(
+  userQuery: string,
+  entities: ClassifiedIntent['entities'],
+  dentistId: string,
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+): Promise<AgentResponse> {
+  const startTime = Date.now()
+
+  try {
+    console.log('📋 [TASK MANAGEMENT AGENT] Processing query...')
+
+    // Import task actions (dynamic import to avoid circular dependencies)
+    const { scheduleTaskWithAI } = await import('@/lib/actions/ai-task-scheduler')
+    const { getTasksAction, updateTaskStatusAction, getTaskStatsAction } = await import('@/lib/actions/assistant-tasks')
+
+    // Extract context from conversation history
+    const extractedContext = conversationHistory ? extractConversationContext(conversationHistory) : undefined
+
+    // Enhance query with conversation context
+    let enhancedQuery = userQuery
+    if (conversationHistory && conversationHistory.length > 0) {
+      enhancedQuery = await enhanceQueryWithContext(userQuery, conversationHistory, extractedContext)
+    }
+
+    // Determine task action type
+    const queryLower = enhancedQuery.toLowerCase()
+
+    // === CREATE/SCHEDULE TASK ===
+    if (
+      queryLower.includes('create task') ||
+      queryLower.includes('add task') ||
+      queryLower.includes('schedule task') ||
+      queryLower.includes('assign task') ||
+      queryLower.includes('new task') ||
+      queryLower.includes('make task')
+    ) {
+      console.log('📝 [TASK MANAGEMENT] Detected task creation request')
+
+      // Use existing AI scheduler
+      const result = await scheduleTaskWithAI(enhancedQuery, dentistId)
+
+      return {
+        agentName: 'Task Management AI',
+        success: result.success,
+        data: result,
+        error: result.error,
+        processingTime: Date.now() - startTime
+      }
+    }
+
+    // === LIST/QUERY TASKS ===
+    else if (
+      queryLower.includes('show tasks') ||
+      queryLower.includes('list tasks') ||
+      queryLower.includes('what tasks') ||
+      queryLower.includes('pending tasks') ||
+      queryLower.includes('my tasks') ||
+      queryLower.includes('task status') ||
+      queryLower.includes('how many tasks')
+    ) {
+      console.log('📊 [TASK MANAGEMENT] Detected task query request')
+
+      // Determine filter
+      let filter: any = {}
+
+      if (queryLower.includes('pending') || queryLower.includes('todo')) {
+        filter.status = 'todo'
+      } else if (queryLower.includes('in progress') || queryLower.includes('active')) {
+        filter.status = 'in_progress'
+      } else if (queryLower.includes('completed') || queryLower.includes('done')) {
+        filter.status = 'completed'
+      } else if (queryLower.includes('urgent')) {
+        filter.priority = 'urgent'
+      }
+
+      // Extract patient name from entities or context
+      const patientName = entities.patientName || extractedContext?.lastPatientName
+      if (patientName) {
+        // Search for patient
+        const supabase = await createServiceClient()
+        const { data: patients } = await supabase
+          .schema('api')
+          .from('patients')
+          .select('id')
+          .or(`first_name.ilike.%${patientName}%,last_name.ilike.%${patientName}%`)
+          .limit(1)
+
+        if (patients && patients.length > 0) {
+          filter.patientId = patients[0].id
+        }
+      }
+
+      // Get tasks
+      const tasksResult = await getTasksAction(filter)
+
+      if (!tasksResult.success || !tasksResult.tasks) {
+        return {
+          agentName: 'Task Management AI',
+          success: false,
+          error: tasksResult.error || 'Failed to retrieve tasks',
+          processingTime: Date.now() - startTime
+        }
+      }
+
+      // Format response data
+      const tasks = tasksResult.tasks
+
+      return {
+        agentName: 'Task Management AI',
+        success: true,
+        data: {
+          tasks,
+          count: tasks.length,
+          filter,
+          query: 'list_tasks'
+        },
+        processingTime: Date.now() - startTime
+      }
+    }
+
+    // === UPDATE TASK STATUS ===
+    else if (
+      queryLower.includes('complete task') ||
+      queryLower.includes('mark task') ||
+      queryLower.includes('finish task') ||
+      queryLower.includes('start task')
+    ) {
+      console.log('🔄 [TASK MANAGEMENT] Detected task status update request')
+
+      // This requires task ID - request clarification
+      return {
+        agentName: 'Task Management AI',
+        success: false,
+        error: 'To update a task, please specify the task by name or view the task list first. Try: "Show my pending tasks"',
+        processingTime: Date.now() - startTime
+      }
+    }
+
+    // === GET TASK STATISTICS ===
+    else if (
+      queryLower.includes('task stats') ||
+      queryLower.includes('task summary') ||
+      queryLower.includes('how many tasks')
+    ) {
+      console.log('📊 [TASK MANAGEMENT] Detected task statistics request')
+
+      const statsResult = await getTaskStatsAction()
+
+      if (!statsResult.success || !statsResult.stats) {
+        return {
+          agentName: 'Task Management AI',
+          success: false,
+          error: statsResult.error || 'Failed to retrieve task statistics',
+          processingTime: Date.now() - startTime
+        }
+      }
+
+      return {
+        agentName: 'Task Management AI',
+        success: true,
+        data: {
+          stats: statsResult.stats,
+          query: 'task_statistics'
+        },
+        processingTime: Date.now() - startTime
+      }
+    }
+
+    // === FALLBACK: Treat as task creation ===
+    else {
+      console.log('📝 [TASK MANAGEMENT] Fallback - treating as task creation')
+
+      const result = await scheduleTaskWithAI(enhancedQuery, dentistId)
+
+      return {
+        agentName: 'Task Management AI',
+        success: result.success,
+        data: result,
+        error: result.error,
+        processingTime: Date.now() - startTime
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ [TASK MANAGEMENT AGENT] Error:', error)
+    return {
+      agentName: 'Task Management AI',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      processingTime: Date.now() - startTime
+    }
+  }
+}
+
+/**
  * Handle general questions using Gemini
  */
 async function delegateToGeneralAI(
@@ -1310,6 +1523,12 @@ export async function orchestrateQuery(params: {
         )
         break
 
+      case 'task_management':
+        agentResponses.push(
+          await delegateToTaskManagement(userQuery, intent.entities, dentistId, effectiveHistory)
+        )
+        break
+
       case 'general_question':
       default:
         agentResponses.push(
@@ -1550,6 +1769,109 @@ async function synthesizeResponse(
       return 'Patient information retrieved.'
     }
 
+    case 'task_management': {
+      const data = successfulResponses[0]?.data
+
+      // Task creation response
+      if (data?.message && data?.taskId) {
+        let response = `✅ **Task Created Successfully!**\n\n${data.message}`
+
+        if (data.parsedRequest) {
+          const task = data.parsedRequest
+          response += `\n\n**Task Details:**`
+          response += `\n• **Title:** ${task.taskTitle}`
+          response += `\n• **Priority:** ${task.priority.toUpperCase()}`
+          if (task.assignedToName) {
+            response += `\n• **Assigned to:** ${task.assignedToName}`
+          }
+          if (task.patientName) {
+            response += `\n• **Patient:** ${task.patientName}`
+          }
+          if (task.dueDate) {
+            response += `\n• **Due:** ${task.dueDate}${task.dueTime ? ` at ${task.dueTime}` : ''}`
+          }
+          if (data.confidence) {
+            response += `\n\n*AI Confidence: ${(data.confidence * 100).toFixed(0)}%*`
+          }
+        }
+
+        return response
+      }
+
+      // Task list response
+      if (data?.query === 'list_tasks' && data?.tasks) {
+        const tasks = data.tasks
+        const filter = data.filter
+
+        if (tasks.length === 0) {
+          let filterDesc = 'tasks'
+          if (filter.status) filterDesc = `${filter.status.replace('_', ' ')} tasks`
+          if (filter.priority) filterDesc = `${filter.priority} priority tasks`
+
+          return `No ${filterDesc} found.`
+        }
+
+        let response = `📋 **Found ${tasks.length} task${tasks.length > 1 ? 's' : ''}:**\n\n`
+
+        tasks.slice(0, 10).forEach((task: any, idx: number) => {
+          const priorityEmoji = {
+            urgent: '🔴',
+            high: '🟠',
+            medium: '🟡',
+            low: '🟢'
+          }[task.priority] || '⚪'
+
+          response += `${idx + 1}. ${priorityEmoji} **${task.title}**\n`
+          response += `   Status: ${task.status.replace('_', ' ')} | Priority: ${task.priority}\n`
+
+          if (task.assigned_to_profile) {
+            response += `   Assigned to: ${task.assigned_to_profile.full_name}\n`
+          }
+
+          if (task.patient_name) {
+            response += `   Patient: ${task.patient_name}\n`
+          }
+
+          if (task.due_date) {
+            response += `   Due: ${new Date(task.due_date).toLocaleDateString()}\n`
+          }
+
+          response += '\n'
+        })
+
+        if (tasks.length > 10) {
+          response += `\n*... and ${tasks.length - 10} more task${tasks.length - 10 > 1 ? 's' : ''}*`
+        }
+
+        return response.trim()
+      }
+
+      // Task statistics response
+      if (data?.query === 'task_statistics' && data?.stats) {
+        const stats = data.stats
+
+        let response = `📊 **Task Statistics:**\n\n`
+        response += `• **Total Tasks:** ${stats.total}\n`
+        response += `• **To Do:** ${stats.todo}\n`
+        response += `• **In Progress:** ${stats.inProgress}\n`
+        response += `• **Completed:** ${stats.completed}\n`
+        response += `• **Urgent:** ${stats.urgent}\n`
+
+        if (stats.overdue > 0) {
+          response += `• **⚠️ Overdue:** ${stats.overdue}\n`
+        }
+
+        return response
+      }
+
+      // Error response
+      if (data?.error) {
+        return data.error
+      }
+
+      return 'Task operation completed.'
+    }
+
     case 'general_question':
     default: {
       const data = successfulResponses[0]?.data
@@ -1596,6 +1918,12 @@ function generateSuggestions(
       suggestions.push('View recent consultations')
       suggestions.push('Schedule follow-up')
       suggestions.push('View treatment history')
+      break
+
+    case 'task_management':
+      suggestions.push('Show pending tasks')
+      suggestions.push('Create another task')
+      suggestions.push('View task statistics')
       break
 
     case 'general_question':

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChevronLeft, ChevronRight, User, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -21,6 +22,7 @@ interface PatientRegistrationData {
   email: string
   phone: string
   dateOfBirth: string
+  gender: string
   password: string
   confirmPassword: string
   agreeToPrivacy: boolean
@@ -39,6 +41,7 @@ export function PatientRegistrationForm({
     email: "",
     phone: "",
     dateOfBirth: "",
+    gender: "",
     password: "",
     confirmPassword: "",
     agreeToPrivacy: false,
@@ -254,22 +257,45 @@ export function PatientRegistrationForm({
                 )}
               </div>
 
-              <div>
-                <Label htmlFor="dateOfBirth">Date of Birth (Optional)</Label>
-                <Input
-                  id="dateOfBirth"
-                  type="date"
-                  value={formData.dateOfBirth}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
-                  className={validationErrors.dateOfBirth ? "border-red-500" : ""}
-                  max={new Date().toISOString().split('T')[0]}
-                />
-                {validationErrors.dateOfBirth && (
-                  <p className="text-sm text-red-600 mt-1">{validationErrors.dateOfBirth}</p>
-                )}
-                <p className="text-xs text-gray-500 mt-1">
-                  Helps us provide better age-appropriate care
-                </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="dateOfBirth">Date of Birth (Optional)</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    value={formData.dateOfBirth}
+                    onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                    className={validationErrors.dateOfBirth ? "border-red-500" : ""}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                  {validationErrors.dateOfBirth && (
+                    <p className="text-sm text-red-600 mt-1">{validationErrors.dateOfBirth}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Helps us provide better age-appropriate care
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="gender">Gender (Optional)</Label>
+                  <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
+                    <SelectTrigger className={validationErrors.gender ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {validationErrors.gender && (
+                    <p className="text-sm text-red-600 mt-1">{validationErrors.gender}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Helps us provide appropriate care
+                  </p>
+                </div>
               </div>
 
               <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">

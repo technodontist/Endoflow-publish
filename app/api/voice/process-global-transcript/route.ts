@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
     const consultationId = formData.get('consultationId') as string
     const sessionId = formData.get('sessionId') as string
     const audioFile = formData.get('audio') as File
+    const language = (formData.get('language') as string) || 'en-US' // Default to English
 
     if (!transcript || !consultationId) {
       return NextResponse.json(
@@ -20,15 +21,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`🤖 [GLOBAL VOICE] Processing transcript for consultation: ${consultationId}`)
+    console.log(`🌐 [GLOBAL VOICE] Language: ${language}`)
 
     // Process transcript using AI to categorize content
-    const processedContent = await processTranscriptWithAI(transcript)
+    const processedContent = await processTranscriptWithAI(transcript, language)
 
     // Update consultation with processed data
     const supabase = await createServiceClient()
 
     // Extract tooth-specific diagnoses (but don't save yet - only save when consultation is saved)
-    const toothDiagnoses = await extractToothDiagnosesFromTranscript(transcript, consultationId, processedContent)
+    const toothDiagnoses = await extractToothDiagnosesFromTranscript(transcript, consultationId, processedContent, language)
 
     // Prepare update data - only include new fields if columns exist (graceful degradation)
     const updateData: any = {
@@ -102,13 +104,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processTranscriptWithAI(transcript: string) {
+async function processTranscriptWithAI(transcript: string, language: string = 'en-US') {
   console.log('🔍 [GEMINI AI] Analyzing transcript for medical content...')
+  console.log(`🌐 [GEMINI AI] Input language: ${language}`)
 
   try {
     // Use Gemini AI to analyze the medical conversation
     console.log('🚀 [GEMINI AI] Calling medical conversation parser...')
-    const geminiAnalysis = await analyzeMedicalConversation(transcript)
+    const geminiAnalysis = await analyzeMedicalConversation(transcript, language)
 
     console.log(`✅ [GEMINI AI] Analysis complete with ${geminiAnalysis.confidence}% confidence`)
     console.log('🎯 [GEMINI AI] Extracted Chief Complaint:', geminiAnalysis.chiefComplaint.primary_complaint)
@@ -541,10 +544,12 @@ function calculateDuration(transcript: string): number {
 async function extractToothDiagnosesFromTranscript(
   transcript: string,
   consultationId: string,
-  processedContent: any
+  processedContent: any,
+  language: string = 'en-US'
 ) {
   console.log('🦷 [TOOTH EXTRACTION] Starting tooth diagnosis extraction from transcript...')
-  
+  console.log('🌐 [TOOTH EXTRACTION] Language:', language)
+
   try {
     // Get patient ID from consultation
     const supabase = await createServiceClient()
@@ -580,6 +585,33 @@ async function extractToothDiagnosesFromTranscript(
 
       console.log(`🦷 [TOOTH EXTRACTION] Found tooth ${toothNumber} with context: "${context}"`)
 
+      // Helper function: Check if context contains any of the keywords in multiple languages
+      const containsKeyword = (keywords: string[]) => {
+        return keywords.some(kw => context.includes(kw))
+      }
+
+      // Multilanguage keyword definitions
+      const keywords = {
+        caries: ['caries', 'cavity', 'carries', 'कैविटी', 'सड़न'], // Hindi: kaviti, sadan
+        deep: ['deep', 'internal', 'गहरा', 'गहरी'], // Hindi: gehra, gehri
+        moderate: ['moderate', 'मध्यम'], // Hindi: madhyam
+        abscess: ['abscess', 'फोड़ा'], // Hindi: phoda
+        pulpitis: ['pulpitis', 'पल्पाइटिस'],
+        irreversible: ['irreversible', 'अपरिवर्तनीय'],
+        reversible: ['reversible', 'परिवर्तनीय'],
+        necrosis: ['necrosis', 'नेक्रोसिस'],
+        fracture: ['fracture', 'broken', 'टूटा', 'फ्रैक्चर'], // Hindi: toota, fracture
+        pain: ['pain', 'दर्द'], // Hindi: dard
+        sharp: ['sharp', 'तेज़'], // Hindi: tez
+        dull: ['dull', 'भारी'], // Hindi: bhaari
+        throbbing: ['throbbing', 'धड़कन'], // Hindi: dhadkan
+        cold: ['cold', 'ice', 'ठंडा'], // Hindi: thanda
+        hot: ['hot', 'heat', 'गर्म'], // Hindi: garam
+        swelling: ['swelling', 'सूजन'], // Hindi: sujan
+        bleeding: ['bleeding', 'खून'], // Hindi: khoon
+        sensitive: ['sensitive', 'sensitivity', 'संवेदनशील'] // Hindi: sanvedansheel
+      }
+
       // Determine tooth status and diagnosis from context
       let status: ToothDiagnosisData['status'] = 'healthy'
       let primaryDiagnosis = ''
@@ -589,16 +621,16 @@ async function extractToothDiagnosesFromTranscript(
       let recommendedTreatment = ''
       let treatmentPriority: ToothDiagnosisData['treatmentPriority'] = 'medium'
 
-      // Check for various dental conditions
+      // Check for various dental conditions (multilanguage support)
       // Use exact diagnosis names matching the predefined options in the dialog
-      if (context.includes('caries') || context.includes('cavity') || context.includes('carries')) {
+      if (containsKeyword(keywords.caries)) {
         status = 'caries'
-        
-        if (context.includes('deep') || context.includes('internal')) {
+
+        if (containsKeyword(keywords.deep)) {
           primaryDiagnosis = 'Deep Caries'  // Exact match with dialog predefined option
           recommendedTreatment = 'Root Canal Treatment'  // Exact match with dialog predefined option
           treatmentPriority = 'high'
-        } else if (context.includes('moderate')) {
+        } else if (containsKeyword(keywords.moderate)) {
           primaryDiagnosis = 'Moderate Caries'
           recommendedTreatment = 'Composite Filling'
           treatmentPriority = 'medium'
@@ -623,7 +655,7 @@ async function extractToothDiagnosesFromTranscript(
           recommendedTreatment = 'Composite Filling'
           treatmentPriority = 'medium'
         }
-      } else if (context.includes('abscess')) {
+      } else if (containsKeyword(keywords.abscess)) {
         status = 'attention'
         if (context.includes('apical') || context.includes('periapical')) {
           primaryDiagnosis = 'Apical Abscess'  // Exact match
@@ -632,13 +664,13 @@ async function extractToothDiagnosesFromTranscript(
         }
         recommendedTreatment = 'Root Canal Treatment'
         treatmentPriority = 'urgent'
-      } else if (context.includes('pulpitis')) {
+      } else if (containsKeyword(keywords.pulpitis)) {
         status = 'attention'
-        if (context.includes('irreversible')) {
+        if (containsKeyword(keywords.irreversible)) {
           primaryDiagnosis = 'Irreversible Pulpitis'
           recommendedTreatment = 'Root Canal Treatment'
           treatmentPriority = 'high'
-        } else if (context.includes('reversible')) {
+        } else if (containsKeyword(keywords.reversible)) {
           primaryDiagnosis = 'Reversible Pulpitis'
           recommendedTreatment = 'Pulp Capping'
           treatmentPriority = 'medium'
@@ -647,12 +679,12 @@ async function extractToothDiagnosesFromTranscript(
           recommendedTreatment = 'Root Canal Treatment'
           treatmentPriority = 'high'
         }
-      } else if (context.includes('necrosis')) {
+      } else if (containsKeyword(keywords.necrosis)) {
         status = 'attention'
         primaryDiagnosis = 'Pulp Necrosis'
         recommendedTreatment = 'Root Canal Treatment'
         treatmentPriority = 'urgent'
-      } else if (context.includes('fracture') || context.includes('broken')) {
+      } else if (containsKeyword(keywords.fracture)) {
         status = 'attention'
         if (context.includes('crown')) {
           primaryDiagnosis = 'Crown Fracture (Enamel-Dentin)'
@@ -718,53 +750,53 @@ async function extractToothDiagnosesFromTranscript(
         primaryDiagnosis = 'Hypersensitivity'
         recommendedTreatment = 'Fluoride Application'
         treatmentPriority = 'low'
-      } else if (context.includes('pain') || context.includes('sensitive') || context.includes('hurt')) {
+      } else if (containsKeyword(keywords.pain) || containsKeyword(keywords.sensitive) || context.includes('hurt')) {
         // Only extract symptoms, DO NOT auto-diagnose
         status = 'attention'
         primaryDiagnosis = ''  // No auto-diagnosis from symptoms
         symptoms = []
-        
-        // Extract detailed pain characteristics
-        if (context.includes('sharp')) symptoms.push('Sharp pain')
-        if (context.includes('dull')) symptoms.push('Dull ache')
-        if (context.includes('throbbing')) symptoms.push('Throbbing pain')
+
+        // Extract detailed pain characteristics (multilanguage)
+        if (containsKeyword(keywords.sharp)) symptoms.push('Sharp pain')
+        if (containsKeyword(keywords.dull)) symptoms.push('Dull ache')
+        if (containsKeyword(keywords.throbbing)) symptoms.push('Throbbing pain')
         if (context.includes('shooting')) symptoms.push('Shooting pain')
         if (context.includes('lingering') || context.includes('linger')) symptoms.push('Lingering pain')
         if (context.includes('spontaneous')) symptoms.push('Spontaneous pain')
-        
-        if (context.includes('cold') || context.includes('ice')) symptoms.push('Cold sensitivity')
-        if (context.includes('hot') || context.includes('heat')) symptoms.push('Heat sensitivity')
+
+        if (containsKeyword(keywords.cold)) symptoms.push('Cold sensitivity')
+        if (containsKeyword(keywords.hot)) symptoms.push('Heat sensitivity')
         if (context.includes('sweet')) symptoms.push('Sweet sensitivity')
-        if (context.includes('chewing') || context.includes('bite') || context.includes('biting')) symptoms.push('Pain when chewing')
-        
+        if (context.includes('chewing') || context.includes('bite') || context.includes('biting') || context.includes('खाने')) symptoms.push('Pain when chewing')
+
         // Don't assign diagnosis - let AI Copilot suggest based on symptoms
         recommendedTreatment = 'Further investigation required'
         treatmentPriority = 'high'
       }
 
-      // Extract symptoms from context (if not already added)
-      if (context.includes('pain') && !symptoms.some(s => s.toLowerCase().includes('pain'))) symptoms.push('Pain')
-      if ((context.includes('sensitive') || context.includes('sensitivity')) && !symptoms.some(s => s.toLowerCase().includes('sensit'))) symptoms.push('Sensitivity')
-      if (context.includes('swelling')) symptoms.push('Swelling')
-      if (context.includes('bleeding')) symptoms.push('Bleeding')
+      // Extract symptoms from context (if not already added) - multilanguage
+      if (containsKeyword(keywords.pain) && !symptoms.some(s => s.toLowerCase().includes('pain'))) symptoms.push('Pain')
+      if (containsKeyword(keywords.sensitive) && !symptoms.some(s => s.toLowerCase().includes('sensit'))) symptoms.push('Sensitivity')
+      if (containsKeyword(keywords.swelling)) symptoms.push('Swelling')
+      if (containsKeyword(keywords.bleeding)) symptoms.push('Bleeding')
       if (context.includes('mobile') || context.includes('loose')) symptoms.push('Mobility')
 
-      // Extract pain characteristics for AI Copilot
+      // Extract pain characteristics for AI Copilot (multilanguage)
       painCharacteristics = {
-        quality: context.includes('sharp') ? 'Sharp' : context.includes('dull') ? 'Dull' : context.includes('throbbing') ? 'Throbbing' : undefined,
+        quality: containsKeyword(keywords.sharp) ? 'Sharp' : containsKeyword(keywords.dull) ? 'Dull' : containsKeyword(keywords.throbbing) ? 'Throbbing' : undefined,
         triggers: [
-          context.includes('cold') && 'Cold',
-          context.includes('hot') && 'Hot',
-          context.includes('chewing') && 'Chewing',
+          containsKeyword(keywords.cold) && 'Cold',
+          containsKeyword(keywords.hot) && 'Hot',
+          (context.includes('chewing') || context.includes('खाने')) && 'Chewing',
           context.includes('sweet') && 'Sweet'
         ].filter(Boolean),
         duration: context.includes('lingering') ? 'Lingering (>30s)' : context.includes('spontaneous') ? 'Spontaneous' : undefined
       }
 
-      // Extract clinical findings from context
-      if (context.includes('deep') && context.includes('caries')) {
+      // Extract clinical findings from context (multilanguage)
+      if (containsKeyword(keywords.deep) && containsKeyword(keywords.caries)) {
         clinicalFindings = 'Deep caries visible on examination'
-      } else if (context.includes('swelling')) {
+      } else if (containsKeyword(keywords.swelling)) {
         clinicalFindings = 'Swelling observed'
       } else if (context.includes('visible')) {
         clinicalFindings = context.substring(0, 150)

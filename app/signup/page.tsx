@@ -39,6 +39,7 @@ export default function SignupPage() {
                 email: data.email,
                 phone: data.phone,
                 dateOfBirth: data.dateOfBirth,
+                gender: data.gender as 'male' | 'female' | 'other' | 'prefer_not_to_say' | undefined,
                 password: data.password,
               })
 
