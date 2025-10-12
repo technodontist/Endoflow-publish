@@ -20,6 +20,7 @@ interface PatientRegistrationData {
   lastName: string
   email: string
   phone: string
+  dateOfBirth: string
   password: string
   confirmPassword: string
   agreeToPrivacy: boolean
@@ -37,6 +38,7 @@ export function PatientRegistrationForm({
     lastName: "",
     email: "",
     phone: "",
+    dateOfBirth: "",
     password: "",
     confirmPassword: "",
     agreeToPrivacy: false,
@@ -250,6 +252,24 @@ export function PatientRegistrationForm({
                 {validationErrors.phone && (
                   <p className="text-sm text-red-600 mt-1">{validationErrors.phone}</p>
                 )}
+              </div>
+
+              <div>
+                <Label htmlFor="dateOfBirth">Date of Birth (Optional)</Label>
+                <Input
+                  id="dateOfBirth"
+                  type="date"
+                  value={formData.dateOfBirth}
+                  onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                  className={validationErrors.dateOfBirth ? "border-red-500" : ""}
+                  max={new Date().toISOString().split('T')[0]}
+                />
+                {validationErrors.dateOfBirth && (
+                  <p className="text-sm text-red-600 mt-1">{validationErrors.dateOfBirth}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Helps us provide better age-appropriate care
+                </p>
               </div>
 
               <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">

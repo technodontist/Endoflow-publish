@@ -38,6 +38,7 @@ export default function SignupPage() {
                 lastName: data.lastName,
                 email: data.email,
                 phone: data.phone,
+                dateOfBirth: data.dateOfBirth,
                 password: data.password,
               })
 

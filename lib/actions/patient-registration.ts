@@ -11,6 +11,7 @@ const patientRegistrationSchema = z.object({
   email: z.string().email('Valid email is required'),
   phone: z.string().min(1, 'Phone number is required'),
   dateOfBirth: z.string().optional(),
+  gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional(),
   medicalHistory: z.string().optional(),
   emergencyContact: z.string().optional(),
   emergencyPhone: z.string().optional(),
@@ -22,6 +23,7 @@ interface ManualPatientRegistrationData {
   email: string
   phone: string
   dateOfBirth?: string
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say'
   medicalHistory?: string
   emergencyContact?: string
   emergencyPhone?: string
@@ -131,6 +133,9 @@ export async function manualPatientRegistration(formData: ManualPatientRegistrat
     // Add optional fields if provided
     if (validatedData.dateOfBirth) {
       patientData.date_of_birth = validatedData.dateOfBirth
+    }
+    if (validatedData.gender) {
+      patientData.gender = validatedData.gender
     }
     if (validatedData.medicalHistory) {
       patientData.medical_history_summary = validatedData.medicalHistory

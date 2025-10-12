@@ -9,6 +9,8 @@ interface PatientSignupData {
   lastName: string
   email: string
   phone: string
+  dateOfBirth?: string
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say'
   password: string
 }
 
@@ -63,16 +65,30 @@ export async function patientSignup(formData: PatientSignupData) {
     }
 
     // 3. Create patient record in api.patients table
+    const patientData: any = {
+      id: authData.user.id,
+      first_name: formData.firstName,
+      last_name: formData.lastName,
+      phone: formData.phone,
+      email: formData.email
+    }
+
+    // Add optional date of birth if provided
+    if (formData.dateOfBirth) {
+      patientData.date_of_birth = formData.dateOfBirth
+      console.log('✅ [PATIENT SIGNUP] Including date of birth:', formData.dateOfBirth)
+    }
+
+    // Add optional gender if provided
+    if (formData.gender) {
+      patientData.gender = formData.gender
+      console.log('✅ [PATIENT SIGNUP] Including gender:', formData.gender)
+    }
+
     const { error: patientError } = await serviceSupabase
       .schema('api')
       .from('patients')
-      .insert({
-        id: authData.user.id,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        phone: formData.phone,
-        email: formData.email
-      })
+      .insert(patientData)
 
     if (patientError && patientError.code !== '23505') {
       console.error('❌ [PATIENT SIGNUP] Failed to create patient record:', patientError)

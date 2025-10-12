@@ -30,6 +30,21 @@ export async function analyzeAppointmentConversation(
 
     const prompt = `You are an AI assistant helping to schedule dental appointments. Analyze the following voice transcript and extract appointment scheduling information.
 
+LANGUAGE SUPPORT:
+- The transcript may be in English (US), English (India), or Hindi (हिंदी)
+- User may use code-switching (mixing Hindi and English)
+- Extract information regardless of language and provide output in English
+- Common Hindi terms:
+  * दांत (daant) = tooth
+  * दर्द (dard) = pain
+  * इलाज (ilaaj) = treatment
+  * मरीज़/रोगी (mareez/rogi) = patient
+  * अपॉइंटमेंट (appointment) = appointment
+  * आज (aaj) = today
+  * कल (kal) = tomorrow/yesterday (use context)
+  * सुबह (subah) = morning
+  * शाम (shaam) = evening
+
 TRANSCRIPT:
 ${transcript}
 

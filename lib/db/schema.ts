@@ -35,6 +35,7 @@ export const patients = apiSchema.table('patients', {
   phone: text('phone'),
   email: text('email'),
   dateOfBirth: date('date_of_birth'),
+  gender: text('gender', { enum: ['male', 'female', 'other', 'prefer_not_to_say'] }),
   medicalHistorySummary: text('medical_history_summary'),
   emergencyContactName: text('emergency_contact_name'),
   emergencyContactPhone: text('emergency_contact_phone'),

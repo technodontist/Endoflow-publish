@@ -20,7 +20,8 @@ import {
   Zap,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Globe
 } from 'lucide-react'
 import { processEndoFlowQuery } from '@/lib/actions/endoflow-master'
 import { cn } from '@/lib/utils'
@@ -53,11 +54,33 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
-  const [conversationId, setConversationId] = useState<string | null>(null)
+  // Initialize conversationId from localStorage immediately to prevent race conditions
+  const getInitialConversationId = () => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('endoflow_current_conversation_id')
+      if (stored) {
+        console.log('💾 [PERSISTENCE] Initializing with conversation ID from localStorage:', stored)
+        return stored
+      }
+    }
+    console.log('🆕 [PERSISTENCE] No existing conversation ID found - will create new')
+    return null
+  }
+  
+  const [conversationId, setConversationId] = useState<string | null>(getInitialConversationId)
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState('')
   const [isWakeWordActive, setIsWakeWordActive] = useState(true) // Enable wake word by default
+  const [selectedLanguage, setSelectedLanguage] = useState<'en-US' | 'en-IN' | 'hi-IN'>('en-US') // Language selection
+  
+  // Save conversationId to localStorage whenever it changes
+  useEffect(() => {
+    if (conversationId) {
+      console.log('💾 [PERSISTENCE] Saving conversation ID to localStorage:', conversationId)
+      localStorage.setItem('endoflow_current_conversation_id', conversationId)
+    }
+  }, [conversationId])
   const [isListeningForWakeWord, setIsListeningForWakeWord] = useState(false)
   const [autoMode, setAutoMode] = useState(true) // Automated conversation mode
   const [silenceTimeout, setSilenceTimeout] = useState<number | null>(null)
@@ -126,7 +149,8 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
   const synthRef = useRef<SpeechSynthesis | null>(null)
-  const transcriptRef = useRef<string>('')
+  const transcriptRef = useRef<string>('') // Track latest transcript value (final + interim)
+  const finalTranscriptRef = useRef<string>('') // Track only final confirmed results
   const shouldContinueListeningRef = useRef(false) // Fix auto-restart bug
   const wakeWordRecognitionRef = useRef<any>(null) // Wake word detection
   const isWakeWordListeningRef = useRef(false) // Track wake word listening state
@@ -136,6 +160,9 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   const autoSubmitRef = useRef(false) // Track if auto-submit is pending
   const autoModeRef = useRef(true) // Track auto mode with ref for closure
   const isListeningRef = useRef(false) // Track listening state with ref for closure
+  const lastWakeWordRestartRef = useRef<number>(0) // Track last wake word restart time to prevent infinite loops
+  const isMountedRef = useRef(false) // Track if component has fully mounted to prevent React StrictMode double-mount issues
+  const justDetectedWakeWordRef = useRef(false) // Track if we just detected wake word to skip filtering briefly
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -156,81 +183,113 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       recognitionRef.current = new SpeechRecognition()
       recognitionRef.current.continuous = true
       recognitionRef.current.interimResults = true
-      recognitionRef.current.lang = 'en-US'
+      recognitionRef.current.lang = selectedLanguage // Use selected language
+      console.log('🌐 [MAIN MIC] Language set to:', selectedLanguage)
 
       recognitionRef.current.onresult = (event: any) => {
         let interimTranscript = ''
-        let finalTranscript = ''
+        
+        // Wake word phrases to filter out
+        const wakeWordPhrases = [
+          'hey endoflow', 'hey endo flow', 'hey end flow',
+          'hi endoflow', 'hi endo flow', 'hey indo flow',
+          'he end of low', 'hey end of low', 'he endo flow',
+          'hey and flow', 'hey endo', 'hey end', 'he endo',
+          'endoflow', 'endo flow', 'hey endoc', 'hey endoclo'
+        ]
 
+        // Process only the new results (starting from resultIndex)
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcriptText = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcriptText + ' '
+          let transcriptText = event.results[i][0].transcript
+          const transcriptLower = transcriptText.toLowerCase().trim()
+          
+          // SKIP FILTERING if we just detected wake word (grace period)
+          let shouldFilter = false
+          if (!justDetectedWakeWordRef.current) {
+            // Check if this segment is primarily a wake word phrase
+            for (const phrase of wakeWordPhrases) {
+              // Filter if transcript IS the wake word or starts/ends with it
+              if (transcriptLower === phrase || 
+                  transcriptLower.startsWith(phrase + ' ') || 
+                  transcriptLower.endsWith(' ' + phrase) ||
+                  (transcriptLower.length <= phrase.length + 3 && transcriptLower.includes(phrase))) {
+                console.log('🧹 [MAIN MIC] Filtering wake word phrase:', transcriptLower)
+                shouldFilter = true
+                break
+              }
+            }
           } else {
+            console.log('⏭️ [MAIN MIC] Skipping wake word filter (grace period active)')
+          }
+          
+          // If this is a wake word, skip it entirely
+          if (shouldFilter) {
+            continue
+          }
+          
+          if (event.results[i].isFinal) {
+            // Add final result to our permanent transcript
+            finalTranscriptRef.current += transcriptText + ' '
+            console.log('✅ [MAIN MIC] Final transcript:', transcriptText)
+          } else {
+            // Interim results are temporary - they replace previous interim
             interimTranscript += transcriptText
+            console.log('⏳ [MAIN MIC] Interim transcript:', transcriptText)
           }
         }
 
-        if (finalTranscript) {
-          transcriptRef.current += finalTranscript
-          setTranscript(transcriptRef.current + interimTranscript)
-          setInputValue(transcriptRef.current + interimTranscript)
+        // Combine final (permanent) + interim (temporary)
+        const fullTranscript = finalTranscriptRef.current + interimTranscript
+        transcriptRef.current = fullTranscript
+        
+        setTranscript(fullTranscript)
+        setInputValue(fullTranscript)
+        
+        // Update last speech time for silence detection
+        lastSpeechTimeRef.current = Date.now()
+        
+        // Check for command phrases in automated mode
+        if (autoModeRef.current) {
+          const fullText = fullTranscript.toLowerCase()
+          console.log('🔍 [AUTO MODE] Checking text:', fullText)
           
-          // Update last speech time for silence detection
-          lastSpeechTimeRef.current = Date.now()
-          console.log('📝 [TRANSCRIPT] Final:', finalTranscript, 'Auto mode:', autoModeRef.current)
+          // Command phrases that trigger immediate submission
+          const commandPhrases = [
+            'do it',
+            'search it',
+            'send it',
+            'go ahead',
+            'execute',
+            'submit',
+            'find it',
+            'show me',
+            'that\'s it',
+            'done',
+            'okay go',
+            'ok go'
+          ]
           
-          // Check for command phrases in automated mode
-          if (autoModeRef.current) {
-            const fullText = (transcriptRef.current + interimTranscript).toLowerCase()
-            console.log('🔍 [AUTO MODE] Checking text:', fullText)
-            
-            // Command phrases that trigger immediate submission
-            const commandPhrases = [
-              'do it',
-              'search it',
-              'send it',
-              'go ahead',
-              'execute',
-              'submit',
-              'find it',
-              'show me',
-              'that\'s it',
-              'done',
-              'okay go',
-              'ok go'
-            ]
-            
-            const hasCommandPhrase = commandPhrases.some(phrase => {
-              const regex = new RegExp(`\\b${phrase}\\b`, 'i')
-              const found = regex.test(fullText)
-              if (found) {
-                console.log('✅ [AUTO MODE] Found command phrase:', phrase)
-              }
-              return found
-            })
-            
-            if (hasCommandPhrase && !autoSubmitRef.current) {
-              console.log('✨ [AUTO MODE] Command phrase detected! Submitting in 500ms...')
-              autoSubmitRef.current = true
-              // Small delay to allow any remaining speech
-              setTimeout(() => {
-                handleAutoSubmit()
-              }, 500)
+          const hasCommandPhrase = commandPhrases.some(phrase => {
+            const regex = new RegExp(`\\b${phrase}\\b`, 'i')
+            const found = regex.test(fullText)
+            if (found) {
+              console.log('✅ [AUTO MODE] Found command phrase:', phrase)
             }
-          }
-        } else {
-          setTranscript(transcriptRef.current + interimTranscript)
-          setInputValue(transcriptRef.current + interimTranscript)
+            return found
+          })
           
-          // Update last speech time for interim results too
-          if (interimTranscript) {
-            lastSpeechTimeRef.current = Date.now()
+          if (hasCommandPhrase && !autoSubmitRef.current) {
+            console.log('✨ [AUTO MODE] Command phrase detected! Submitting in 500ms...')
+            autoSubmitRef.current = true
+            // Small delay to allow any remaining speech
+            setTimeout(() => {
+              handleAutoSubmit()
+            }, 500)
           }
         }
         
         // Reset silence timer when any speech is detected (both final and interim)
-        if ((finalTranscript || interimTranscript) && autoModeRef.current && !autoSubmitRef.current && isListeningRef.current) {
+        if ((interimTranscript || finalTranscriptRef.current) && autoModeRef.current && !autoSubmitRef.current && isListeningRef.current) {
           console.log('⏱️ [AUTO MODE] Resetting silence timer')
           resetSilenceTimer()
         }
@@ -239,9 +298,10 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       recognitionRef.current.onerror = (event: any) => {
         // Don't log or show errors for normal user actions
         if (event.error === 'no-speech' || event.error === 'aborted') {
+          console.log('ℹ️ [MAIN MIC] Non-critical error:', event.error, '(ignoring)')
           return // Silent - this is normal
         }
-        console.error('Speech recognition error:', event.error)
+        console.error('❌ [MAIN MIC] Speech recognition error:', event.error)
         setError(`Speech recognition error: ${event.error}`)
         shouldContinueListeningRef.current = false
         setIsListening(false)
@@ -249,11 +309,13 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
 
       recognitionRef.current.onend = () => {
         console.log('🎤 [MAIN MIC] Recognition ended. shouldContinue:', shouldContinueListeningRef.current, 'autoMode:', autoModeRef.current)
-        
+
         // In auto mode, if we have transcript and recognition ended naturally, auto-submit
-        if (autoModeRef.current && !shouldContinueListeningRef.current && transcriptRef.current.trim().length > 0 && !autoSubmitRef.current) {
+        if (autoModeRef.current && !shouldContinueListeningRef.current && finalTranscriptRef.current.trim().length > 0 && !autoSubmitRef.current) {
           console.log('🤖 [AUTO MODE] Recognition ended with transcript - auto-submitting...')
           autoSubmitRef.current = true
+          // CRITICAL: Update listening state to allow fallback timer to work
+          setIsListening(false)
           setTimeout(() => {
             handleAutoSubmit()
           }, 500)
@@ -315,11 +377,20 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
 
   // Wake word detection - continuous background listening
   useEffect(() => {
-    console.log('🔄 [WAKE WORD EFFECT] Triggered. Active:', isWakeWordActive, 'Expanded:', isExpanded, 'Listening:', isListening)
-    
-    // Notify voice manager about wake word status
+    console.log('🔄 [WAKE WORD EFFECT] Triggered. Active:', isWakeWordActive, 'Expanded:', isExpanded, 'Listening:', isListening, 'Mounted:', isMountedRef.current, 'Currently listening:', isWakeWordListeningRef.current, 'Starting:', wakeWordStartingRef.current)
+
+    // Notify voice manager about wake word status first
     voiceManager.notifyWakeWordStatus(isWakeWordActive)
-    
+
+    // CRITICAL: Skip if wake word is already running or starting - prevents restart loops
+    if (isWakeWordActive && (isWakeWordListeningRef.current || wakeWordStartingRef.current)) {
+      console.log('⏭️ [WAKE WORD] Already running/starting, skipping restart')
+      return
+    }
+
+    // Mark as mounted after first render
+    isMountedRef.current = true
+
     const startWakeWordListening = async () => {
       // CRITICAL: Check voice manager FIRST before any other checks
       const anyOtherMicActive = voiceManager.isAnyMicActive()
@@ -372,27 +443,91 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
         wakeWordRecognitionRef.current = new SpeechRecognition()
         wakeWordRecognitionRef.current.continuous = true
         wakeWordRecognitionRef.current.interimResults = true
+        // Wake word detection always uses en-US (as "Hey EndoFlow" is English)
         wakeWordRecognitionRef.current.lang = 'en-US'
+        wakeWordRecognitionRef.current.maxAlternatives = 3 // Check more alternatives
 
+        // Track accumulated transcript for better wake word detection
+        let accumulatedTranscript = ''
+        let lastResultTime = Date.now()
+        
         wakeWordRecognitionRef.current.onresult = (event: any) => {
-          const transcript = Array.from(event.results)
-            .map((result: any) => result[0].transcript.toLowerCase())
-            .join(' ')
-
-          console.log('🎤 [WAKE WORD] Detected:', transcript)
-
-          // Check for wake word with variations (be more flexible)
-          const hasHey = transcript.includes('hey') || transcript.includes('hi') || transcript.includes('a');
-          const hasEndoFlow = transcript.includes('endo') || transcript.includes('indo') || 
-                             transcript.includes('end o') || transcript.includes('end of') ||
-                             transcript.includes('endoc');
-          const hasFlow = transcript.includes('flow') || transcript.includes('low') || transcript.includes('flo');
+          // SAFETY: Don't process if we're speaking (AI response)
+          if (isSpeaking) {
+            console.log('🔇 [WAKE WORD] Ignoring results while AI is speaking')
+            return
+          }
           
-          if ((hasHey && hasEndoFlow) || (hasEndoFlow && hasFlow) || 
-              transcript.includes('hey endoflow') || 
-              transcript.includes('endoflow') ||
-              transcript.match(/\b(hey|hi|a)?\s*(endo|indo|end\s*o|end\s*of)\s*(flow|low|flo)\b/i)) {
-            console.log('✅ [WAKE WORD] Wake word detected! Activating EndoFlow...')
+          // Build the complete transcript from all results
+          let currentTranscript = ''
+          for (let i = 0; i < event.results.length; i++) {
+            // Check multiple alternatives for better recognition
+            for (let j = 0; j < event.results[i].length && j < 3; j++) {
+              const altTranscript = event.results[i][j].transcript.toLowerCase()
+              if (j === 0) {
+                currentTranscript += altTranscript + ' '
+              }
+              // Check alternatives immediately for wake word
+              if (altTranscript.includes('endoflow') || altTranscript.includes('endo flow')) {
+                currentTranscript = altTranscript + ' '
+                break
+              }
+            }
+          }
+          
+          // Update accumulated transcript
+          accumulatedTranscript = currentTranscript.trim()
+          lastResultTime = Date.now()
+          
+          console.log('🎤 [WAKE WORD] Detected:', accumulatedTranscript)
+
+          // More robust wake word detection
+          // Check if the accumulated transcript contains wake word patterns
+          const normalizedTranscript = accumulatedTranscript.replace(/\s+/g, ' ').trim()
+          
+          // Check for various wake word patterns
+          const wakeWordPatterns = [
+            'hey endoflow',
+            'hey endo flow',
+            'hey end flow',
+            'hi endoflow',
+            'hi endo flow',
+            'endoflow',
+            'endo flow',
+            'hey indo flow',
+            'a endoflow',
+            'he end of low', // Common misheard variant
+            'hey end of low', // Another variant
+            'he endo flow',
+            'hey and flow'
+          ]
+          
+          // Check if transcript contains any wake word pattern
+          const hasWakeWord = wakeWordPatterns.some(pattern => 
+            normalizedTranscript.includes(pattern)
+          )
+          
+          // Also check for partial matches that strongly indicate wake word
+          const hasStrongPartialMatch = 
+            // "hey/hi/he" + "endo/end"
+            ((normalizedTranscript.includes('hey') || normalizedTranscript.includes('hi') || normalizedTranscript.includes('he ')) && 
+             (normalizedTranscript.includes('endo') || normalizedTranscript.includes('end o') || normalizedTranscript.includes('and o') || normalizedTranscript.includes('end '))) ||
+            // "hey/hi/he" + "flow/low"
+            ((normalizedTranscript.includes('hey') || normalizedTranscript.includes('hi') || normalizedTranscript.includes('he ')) && 
+             (normalizedTranscript.includes('flow') || normalizedTranscript.includes(' low'))) ||
+            // "endo" + "flow"
+            (normalizedTranscript.includes('endo') && normalizedTranscript.includes('flow')) ||
+            // "end" + "of" + "low" (common misheard)
+            (normalizedTranscript.includes('end') && normalizedTranscript.includes('of') && normalizedTranscript.includes('low')) ||
+            // Regex patterns for common variations
+            (normalizedTranscript.match(/\b(hey|hi|he)\s+(end|endo|and)\s+(of\s+)?(flow|low)\b/i) && normalizedTranscript.length > 5)
+          
+          if (hasWakeWord || hasStrongPartialMatch) {
+            console.log('✅ [WAKE WORD] Wake word detected! Transcript:', normalizedTranscript)
+            console.log('✨ [WAKE WORD] Activating EndoFlow...')
+            
+            // Reset accumulated transcript
+            accumulatedTranscript = ''
             
             // Stop wake word detection
             if (wakeWordRecognitionRef.current) {
@@ -405,13 +540,34 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
               }
             }
             
-            // Activate the chat
+            // CRITICAL: Force expand the chat box
+            console.log('🔼 [WAKE WORD] Forcing chat expansion...')
             setIsExpanded(true)
+            isExpandedRef.current = true
             
-            // Start voice recording after a brief delay
+            // Set flag to skip wake word filtering for next 2 seconds
+            justDetectedWakeWordRef.current = true
+            console.log('⏱️ [WAKE WORD] Setting grace period to skip filtering')
             setTimeout(() => {
+              justDetectedWakeWordRef.current = false
+              console.log('✅ [WAKE WORD] Grace period ended')
+            }, 2000)
+            
+            // Start voice recording after a longer delay to ensure wake word phrase has fully ended
+            setTimeout(() => {
+              console.log('🎙️ [WAKE WORD] Starting voice recording after expansion...')
               startVoiceRecording()
-            }, 500)
+            }, 1200)
+          }
+          
+          // Clear accumulated transcript after 3 seconds to avoid false positives from old speech
+          if (accumulatedTranscript.length > 0) {
+            setTimeout(() => {
+              if (accumulatedTranscript === currentTranscript.trim()) {
+                console.log('🧹 [WAKE WORD] Clearing accumulated transcript after timeout')
+                accumulatedTranscript = ''
+              }
+            }, 3000)
           }
         }
 
@@ -420,34 +576,28 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
           if (event.error !== 'no-speech' && event.error !== 'aborted' && event.error !== 'audio-capture') {
             console.error('❌ [WAKE WORD] Error:', event.error)
           }
+          // For no-speech error, just continue listening
+          if (event.error === 'no-speech') {
+            console.log('🔇 [WAKE WORD] No speech detected, continuing...')
+            // Don't set listening to false, just continue
+            // Keep accumulated transcript if we have something
+            if (accumulatedTranscript && Date.now() - lastResultTime < 2000) {
+              console.log('📝 [WAKE WORD] Keeping partial transcript:', accumulatedTranscript)
+            }
+          }
           // Don't restart on error - let onend handle it
         }
 
         wakeWordRecognitionRef.current.onend = () => {
           console.log('🔄 [WAKE WORD] Recognition ended. Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
-          
-          // Always update state on end
-          const wasListening = isWakeWordListeningRef.current
+
+          // Update state on end
           isWakeWordListeningRef.current = false
           setIsListeningForWakeWord(false)
+          wakeWordStartingRef.current = false
           
-          // Auto-restart wake word detection if still active and not expanded - USE REFS for current state!
-          // CRITICAL: Also check if any other component is using the microphone
-          const anyOtherMicActive = voiceManager.isAnyMicActive()
-          if (wasListening && isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !anyOtherMicActive) {
-            setTimeout(() => {
-              // Double-check conditions before restart - USE REFS AND CHECK OTHER MICS!
-              const stillAnyOtherMicActive = voiceManager.isAnyMicActive()
-              if (isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !isWakeWordListeningRef.current && !stillAnyOtherMicActive) {
-                console.log('♻️ [WAKE WORD] Restarting wake word detection...')
-                startWakeWordListening()
-              } else {
-                console.log('⏸️ [WAKE WORD] Skipping restart - Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current, 'OtherMics:', stillAnyOtherMicActive)
-              }
-            }, 500)
-          } else {
-            console.log('⏹️ [WAKE WORD] Not restarting - wasListening:', wasListening, 'Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
-          }
+          console.log('⏹️ [WAKE WORD] Stopped - will restart via effect if conditions met')
+          // DO NOT AUTO-RESTART HERE - let the effect handle it to prevent infinite loops
         }
 
         try {
@@ -483,7 +633,7 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
             setIsListeningForWakeWord(false)
           }
         } finally {
-          // Always clear starting flag
+          // Always clear starting flag - CRITICAL: Must clear in all exit paths
           wakeWordStartingRef.current = false
           console.log('🏁 [WAKE WORD] Start attempt complete')
         }
@@ -500,17 +650,20 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
           wakeWordRecognitionRef.current.stop()
           isWakeWordListeningRef.current = false
           setIsListeningForWakeWord(false)
-          wakeWordStartingRef.current = false
+          wakeWordStartingRef.current = false // CRITICAL: Clear starting flag
           console.log('✅ [WAKE WORD] Cleaned up')
         } catch (e) {
-          // Already stopped
+          // Already stopped - CRITICAL: Clear starting flag even on error
           isWakeWordListeningRef.current = false
           setIsListeningForWakeWord(false)
           wakeWordStartingRef.current = false
         }
+      } else {
+        // CRITICAL: Clear starting flag even if not actively listening
+        wakeWordStartingRef.current = false
       }
     }
-  }, [isWakeWordActive, isExpanded, isListening, voiceManager])
+  }, [isWakeWordActive, isExpanded, isListening]) // Note: voiceManager accessed but not in deps - it's a stable context object
 
   // Monitor voice manager state changes to auto-restart wake word
   // This effect handles the case when other mics stop and wake word should resume
@@ -565,27 +718,85 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                 wakeWordRecognitionRef.current = new SpeechRecognition()
                 wakeWordRecognitionRef.current.continuous = true
                 wakeWordRecognitionRef.current.interimResults = true
+                // Wake word detection always uses en-US (as "Hey EndoFlow" is English)
                 wakeWordRecognitionRef.current.lang = 'en-US'
+                wakeWordRecognitionRef.current.maxAlternatives = 3 // Check more alternatives
 
+                // Track accumulated transcript for better wake word detection
+                let accumulatedTranscript = ''
+                let lastResultTime = Date.now()
+                
                 // Set up handlers (same as main wake word effect)
                 wakeWordRecognitionRef.current.onresult = (event: any) => {
-                  const transcript = Array.from(event.results)
-                    .map((result: any) => result[0].transcript.toLowerCase())
-                    .join(' ')
-
-                  console.log('🎤 [WAKE WORD] Detected:', transcript)
-
-                  const hasHey = transcript.includes('hey') || transcript.includes('hi') || transcript.includes('a');
-                  const hasEndoFlow = transcript.includes('endo') || transcript.includes('indo') || 
-                                     transcript.includes('end o') || transcript.includes('end of') ||
-                                     transcript.includes('endoc');
-                  const hasFlow = transcript.includes('flow') || transcript.includes('low') || transcript.includes('flo');
+                  // Build the complete transcript from all results
+                  let currentTranscript = ''
+                  for (let i = 0; i < event.results.length; i++) {
+                    // Check multiple alternatives for better recognition
+                    for (let j = 0; j < event.results[i].length && j < 3; j++) {
+                      const altTranscript = event.results[i][j].transcript.toLowerCase()
+                      if (j === 0) {
+                        currentTranscript += altTranscript + ' '
+                      }
+                      // Check alternatives immediately for wake word
+                      if (altTranscript.includes('endoflow') || altTranscript.includes('endo flow')) {
+                        currentTranscript = altTranscript + ' '
+                        break
+                      }
+                    }
+                  }
                   
-                  if ((hasHey && hasEndoFlow) || (hasEndoFlow && hasFlow) || 
-                      transcript.includes('hey endoflow') || 
-                      transcript.includes('endoflow') ||
-                      transcript.match(/\b(hey|hi|a)?\s*(endo|indo|end\s*o|end\s*of)\s*(flow|low|flo)\b/i)) {
-                    console.log('✅ [WAKE WORD] Wake word detected! Activating EndoFlow...')
+                  // Update accumulated transcript
+                  accumulatedTranscript = currentTranscript.trim()
+                  lastResultTime = Date.now()
+                  
+                  console.log('🎤 [WAKE WORD MONITOR] Detected:', accumulatedTranscript)
+
+                  // More robust wake word detection
+                  const normalizedTranscript = accumulatedTranscript.replace(/\s+/g, ' ').trim()
+                  
+                  // Check for various wake word patterns
+                  const wakeWordPatterns = [
+                    'hey endoflow',
+                    'hey endo flow',
+                    'hey end flow',
+                    'hi endoflow',
+                    'hi endo flow',
+                    'endoflow',
+                    'endo flow',
+                    'hey indo flow',
+                    'a endoflow',
+                    'he end of low', // Common misheard variant
+                    'hey end of low', // Another variant
+                    'he endo flow',
+                    'hey and flow'
+                  ]
+                  
+                  // Check if transcript contains any wake word pattern
+                  const hasWakeWord = wakeWordPatterns.some(pattern => 
+                    normalizedTranscript.includes(pattern)
+                  )
+                  
+                  // Also check for partial matches that strongly indicate wake word
+                  const hasStrongPartialMatch = 
+                    // "hey/hi/he" + "endo/end"
+                    ((normalizedTranscript.includes('hey') || normalizedTranscript.includes('hi') || normalizedTranscript.includes('he ')) && 
+                     (normalizedTranscript.includes('endo') || normalizedTranscript.includes('end o') || normalizedTranscript.includes('and o') || normalizedTranscript.includes('end '))) ||
+                    // "hey/hi/he" + "flow/low"
+                    ((normalizedTranscript.includes('hey') || normalizedTranscript.includes('hi') || normalizedTranscript.includes('he ')) && 
+                     (normalizedTranscript.includes('flow') || normalizedTranscript.includes(' low'))) ||
+                    // "endo" + "flow"
+                    (normalizedTranscript.includes('endo') && normalizedTranscript.includes('flow')) ||
+                    // "end" + "of" + "low" (common misheard)
+                    (normalizedTranscript.includes('end') && normalizedTranscript.includes('of') && normalizedTranscript.includes('low')) ||
+                    // Regex patterns for common variations
+                    (normalizedTranscript.match(/\b(hey|hi|he)\s+(end|endo|and)\s+(of\s+)?(flow|low)\b/i) && normalizedTranscript.length > 5)
+                  
+                  if (hasWakeWord || hasStrongPartialMatch) {
+                    console.log('✅ [WAKE WORD MONITOR] Wake word detected! Transcript:', normalizedTranscript)
+                    console.log('✨ [WAKE WORD MONITOR] Activating EndoFlow...')
+                    
+                    // Reset accumulated transcript
+                    accumulatedTranscript = ''
                     
                     if (wakeWordRecognitionRef.current) {
                       try {
@@ -602,6 +813,16 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                       startVoiceRecording()
                     }, 500)
                   }
+                  
+                  // Clear accumulated transcript after 3 seconds
+                  if (accumulatedTranscript.length > 0) {
+                    setTimeout(() => {
+                      if (accumulatedTranscript === currentTranscript.trim()) {
+                        console.log('🧹 [WAKE WORD MONITOR] Clearing accumulated transcript after timeout')
+                        accumulatedTranscript = ''
+                      }
+                    }, 3000)
+                  }
                 }
 
                 wakeWordRecognitionRef.current.onerror = (event: any) => {
@@ -611,26 +832,15 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                 }
 
                 wakeWordRecognitionRef.current.onend = () => {
-                  console.log('🔄 [WAKE WORD] Recognition ended. Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
-                  
-                  const wasListening = isWakeWordListeningRef.current
+                  console.log('🔄 [WAKE WORD MONITOR] Recognition ended. Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
+
+                  // Update state on end
                   isWakeWordListeningRef.current = false
                   setIsListeningForWakeWord(false)
+                  wakeWordStartingRef.current = false
                   
-                  const anyOtherMicActive = voiceManager.isAnyMicActive()
-                  if (wasListening && isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !anyOtherMicActive) {
-                    setTimeout(() => {
-                      const stillAnyOtherMicActive = voiceManager.isAnyMicActive()
-                      if (isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !isWakeWordListeningRef.current && !stillAnyOtherMicActive) {
-                        console.log('♻️ [WAKE WORD] Restarting wake word detection...')
-                        startWakeWord()
-                      } else {
-                        console.log('⏸️ [WAKE WORD] Skipping restart - Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current, 'OtherMics:', stillAnyOtherMicActive)
-                      }
-                    }, 500)
-                  } else {
-                    console.log('⏹️ [WAKE WORD] Not restarting - wasListening:', wasListening, 'Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
-                  }
+                  console.log('⏹️ [WAKE WORD MONITOR] Stopped - will restart via effect if conditions met')
+                  // DO NOT AUTO-RESTART HERE - let the effect handle it to prevent infinite loops
                 }
 
                 try {
@@ -654,6 +864,7 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                     console.error('❌ [WAKE WORD MONITOR] Failed to start:', error)
                   }
                 } finally {
+                  // CRITICAL: Always clear starting flag
                   wakeWordStartingRef.current = false
                   console.log('🏁 [WAKE WORD MONITOR] Start attempt complete')
                 }
@@ -689,10 +900,37 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     }
   }, [isExpanded])
 
+  // Handle language change - restart recognition if currently listening
+  useEffect(() => {
+    if (isListening && recognitionRef.current) {
+      console.log('🌐 [LANGUAGE CHANGE] Restarting recognition with new language:', selectedLanguage)
+      
+      // Stop current recognition
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {
+        // Already stopped
+      }
+      
+      // Update language and restart
+      setTimeout(() => {
+        if (recognitionRef.current && isListening) {
+          recognitionRef.current.lang = selectedLanguage
+          try {
+            recognitionRef.current.start()
+            console.log('✅ [LANGUAGE CHANGE] Recognition restarted with', selectedLanguage)
+          } catch (e) {
+            console.error('❌ [LANGUAGE CHANGE] Failed to restart:', e)
+          }
+        }
+      }, 300)
+    }
+  }, [selectedLanguage])
+  
   // Debug logging for state changes
   useEffect(() => {
-    console.log('📊 [STATE] isWakeWordActive:', isWakeWordActive, 'isExpanded:', isExpanded, 'isListening:', isListening, 'isListeningForWakeWord:', isListeningForWakeWord)
-  }, [isWakeWordActive, isExpanded, isListening, isListeningForWakeWord])
+    console.log('📊 [STATE] isWakeWordActive:', isWakeWordActive, 'isExpanded:', isExpanded, 'isListening:', isListening, 'isListeningForWakeWord:', isListeningForWakeWord, 'language:', selectedLanguage)
+  }, [isWakeWordActive, isExpanded, isListening, isListeningForWakeWord, selectedLanguage])
 
   const stopWakeWordDetection = () => {
     if (wakeWordRecognitionRef.current && isWakeWordListeningRef.current) {
@@ -730,11 +968,13 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       // Request microphone access
       await navigator.mediaDevices.getUserMedia({ audio: true })
       
-      // Reset transcript
+      // Reset transcript refs (CRITICAL: Reset both refs for clean start)
       transcriptRef.current = ''
+      finalTranscriptRef.current = ''
       setTranscript('')
       setInputValue('')
       setError(null)
+      console.log('🔄 [MAIN MIC] Transcript refs reset for new recording')
       
       // Set flag to continue listening
       shouldContinueListeningRef.current = true
@@ -783,9 +1023,9 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       }
     }
 
-    // Keep the transcript in the input field for review
-    if (transcriptRef.current) {
-      setInputValue(transcriptRef.current.trim())
+    // Keep the transcript in the input field for review (use final transcript only)
+    if (finalTranscriptRef.current) {
+      setInputValue(finalTranscriptRef.current.trim())
       
       // In auto mode, stopping the mic should trigger auto-submit
       if (autoModeRef.current && transcriptRef.current.trim().length > 0 && !autoSubmitRef.current) {
@@ -800,7 +1040,8 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
 
   // Handle automated submission
   const handleAutoSubmit = async () => {
-    const query = transcriptRef.current.trim()
+    // Use finalTranscriptRef for submission (only confirmed speech)
+    const query = finalTranscriptRef.current.trim()
     if (!query || isProcessing) {
       console.log('⚠️ [AUTO MODE] Cannot submit - query empty or processing')
       autoSubmitRef.current = false // Reset flag if cannot submit
@@ -848,7 +1089,7 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       console.log('⏰ [SILENCE TIMER] Setting 2-second timer')
       silenceTimerRef.current = setTimeout(() => {
         const silenceDuration = Date.now() - lastSpeechTimeRef.current
-        const transcript = transcriptRef.current.trim()
+        const transcript = finalTranscriptRef.current.trim()
         
         console.log('⏱️ [SILENCE TIMER] Triggered - Duration:', silenceDuration, 'ms, Transcript length:', transcript.length, 'autoSubmit pending:', autoSubmitRef.current)
         
@@ -904,11 +1145,30 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     }
   }
 
+  // Effect to pause/resume wake word detection when AI is speaking
+  useEffect(() => {
+    if (isSpeaking && isWakeWordActive && isWakeWordListeningRef.current && wakeWordRecognitionRef.current) {
+      // Pause wake word detection while AI is speaking
+      console.log('🔇 [WAKE WORD] Pausing wake word detection during AI speech')
+      try {
+        wakeWordRecognitionRef.current.stop()
+        isWakeWordListeningRef.current = false
+        setIsListeningForWakeWord(false)
+      } catch (e) {
+        // Already stopped
+      }
+    } else if (!isSpeaking && isWakeWordActive && !isExpanded && !isListening && !isWakeWordListeningRef.current) {
+      // Resume wake word detection after AI finishes speaking (if chat is not expanded)
+      console.log('🔊 [WAKE WORD] Resuming wake word detection after AI speech')
+      // Let the main effect handle restarting
+    }
+  }, [isSpeaking, isWakeWordActive, isExpanded, isListening])
+
   const handleSendMessage = async () => {
-    console.log('📨 [SEND MESSAGE] Called. inputValue:', inputValue, 'transcriptRef:', transcriptRef.current, 'isProcessing:', isProcessing)
+    console.log('📨 [SEND MESSAGE] Called. inputValue:', inputValue, 'finalTranscriptRef:', finalTranscriptRef.current, 'isProcessing:', isProcessing)
     
-    // Use transcriptRef if inputValue is empty (for auto-submit)
-    const query = (inputValue.trim() || transcriptRef.current.trim())
+    // Use finalTranscriptRef if inputValue is empty (for auto-submit - only confirmed speech)
+    const query = (inputValue.trim() || finalTranscriptRef.current.trim())
     
     if (!query || isProcessing) {
       console.log('⚠️ [SEND MESSAGE] Aborted - query empty or processing. Query:', query)
@@ -928,11 +1188,12 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     setInputValue('')
     setTranscript('')
     transcriptRef.current = ''
+    finalTranscriptRef.current = ''
     setError(null)
     setIsProcessing(true)
 
     try {
-      console.log('📤 [ENDOFLOW] Sending query:', query)
+      console.log('📤 [ENDOFLOW] Sending query:', query, 'conversationId:', conversationId)
       
       // Add timeout to prevent indefinite waiting
       const timeoutPromise = new Promise((_, reject) => 
@@ -1050,12 +1311,16 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     setConversationId(null)
     setError(null)
     stopSpeaking()
+    
+    // Clear stored conversation ID from localStorage
+    localStorage.removeItem('endoflow_current_conversation_id')
+    console.log('🧹 [PERSISTENCE] Cleared conversation ID from localStorage')
 
     // Re-add welcome message
     const welcomeMessage: Message = {
       id: 'welcome',
       role: 'system',
-      content: '👋 **Welcome back!**\n\nHow can I help you today?',
+      content: '👋 **Welcome back!**\\n\\nHow can I help you today?',
       timestamp: new Date()
     }
     setMessages([welcomeMessage])
@@ -1120,92 +1385,130 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     <Card
       className={cn(
         'border-2 border-teal-300 shadow-2xl',
-        isFloating && 'fixed bottom-6 right-6 z-50 w-[450px] max-h-[600px]'
+        isFloating && 'fixed bottom-4 right-4 z-50 w-[450px] max-h-[calc(100vh-2rem)] flex flex-col'
       )}
     >
-      <CardHeader className="bg-gradient-to-r from-teal-600 to-blue-600 text-white border-b-2 border-teal-300 flex-shrink-0 p-4">
+      <CardHeader className="bg-gradient-to-r from-teal-600 to-blue-600 text-white border-b-2 border-teal-300 flex-shrink-0 p-3">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <div className="min-w-0">
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-base font-bold flex items-center gap-1 leading-tight">
                 Hey EndoFlow
-                <Badge variant="secondary" className="bg-white/20 text-white border-0 text-xs">
-                  <Brain className="w-3 h-3 mr-1" />
-                  Master AI
+                <Badge variant="secondary" className="bg-white/20 text-white border-0 text-[10px] px-1 py-0">
+                  <Brain className="w-2 h-2 mr-0.5" />
+                  AI
                 </Badge>
               </CardTitle>
-              <p className="text-xs text-teal-100 mt-1">Intelligent voice & text assistant</p>
+              <p className="text-[10px] text-teal-100 mt-0.5">Voice & text assistant</p>
             </div>
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {/* Language Selector */}
+            <div className="relative group">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-1.5 text-white hover:bg-white/20"
+                title="Select language"
+              >
+                <Globe className="w-3 h-3" />
+              </Button>
+              {/* Dropdown menu */}
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <button
+                  onClick={() => setSelectedLanguage('en-US')}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
+                    selectedLanguage === 'en-US' && "bg-teal-100 text-teal-800 font-semibold"
+                  )}
+                >
+                  <Globe className="w-4 h-4" />
+                  <div>
+                    <div>English (US)</div>
+                    <div className="text-xs text-gray-500">Standard American</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setSelectedLanguage('en-IN')}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
+                    selectedLanguage === 'en-IN' && "bg-teal-100 text-teal-800 font-semibold"
+                  )}
+                >
+                  <Globe className="w-4 h-4" />
+                  <div>
+                    <div>English (India)</div>
+                    <div className="text-xs text-gray-500">Indian English accent</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setSelectedLanguage('hi-IN')}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
+                    selectedLanguage === 'hi-IN' && "bg-teal-100 text-teal-800 font-semibold"
+                  )}
+                >
+                  <Globe className="w-4 h-4" />
+                  <div>
+                    <div>हिंदी (Hindi)</div>
+                    <div className="text-xs text-gray-500">Hindi language</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
             <Button
               variant={autoMode ? "default" : "ghost"}
               size="sm"
               onClick={() => setAutoMode(!autoMode)}
               className={cn(
-                "h-8 px-2 text-white",
+                "h-7 w-7 p-0 text-white",
                 autoMode ? "bg-purple-600 hover:bg-purple-700" : "hover:bg-white/20"
               )}
-              title={autoMode ? "Disable automated conversation" : "Enable automated conversation"}
+              title={autoMode ? "Auto mode ON" : "Manual mode"}
             >
-              {autoMode ? (
-                <>
-                  <Zap className="w-4 h-4 mr-1" />
-                  <span className="text-xs">Auto</span>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4 mr-1" />
-                  <span className="text-xs">Manual</span>
-                </>
-              )}
+              {autoMode ? <Zap className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
             </Button>
             <Button
               variant={isWakeWordActive ? "default" : "ghost"}
               size="sm"
               onClick={() => setIsWakeWordActive(!isWakeWordActive)}
               className={cn(
-                "h-8 px-2 text-white",
+                "h-7 w-7 p-0 text-white",
                 isWakeWordActive ? "bg-green-600 hover:bg-green-700" : "hover:bg-white/20"
               )}
-              title={isWakeWordActive ? "Disable wake word" : "Enable wake word"}
+              title={isWakeWordActive ? "Wake word ON" : "Wake word OFF"}
             >
-              {isWakeWordActive ? (
-                <>
-                  <Mic className="w-4 h-4 mr-1" />
-                  <span className="text-xs">Wake</span>
-                </>
-              ) : (
-                <MicOff className="w-4 h-4" />
-              )}
+              {isWakeWordActive ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setVoiceEnabled(!voiceEnabled)}
-              className="h-8 w-8 p-0 text-white hover:bg-white/20"
-              title={voiceEnabled ? 'Disable voice responses' : 'Enable voice responses'}
+              className="h-7 w-7 p-0 text-white hover:bg-white/20"
+              title={voiceEnabled ? 'Voice ON' : 'Voice OFF'}
             >
-              {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {voiceEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
             </Button>
             {isFloating && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleExpand}
-                className="h-8 w-8 p-0 text-white hover:bg-white/20"
+                className="h-7 w-7 p-0 text-white hover:bg-red-500 hover:bg-opacity-80 ml-1"
+                title="Close chat"
               >
-                <ChevronDown className="w-4 h-4" />
+                <X className="w-4 h-4" />
               </Button>
             )}
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-col p-0 h-[500px]">
+      <CardContent className="flex flex-col p-0 flex-1 min-h-0 overflow-hidden">
         {/* Messages Area */}
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
@@ -1312,7 +1615,11 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-red-900">🎙️ Listening...</span>
+                <span className="text-sm font-medium text-red-900">🎤️ Listening...</span>
+                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
+                  <Globe className="h-3 w-3 mr-1" />
+                  {selectedLanguage === 'en-US' ? 'English (US)' : selectedLanguage === 'en-IN' ? 'English (India)' : 'हिंदी (Hindi)'}
+                </Badge>
               </div>
               <Badge className="bg-red-100 text-red-700 border-red-300">
                 <Mic className="h-3 w-3 mr-1" />

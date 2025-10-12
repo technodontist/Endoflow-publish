@@ -139,27 +139,67 @@ export async function generateChatCompletion(
       }
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
+    // Add timeout and retry logic
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout
+    
+    let lastError: Error | null = null
+    let attempts = 0
+    const maxAttempts = 2
+    
+    while (attempts < maxAttempts) {
+      try {
+        attempts++
+        
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
+          }
+        )
+        
+        clearTimeout(timeoutId)
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('❌ [GEMINI] Chat API error:', errorText)
+          throw new Error(`Gemini API error: ${response.status}`)
+        }
+        
+        const data = await response.json()
+        const responseText = data.candidates[0].content.parts[0].text
+        
+        return responseText
+      } catch (err: any) {
+        lastError = err
+        
+        // Check if it's a network error that we should retry
+        if (err.name === 'AbortError') {
+          console.warn(`⏱️ [GEMINI] Request timeout on attempt ${attempts}/${maxAttempts}`)
+        } else if (err.code === 'ECONNRESET' || err.cause?.code === 'ECONNRESET') {
+          console.warn(`🔌 [GEMINI] Connection reset on attempt ${attempts}/${maxAttempts}`)
+        } else {
+          // For other errors, don't retry
+          throw err
+        }
+        
+        // If this was the last attempt, throw the error
+        if (attempts >= maxAttempts) {
+          throw lastError
+        }
+        
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts))
       }
-    )
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('❌ [GEMINI] Chat API error:', errorText)
-      throw new Error(`Gemini API error: ${response.status}`)
     }
-
-    const data = await response.json()
-    const responseText = data.candidates[0].content.parts[0].text
-
-    return responseText
+    
+    // Should never reach here
+    throw new Error('Unexpected error in retry loop')
   } catch (error) {
     console.error('❌ [GEMINI] Chat completion failed:', error)
     throw new Error(`Failed to generate chat completion: ${error instanceof Error ? error.message : 'Unknown error'}`)

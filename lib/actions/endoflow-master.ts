@@ -56,6 +56,7 @@ export async function processEndoFlowQuery(params: {
     }
 
     console.log('🎭 [ENDOFLOW ACTION] Processing query for dentist:', user.id)
+    console.log('🔑 [ENDOFLOW ACTION] Received conversationId:', params.conversationId)
 
     // Get conversation history if conversationId provided
     let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
@@ -69,8 +70,12 @@ export async function processEndoFlowQuery(params: {
         .eq('id', currentConversationId)
         .single()
 
-      if (!historyError && messages?.messages) {
+      if (historyError) {
+        console.error('⚠️ [ENDOFLOW ACTION] Failed to fetch conversation history:', historyError)
+        console.error('⚠️ [ENDOFLOW ACTION] Make sure api.endoflow_conversations table exists!')
+      } else if (messages?.messages) {
         conversationHistory = messages.messages
+        console.log('✅ [ENDOFLOW ACTION] Loaded conversation history:', conversationHistory.length, 'messages')
       }
     } else {
       // Create new conversation
