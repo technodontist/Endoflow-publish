@@ -16,6 +16,7 @@ import {
 import { extractDentalFindings, mapFindingsToChartUpdate, type ToothFinding, type DentalExaminationData } from '@/lib/services/dental-voice-parser'
 import { getDentalRAGSuggestions, type DiagnosisSuggestion } from '@/lib/services/dental-rag-service'
 import { cn } from '@/lib/utils'
+import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
 
 interface FDIVoiceControlProps {
   patientId: string
@@ -37,6 +38,9 @@ export function FDIVoiceControl({
   onSuggestionsReceived,
   patientHistory
 }: FDIVoiceControlProps) {
+  // Get voice manager
+  const voiceManager = useVoiceManager()
+  
   // Voice recording states
   const [isRecording, setIsRecording] = useState(false)
   const [transcript, setTranscript] = useState('')
@@ -119,9 +123,16 @@ export function FDIVoiceControl({
   // Start/stop recording
   const toggleRecording = () => {
     if (isRecording) {
+      // Stopping recording
       recognitionRef.current?.stop()
       setIsRecording(false)
+      voiceManager.unregisterMicUsage('fdi-voice-control')
+      console.log('🛑 [FDI VOICE] Unregistered from voice manager')
     } else {
+      // Starting recording
+      voiceManager.registerMicUsage('fdi-voice-control')
+      console.log('🎙️ [FDI VOICE] Registered with voice manager')
+      
       finalTranscriptRef.current = ''
       setTranscript('')
       setInterimTranscript('')

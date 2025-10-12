@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { processEndoFlowQuery } from '@/lib/actions/endoflow-master'
 import { cn } from '@/lib/utils'
+import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
 
 interface Message {
   id: string
@@ -43,6 +44,9 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   isFloating = false,
   defaultExpanded = false
 }: EndoFlowVoiceControllerProps) {
+  // Get voice manager
+  const voiceManager = useVoiceManager()
+  
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -253,6 +257,9 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
           setTimeout(() => {
             handleAutoSubmit()
           }, 500)
+          // CRITICAL: Unregister from voice manager since we're done
+          console.log('🧹 [MAIN MIC] Unregistering from voice manager (auto-submit path)')
+          voiceManager.unregisterMicUsage('endoflow-master-ai')
           return
         }
         
@@ -268,8 +275,14 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
             console.error('Failed to restart recognition:', e)
             shouldContinueListeningRef.current = false
             setIsListening(false)
+            // CRITICAL: Unregister from voice manager on error
+            console.log('🧹 [MAIN MIC] Unregistering from voice manager (error path)')
+            voiceManager.unregisterMicUsage('endoflow-master-ai')
           }
         } else {
+          // CRITICAL: Unregister from voice manager when not continuing
+          console.log('🧹 [MAIN MIC] Unregistering from voice manager (stopped path)')
+          voiceManager.unregisterMicUsage('endoflow-master-ai')
           setIsListening(false)
         }
       }
@@ -304,10 +317,17 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   useEffect(() => {
     console.log('🔄 [WAKE WORD EFFECT] Triggered. Active:', isWakeWordActive, 'Expanded:', isExpanded, 'Listening:', isListening)
     
+    // Notify voice manager about wake word status
+    voiceManager.notifyWakeWordStatus(isWakeWordActive)
+    
     const startWakeWordListening = async () => {
+      // CRITICAL: Check voice manager FIRST before any other checks
+      const anyOtherMicActive = voiceManager.isAnyMicActive()
+      
       // Should we stop wake word detection?
-      if (!isWakeWordActive || isExpanded || isListening) {
-        console.log('🛑 [WAKE WORD] Should stop. Active:', isWakeWordActive, 'Expanded:', isExpanded, 'Listening:', isListening)
+      // Check both local conditions AND if any other component is using the mic
+      if (!isWakeWordActive || isExpanded || isListening || anyOtherMicActive) {
+        console.log('🛑 [WAKE WORD] Should stop. Active:', isWakeWordActive, 'Expanded:', isExpanded, 'Listening:', isListening, 'OtherMics:', anyOtherMicActive)
         
         // Stop wake word detection if disabled, chat is expanded, or user is actively speaking
         if (wakeWordRecognitionRef.current && isWakeWordListeningRef.current) {
@@ -332,6 +352,13 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       // Don't start if already listening or currently starting
       if (isWakeWordListeningRef.current || wakeWordStartingRef.current) {
         console.log('⚠️ [WAKE WORD] Already listening or starting, skipping')
+        return
+      }
+      
+      // CRITICAL: Double-check voice manager right before starting
+      const stillAnyOtherMicActive = voiceManager.isAnyMicActive()
+      if (stillAnyOtherMicActive) {
+        console.log('⚠️ [WAKE WORD] Other mics became active, aborting start')
         return
       }
 
@@ -405,14 +432,17 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
           setIsListeningForWakeWord(false)
           
           // Auto-restart wake word detection if still active and not expanded - USE REFS for current state!
-          if (wasListening && isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current) {
+          // CRITICAL: Also check if any other component is using the microphone
+          const anyOtherMicActive = voiceManager.isAnyMicActive()
+          if (wasListening && isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !anyOtherMicActive) {
             setTimeout(() => {
-              // Double-check conditions before restart - USE REFS!
-              if (isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !isWakeWordListeningRef.current) {
+              // Double-check conditions before restart - USE REFS AND CHECK OTHER MICS!
+              const stillAnyOtherMicActive = voiceManager.isAnyMicActive()
+              if (isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !isWakeWordListeningRef.current && !stillAnyOtherMicActive) {
                 console.log('♻️ [WAKE WORD] Restarting wake word detection...')
                 startWakeWordListening()
               } else {
-                console.log('⏸️ [WAKE WORD] Skipping restart - Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
+                console.log('⏸️ [WAKE WORD] Skipping restart - Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current, 'OtherMics:', stillAnyOtherMicActive)
               }
             }, 500)
           } else {
@@ -480,7 +510,184 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
         }
       }
     }
-  }, [isWakeWordActive, isExpanded, isListening])
+  }, [isWakeWordActive, isExpanded, isListening, voiceManager])
+
+  // Monitor voice manager state changes to auto-restart wake word
+  // This effect handles the case when other mics stop and wake word should resume
+  // CRITICAL: Uses activeMicCount from voice manager to reactively detect mic releases
+  useEffect(() => {
+    // Function to check and restart wake word if conditions are met
+    const checkAndRestartWakeWord = () => {
+      const anyMicActive = voiceManager.isAnyMicActive()
+      const activeMicCount = voiceManager.activeMicCount
+      
+      console.log('🔍 [WAKE WORD MONITOR] Checking restart conditions...')
+      console.log('  - Active mic count:', activeMicCount)
+      console.log('  - Any mic active:', anyMicActive)
+      console.log('  - Wake word active:', isWakeWordActiveRef.current)
+      console.log('  - Expanded:', isExpandedRef.current)
+      console.log('  - Listening (main):', isListeningRef.current)
+      console.log('  - Wake word listening:', isWakeWordListeningRef.current)
+      console.log('  - Wake word starting:', wakeWordStartingRef.current)
+      
+      // If no other mic is active AND wake word should be running but isn't, restart it
+      if (activeMicCount === 0 && 
+          !anyMicActive && 
+          isWakeWordActiveRef.current && 
+          !isExpandedRef.current && 
+          !isListeningRef.current && 
+          !isWakeWordListeningRef.current && 
+          !wakeWordStartingRef.current) {
+        
+        console.log('🔄 [WAKE WORD MONITOR] Conditions met! Restarting wake word...')
+        
+        // Use a small delay to ensure cleanup is complete
+        setTimeout(() => {
+          // Double-check conditions one more time before restart
+          const stillAnyMicActive = voiceManager.isAnyMicActive()
+          if (!stillAnyMicActive && 
+              isWakeWordActiveRef.current && 
+              !isExpandedRef.current && 
+              !isListeningRef.current && 
+              !isWakeWordListeningRef.current && 
+              !wakeWordStartingRef.current) {
+            
+            console.log('✅ [WAKE WORD MONITOR] Final check passed, initiating restart...')
+            
+            // Start wake word listening
+            const startWakeWord = async () => {
+              wakeWordStartingRef.current = true
+              
+              if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+                
+                // Create new recognition instance
+                wakeWordRecognitionRef.current = new SpeechRecognition()
+                wakeWordRecognitionRef.current.continuous = true
+                wakeWordRecognitionRef.current.interimResults = true
+                wakeWordRecognitionRef.current.lang = 'en-US'
+
+                // Set up handlers (same as main wake word effect)
+                wakeWordRecognitionRef.current.onresult = (event: any) => {
+                  const transcript = Array.from(event.results)
+                    .map((result: any) => result[0].transcript.toLowerCase())
+                    .join(' ')
+
+                  console.log('🎤 [WAKE WORD] Detected:', transcript)
+
+                  const hasHey = transcript.includes('hey') || transcript.includes('hi') || transcript.includes('a');
+                  const hasEndoFlow = transcript.includes('endo') || transcript.includes('indo') || 
+                                     transcript.includes('end o') || transcript.includes('end of') ||
+                                     transcript.includes('endoc');
+                  const hasFlow = transcript.includes('flow') || transcript.includes('low') || transcript.includes('flo');
+                  
+                  if ((hasHey && hasEndoFlow) || (hasEndoFlow && hasFlow) || 
+                      transcript.includes('hey endoflow') || 
+                      transcript.includes('endoflow') ||
+                      transcript.match(/\b(hey|hi|a)?\s*(endo|indo|end\s*o|end\s*of)\s*(flow|low|flo)\b/i)) {
+                    console.log('✅ [WAKE WORD] Wake word detected! Activating EndoFlow...')
+                    
+                    if (wakeWordRecognitionRef.current) {
+                      try {
+                        wakeWordRecognitionRef.current.stop()
+                        isWakeWordListeningRef.current = false
+                        setIsListeningForWakeWord(false)
+                      } catch (e) {
+                        // Already stopped
+                      }
+                    }
+                    
+                    setIsExpanded(true)
+                    setTimeout(() => {
+                      startVoiceRecording()
+                    }, 500)
+                  }
+                }
+
+                wakeWordRecognitionRef.current.onerror = (event: any) => {
+                  if (event.error !== 'no-speech' && event.error !== 'aborted' && event.error !== 'audio-capture') {
+                    console.error('❌ [WAKE WORD] Error:', event.error)
+                  }
+                }
+
+                wakeWordRecognitionRef.current.onend = () => {
+                  console.log('🔄 [WAKE WORD] Recognition ended. Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
+                  
+                  const wasListening = isWakeWordListeningRef.current
+                  isWakeWordListeningRef.current = false
+                  setIsListeningForWakeWord(false)
+                  
+                  const anyOtherMicActive = voiceManager.isAnyMicActive()
+                  if (wasListening && isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !anyOtherMicActive) {
+                    setTimeout(() => {
+                      const stillAnyOtherMicActive = voiceManager.isAnyMicActive()
+                      if (isWakeWordActiveRef.current && !isExpandedRef.current && !isListeningRef.current && !isWakeWordListeningRef.current && !stillAnyOtherMicActive) {
+                        console.log('♻️ [WAKE WORD] Restarting wake word detection...')
+                        startWakeWord()
+                      } else {
+                        console.log('⏸️ [WAKE WORD] Skipping restart - Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current, 'OtherMics:', stillAnyOtherMicActive)
+                      }
+                    }, 500)
+                  } else {
+                    console.log('⏹️ [WAKE WORD] Not restarting - wasListening:', wasListening, 'Active:', isWakeWordActiveRef.current, 'Expanded:', isExpandedRef.current, 'Listening:', isListeningRef.current)
+                  }
+                }
+
+                try {
+                  console.log('🎤 [WAKE WORD MONITOR] Requesting microphone permission...')
+                  await navigator.mediaDevices.getUserMedia({ audio: true })
+                  console.log('✅ [WAKE WORD MONITOR] Microphone permission granted')
+                  
+                  if (!isWakeWordListeningRef.current) {
+                    console.log('🚀 [WAKE WORD MONITOR] Starting recognition...')
+                    wakeWordRecognitionRef.current.start()
+                    isWakeWordListeningRef.current = true
+                    setIsListeningForWakeWord(true)
+                    console.log('✅ [WAKE WORD MONITOR] Started listening for "Hey EndoFlow"...')
+                  }
+                } catch (error: any) {
+                  if (error?.message?.includes('already started')) {
+                    console.log('⚠️ [WAKE WORD MONITOR] Already started (caught error), updating state')
+                    isWakeWordListeningRef.current = true
+                    setIsListeningForWakeWord(true)
+                  } else {
+                    console.error('❌ [WAKE WORD MONITOR] Failed to start:', error)
+                  }
+                } finally {
+                  wakeWordStartingRef.current = false
+                  console.log('🏁 [WAKE WORD MONITOR] Start attempt complete')
+                }
+              }
+            }
+            
+            startWakeWord()
+          } else {
+            console.log('❌ [WAKE WORD MONITOR] Final check failed, not restarting')
+            console.log('  - Still any mic active:', stillAnyMicActive)
+            console.log('  - Wake word active:', isWakeWordActiveRef.current)
+            console.log('  - Expanded:', isExpandedRef.current)
+            console.log('  - Listening:', isListeningRef.current)
+            console.log('  - Already listening for wake word:', isWakeWordListeningRef.current)
+          }
+        }, 600) // Slightly longer delay to ensure other mics have fully released
+      } else {
+        console.log('⏭️ [WAKE WORD MONITOR] Conditions not met, skipping restart')
+      }
+    }
+    
+    // Run check when dependencies change
+    // CRITICAL: activeMicCount changes when ANY mic (including global recorder) starts/stops
+    // This ensures we catch when the global recorder stops and restart wake word
+    checkAndRestartWakeWord()
+  }, [voiceManager.activeMicCount, isWakeWordActive])
+
+  // Cleanup when panel is collapsed
+  useEffect(() => {
+    if (!isExpanded && isListening) {
+      console.log('🧹 [CLEANUP] Panel collapsed - stopping main mic')
+      stopVoiceRecording()
+    }
+  }, [isExpanded])
 
   // Debug logging for state changes
   useEffect(() => {
@@ -502,6 +709,9 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
 
   const startVoiceRecording = async () => {
     try {
+      // Register with voice manager
+      voiceManager.registerMicUsage('endoflow-master-ai')
+      
       // Stop wake word detection first
       stopWakeWordDetection()
       
@@ -556,6 +766,10 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     console.log('🛑 [MAIN MIC] Stopping voice recording...')
     shouldContinueListeningRef.current = false
     setIsListening(false)
+    
+    // Unregister from voice manager
+    console.log('🧹 [MAIN MIC] Unregistering mic from voice manager')
+    voiceManager.unregisterMicUsage('endoflow-master-ai')
     
     // Clear silence timer
     clearSilenceTimer()
@@ -848,7 +1062,14 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   }
 
   const toggleExpand = () => {
-    setIsExpanded(!isExpanded)
+    const newExpandedState = !isExpanded
+    setIsExpanded(newExpandedState)
+    
+    // If collapsing, make sure to stop voice recording and clean up mic registration
+    if (!newExpandedState && isListening) {
+      console.log('🔽 [TOGGLE] Collapsing panel - stopping voice recording')
+      stopVoiceRecording()
+    }
   }
 
   if (isFloating && !isExpanded) {

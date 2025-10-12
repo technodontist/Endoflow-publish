@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Manrope } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { VoiceManagerProvider } from '@/lib/contexts/voice-manager-context';
 
 export const metadata: Metadata = {
   title: 'ENDOFLOW - Dental Clinic Management',
@@ -32,8 +33,10 @@ export default function RootLayout({
       className={`bg-white dark:bg-gray-950 text-black dark:text-white ${manrope.className}`}
     >
       <body className="min-h-[100dvh] bg-gray-50">
-        {children}
-        <Toaster position="top-right" />
+        <VoiceManagerProvider>
+          {children}
+          <Toaster position="top-right" />
+        </VoiceManagerProvider>
       </body>
     </html>
   );

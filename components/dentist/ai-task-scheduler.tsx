@@ -10,6 +10,7 @@ import { Sparkles, Loader2, ListTodo, Send, CheckCircle2, Zap, MessageSquare, Mi
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { scheduleTaskWithAI, getTaskSuggestions } from '@/lib/actions/ai-task-scheduler'
+import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -25,6 +26,9 @@ interface AITaskSchedulerProps {
 }
 
 export default function AITaskScheduler({ createdById, onTaskCreated }: AITaskSchedulerProps) {
+  // Get voice manager
+  const voiceManager = useVoiceManager()
+  
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -192,6 +196,10 @@ Simply describe what task needs to be done, and I'll handle the rest!
 
   const startVoiceRecording = async () => {
     try {
+      // Register with voice manager - this will auto-disable wake word
+      voiceManager.registerMicUsage('ai-task-scheduler')
+      console.log('🎙️ [AI TASK SCHEDULER] Registered with voice manager')
+      
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true })
 
@@ -205,11 +213,17 @@ Simply describe what task needs to be done, and I'll handle the rest!
       }
     } catch (error) {
       console.error('Error starting voice recording:', error)
+      // Unregister if failed to start
+      voiceManager.unregisterMicUsage('ai-task-scheduler')
       alert('Microphone access denied. Please allow microphone access to use voice input.')
     }
   }
 
   const stopVoiceRecording = () => {
+    // Unregister from voice manager - this will auto-enable wake word if needed
+    voiceManager.unregisterMicUsage('ai-task-scheduler')
+    console.log('🛑 [AI TASK SCHEDULER] Unregistered from voice manager')
+    
     setIsRecording(false)
     if (recognitionRef.current) {
       recognitionRef.current.stop()

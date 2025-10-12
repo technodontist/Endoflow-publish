@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Mic, MicOff, Square, Play, Pause, Volume2, AlertCircle, Sparkles, Activity } from "lucide-react"
 import { detectKeywords, analyzeConversationCompleteness } from '@/lib/services/medical-conversation-parser'
+import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
 
 interface VoiceRecording {
   isRecording: boolean
@@ -43,6 +44,9 @@ export function GlobalVoiceRecorder({
   onToothDiagnosesExtracted,
   isEnabled = true
 }: GlobalVoiceRecorderProps) {
+  // Get voice manager
+  const voiceManager = useVoiceManager()
+  
   const [recording, setRecording] = useState<VoiceRecording>({
     isRecording: false,
     isPaused: false,
@@ -175,6 +179,15 @@ export function GlobalVoiceRecorder({
     if (!isEnabled) return
 
     try {
+      // Register with voice manager - this will auto-disable wake word
+      voiceManager.registerMicUsage('global-voice-recorder')
+      console.log('🎙️ [GLOBAL VOICE] Registered with voice manager')
+      
+      // CRITICAL: Add small delay to allow wake word mic to detect and stop first
+      // This prevents race condition where both mics try to use speech recognition
+      await new Promise(resolve => setTimeout(resolve, 200))
+      console.log('🎙️ [GLOBAL VOICE] Delay complete, proceeding with start...')
+      
       setError(null)
       setIsProcessing(false)
       transcriptRef.current = '' // Reset transcript ref
@@ -286,6 +299,10 @@ export function GlobalVoiceRecorder({
 
   const stopRecording = async () => {
     if (mediaRecorderRef.current && recording.isRecording) {
+      // Unregister from voice manager - this will auto-enable wake word if needed
+      voiceManager.unregisterMicUsage('global-voice-recorder')
+      console.log('🛑 [GLOBAL VOICE] Unregistered from voice manager')
+      
       mediaRecorderRef.current.stop()
 
       if (recognitionRef.current) {

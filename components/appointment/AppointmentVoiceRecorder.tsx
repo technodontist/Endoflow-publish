@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Mic, MicOff, Square, Play, Pause, Volume2, AlertCircle, Sparkles, Activity, Calendar } from "lucide-react"
 import { detectAppointmentKeywords } from '@/lib/services/appointment-conversation-parser'
 import type { AppointmentExtraction } from '@/lib/services/appointment-conversation-parser'
+import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
 
 interface VoiceRecording {
   isRecording: boolean
@@ -28,6 +29,9 @@ export function AppointmentVoiceRecorder({
   onAppointmentDataExtracted,
   isEnabled = true
 }: AppointmentVoiceRecorderProps) {
+  // Get voice manager
+  const voiceManager = useVoiceManager()
+  
   const [recording, setRecording] = useState<VoiceRecording>({
     isRecording: false,
     isPaused: false,
@@ -154,6 +158,10 @@ export function AppointmentVoiceRecorder({
     if (!isEnabled) return
 
     try {
+      // Register with voice manager - this will auto-disable wake word
+      voiceManager.registerMicUsage('appointment-voice-recorder')
+      console.log('🎙️ [APPOINTMENT VOICE] Registered with voice manager')
+      
       setError(null)
       setIsProcessing(false)
       transcriptRef.current = ''
@@ -253,6 +261,10 @@ export function AppointmentVoiceRecorder({
 
   const stopRecording = async () => {
     if (mediaRecorderRef.current && recording.isRecording) {
+      // Unregister from voice manager - this will auto-enable wake word if needed
+      voiceManager.unregisterMicUsage('appointment-voice-recorder')
+      console.log('🛑 [APPOINTMENT VOICE] Unregistered from voice manager')
+      
       mediaRecorderRef.current.stop()
 
       if (recognitionRef.current) {
