@@ -26,6 +26,7 @@ import { processEndoFlowQuery } from '@/lib/actions/endoflow-master'
 import { cn } from '@/lib/utils'
 import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
 import Image from 'next/image'
+import { DraggableFloat } from '@/components/ui/draggable-float'
 
 interface Message {
   id: string
@@ -73,6 +74,7 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   const [transcript, setTranscript] = useState('')
   const [isWakeWordActive, setIsWakeWordActive] = useState(true) // Enable wake word by default
   const [selectedLanguage, setSelectedLanguage] = useState<'en-US' | 'en-IN' | 'hi-IN'>('en-US') // Language selection
+  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false) // Language dropdown state
   
   // Save conversationId to localStorage whenever it changes
   useEffect(() => {
@@ -163,6 +165,7 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   const lastWakeWordRestartRef = useRef<number>(0) // Track last wake word restart time to prevent infinite loops
   const isMountedRef = useRef(false) // Track if component has fully mounted to prevent React StrictMode double-mount issues
   const justDetectedWakeWordRef = useRef(false) // Track if we just detected wake word to skip filtering briefly
+  const languageDropdownRef = useRef<HTMLDivElement>(null) // Ref for language dropdown
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -931,6 +934,20 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   useEffect(() => {
     console.log('📊 [STATE] isWakeWordActive:', isWakeWordActive, 'isExpanded:', isExpanded, 'isListening:', isListening, 'isListeningForWakeWord:', isListeningForWakeWord, 'language:', selectedLanguage)
   }, [isWakeWordActive, isExpanded, isListening, isListeningForWakeWord, selectedLanguage])
+  
+  // Close language dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target as Node)) {
+        setIsLanguageDropdownOpen(false)
+      }
+    }
+    
+    if (isLanguageDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isLanguageDropdownOpen])
 
   const stopWakeWordDetection = () => {
     if (wakeWordRecognitionRef.current && isWakeWordListeningRef.current) {
@@ -1202,7 +1219,8 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       
       const resultPromise = processEndoFlowQuery({
         query,
-        conversationId
+        conversationId,
+        language: selectedLanguage
       })
       
       const result = await Promise.race([resultPromise, timeoutPromise]) as any
@@ -1338,60 +1356,100 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
   }
 
   if (isFloating && !isExpanded) {
-    // Floating button (collapsed state)
+    // Floating button (collapsed state) - now draggable
     return (
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button
-          onClick={toggleExpand}
-          size="lg"
-          className="h-16 w-16 rounded-full bg-white hover:bg-gray-50 shadow-2xl transition-all hover:scale-110 border-2 border-teal-500 p-2 flex items-center justify-center overflow-hidden"
-        >
-          <Image
-            src="/tooth-logo.png"
-            alt="Endoflow Master AI"
-            width={56}
-            height={56}
-            className="w-full h-full object-contain scale-105"
-          />
-        </Button>
-        {/* Elegant listening indicator - only show pulsing animation when listening */}
-        {isListeningForWakeWord && (
-          <div className="absolute -top-2 -right-2 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow-lg">
-            <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
+      <DraggableFloat
+        defaultPosition={{ 
+          x: typeof window !== 'undefined' ? window.innerWidth - 120 : 0, 
+          y: typeof window !== 'undefined' ? window.innerHeight - 120 : 0 
+        }}
+        storageKey="endoflow-master-ai-position"
+      >
+        <div className="relative group">
+          {/* Drag Handle Indicator - visible on hover */}
+          <div className="drag-handle absolute -top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-gray-400 rounded-full opacity-0 group-hover:opacity-70 transition-opacity cursor-move z-10">
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
+              <div className="w-6 h-0.5 bg-white rounded-full"></div>
             </div>
           </div>
-        )}
-        {/* Wake word toggle button */}
-        <Button
-          onClick={() => setIsWakeWordActive(!isWakeWordActive)}
-          size="sm"
-          variant={isWakeWordActive ? "default" : "outline"}
-          className={cn(
-            "absolute -left-16 top-1/2 -translate-y-1/2 h-16 w-14 rounded-lg shadow-lg transition-all",
-            isWakeWordActive ? "bg-green-600 hover:bg-green-700 text-white" : "bg-white hover:bg-gray-100"
+          
+          <Button
+            onClick={toggleExpand}
+            size="lg"
+            className="h-16 w-16 rounded-full bg-white hover:bg-gray-50 shadow-2xl transition-all hover:scale-110 border-2 border-teal-500 p-2 flex items-center justify-center overflow-hidden"
+          >
+            <Image
+              src="/tooth-logo.png"
+              alt="Endoflow Master AI"
+              width={56}
+              height={56}
+              className="w-full h-full object-contain scale-105"
+            />
+          </Button>
+          
+          {/* Elegant listening indicator - only show pulsing animation when listening */}
+          {isListeningForWakeWord && (
+            <div className="absolute -top-2 -right-2 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow-lg">
+              <div className="absolute inset-0 bg-green-500 rounded-full animate-ping opacity-75"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-2 h-2 bg-white rounded-full"></div>
+              </div>
+            </div>
           )}
-          title={isWakeWordActive ? "Disable wake word detection" : "Enable wake word detection"}
-        >
-          {isWakeWordActive ? (
-            <Mic className="w-5 h-5" />
-          ) : (
-            <MicOff className="w-5 h-5" />
-          )}
-        </Button>
-      </div>
+          
+          {/* Wake word toggle button */}
+          <Button
+            onClick={() => setIsWakeWordActive(!isWakeWordActive)}
+            size="sm"
+            variant={isWakeWordActive ? "default" : "outline"}
+            className={cn(
+              "absolute -left-16 top-1/2 -translate-y-1/2 h-16 w-14 rounded-lg shadow-lg transition-all",
+              isWakeWordActive ? "bg-green-600 hover:bg-green-700 text-white" : "bg-white hover:bg-gray-100"
+            )}
+            title={isWakeWordActive ? "Disable wake word detection" : "Enable wake word detection"}
+          >
+            {isWakeWordActive ? (
+              <Mic className="w-5 h-5" />
+            ) : (
+              <MicOff className="w-5 h-5" />
+            )}
+          </Button>
+          
+          {/* Drag instruction tooltip - appears on hover */}
+          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-90 transition-opacity whitespace-nowrap pointer-events-none">
+            Hold Shift + Drag to move
+          </div>
+        </div>
+      </DraggableFloat>
     )
   }
 
-  return (
+  // Expanded state - also draggable when floating
+  const cardContent = (
     <Card
       className={cn(
-        'border-2 border-teal-300 shadow-2xl',
-        isFloating && 'fixed bottom-4 right-4 z-50 w-[450px] max-h-[calc(100vh-2rem)] flex flex-col'
+        'border-2 border-teal-300 shadow-2xl relative group',
+        isFloating && 'w-[450px] max-h-[calc(100vh-2rem)] flex flex-col',
+        !isFloating && 'w-full'
       )}
     >
+      {/* Drag Handle for Expanded State - only visible when floating */}
+      {isFloating && (
+        <div className="drag-handle absolute -top-2 left-1/2 -translate-x-1/2 w-16 h-1.5 bg-gray-400 rounded-full opacity-0 group-hover:opacity-70 transition-opacity cursor-move z-10">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-8 h-0.5 bg-white rounded-full"></div>
+          </div>
+        </div>
+      )}
+      
       <CardHeader className="bg-gradient-to-r from-teal-600 to-blue-600 text-white border-b-2 border-teal-300 flex-shrink-0 p-3">
+        {/* Drag instruction for expanded state */}
+        {isFloating && (
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-90 transition-opacity whitespace-nowrap pointer-events-none">
+            Hold Shift + Drag header to move
+          </div>
+        )}
+        
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
 <div className="w-10 h-10 rounded-full bg-white border-2 border-teal-400 flex items-center justify-center flex-shrink-0 p-1">
@@ -1416,19 +1474,26 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
           </div>
           <div className="flex items-center gap-0.5 flex-shrink-0">
             {/* Language Selector */}
-            <div className="relative group">
+            <div className="relative" ref={languageDropdownRef}>
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
                 className="h-7 px-1.5 text-white hover:bg-white/20"
                 title="Select language"
               >
                 <Globe className="w-3 h-3" />
               </Button>
               {/* Dropdown menu */}
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+              <div className={cn(
+                "absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] transition-all z-50",
+                isLanguageDropdownOpen ? "opacity-100 visible" : "opacity-0 invisible"
+              )}>
                 <button
-                  onClick={() => setSelectedLanguage('en-US')}
+                  onClick={() => {
+                    setSelectedLanguage('en-US')
+                    setIsLanguageDropdownOpen(false)
+                  }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
                     selectedLanguage === 'en-US' && "bg-teal-100 text-teal-800 font-semibold"
@@ -1441,7 +1506,10 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                   </div>
                 </button>
                 <button
-                  onClick={() => setSelectedLanguage('en-IN')}
+                  onClick={() => {
+                    setSelectedLanguage('en-IN')
+                    setIsLanguageDropdownOpen(false)
+                  }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
                     selectedLanguage === 'en-IN' && "bg-teal-100 text-teal-800 font-semibold"
@@ -1454,7 +1522,10 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
                   </div>
                 </button>
                 <button
-                  onClick={() => setSelectedLanguage('hi-IN')}
+                  onClick={() => {
+                    setSelectedLanguage('hi-IN')
+                    setIsLanguageDropdownOpen(false)
+                  }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center gap-2",
                     selectedLanguage === 'hi-IN' && "bg-teal-100 text-teal-800 font-semibold"
@@ -1775,4 +1846,21 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
       </CardContent>
     </Card>
   )
+  
+  // Wrap in DraggableFloat if floating and expanded
+  if (isFloating) {
+    return (
+      <DraggableFloat
+        defaultPosition={{ 
+          x: typeof window !== 'undefined' ? window.innerWidth - 474 : 0, // 450px + 24px margin
+          y: typeof window !== 'undefined' ? 16 : 0 
+        }}
+        storageKey="endoflow-master-ai-expanded-position"
+      >
+        {cardContent}
+      </DraggableFloat>
+    )
+  }
+  
+  return cardContent
 })

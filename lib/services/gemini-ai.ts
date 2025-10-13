@@ -140,16 +140,21 @@ export async function generateChatCompletion(
     }
 
     // Add timeout and retry logic
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout
-    
     let lastError: Error | null = null
     let attempts = 0
     const maxAttempts = 2
     
     while (attempts < maxAttempts) {
+      // Create a new AbortController for each attempt
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        console.warn(`⏰ [GEMINI] Timeout triggered after 45 seconds on attempt ${attempts}`)
+        controller.abort()
+      }, 45000) // 45 second timeout (increased for slow networks)
+      
       try {
         attempts++
+        console.log(`🔄 [GEMINI] Attempt ${attempts}/${maxAttempts} - Starting request...`)
         
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -164,6 +169,7 @@ export async function generateChatCompletion(
         )
         
         clearTimeout(timeoutId)
+        console.log(`✅ [GEMINI] Request successful on attempt ${attempts}`)
         
         if (!response.ok) {
           const errorText = await response.text()
@@ -176,6 +182,8 @@ export async function generateChatCompletion(
         
         return responseText
       } catch (err: any) {
+        // Always clear timeout on error
+        clearTimeout(timeoutId)
         lastError = err
         
         // Check if it's a network error that we should retry
@@ -185,6 +193,7 @@ export async function generateChatCompletion(
           console.warn(`🔌 [GEMINI] Connection reset on attempt ${attempts}/${maxAttempts}`)
         } else {
           // For other errors, don't retry
+          clearTimeout(timeoutId)
           throw err
         }
         

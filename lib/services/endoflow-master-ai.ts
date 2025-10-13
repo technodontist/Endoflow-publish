@@ -88,9 +88,10 @@ export async function classifyIntent(
 LANGUAGE SUPPORT:
 - The system supports English (US), English (India), and Hindi (हिंदी)
 - User queries may be in English, Hindi, or a mix of both (code-switching)
-- For Hindi queries: Understand the intent and extract entities, but respond in English
+- Understand the intent and extract entities from any language
 - For mixed Hindi-English queries: Process both languages and unify the intent
 - Common Hindi medical terms: दांत (tooth), दर्द (pain), इलाज (treatment), मरीज़/रोगी (patient), अपॉइंटमेंट (appointment)
+- The response language will be determined separately based on user preference
 
 TASK: Classify the user's query into ONE of these categories:
 1. clinical_research - Questions about patients, cohorts, statistics, diagnoses, treatments
@@ -1457,8 +1458,9 @@ export async function orchestrateQuery(params: {
   userQuery: string
   dentistId: string
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+  language?: 'en-US' | 'en-IN' | 'hi-IN'
 }): Promise<OrchestratedResponse> {
-  const { userQuery, dentistId, conversationHistory } = params
+  const { userQuery, dentistId, conversationHistory, language = 'en-US' } = params
 
   console.log('🎭 [ENDOFLOW MASTER] Orchestrating query:', userQuery)
 
@@ -1541,7 +1543,8 @@ export async function orchestrateQuery(params: {
     const synthesizedResponse = await synthesizeResponse(
       userQuery,
       intent,
-      agentResponses
+      agentResponses,
+      language
     )
 
     // Step 5: Generate follow-up suggestions
@@ -1582,22 +1585,38 @@ export async function orchestrateQuery(params: {
 /**
  * Synthesize natural language response from agent outputs
  * 
- * Note: Responses are always in English, even if the query was in Hindi or mixed language.
- * This ensures consistency and readability in the UI.
+ * Supports multilingual responses based on user's language preference.
+ * When language is 'hi-IN', responses are generated in Hindi using Devanagari script.
  */
 async function synthesizeResponse(
   userQuery: string,
   intent: ClassifiedIntent,
-  agentResponses: AgentResponse[]
+  agentResponses: AgentResponse[],
+  language: 'en-US' | 'en-IN' | 'hi-IN' = 'en-US'
 ): Promise<string> {
+  console.log('🌐 [SYNTHESIS] synthesizeResponse called with language:', language)
+  console.log('🌐 [SYNTHESIS] Intent type:', intent.type)
 
   // If any agent failed, handle gracefully
   const failedAgents = agentResponses.filter(r => !r.success)
   if (failedAgents.length > 0) {
-    return failedAgents[0].error || "I couldn't process your request. Please try rephrasing."
+    const errorMsg = failedAgents[0].error || "I couldn't process your request. Please try rephrasing."
+    // Translate error message to Hindi if needed
+    if (language === 'hi-IN') {
+      return await translateToHindi(errorMsg, userQuery)
+    }
+    return errorMsg
   }
 
   const successfulResponses = agentResponses.filter(r => r.success)
+
+  // Helper function to finalize response with translation if needed
+  const finalizeResponse = async (englishResponse: string): Promise<string> => {
+    if (language === 'hi-IN') {
+      return await translateToHindi(englishResponse, userQuery)
+    }
+    return englishResponse
+  }
 
   // Intent-specific synthesis
   switch (intent.type) {
@@ -1620,9 +1639,9 @@ async function synthesizeResponse(
           })
         }
 
-        return response
+        return await finalizeResponse(response)
       }
-      return 'I analyzed the patient data but found no specific results for your query.'
+      return await finalizeResponse('I analyzed the patient data but found no specific results for your query.')
     }
 
     case 'appointment_inquiry': {
@@ -1652,11 +1671,11 @@ async function synthesizeResponse(
       // Handle empty results
       if (appointments.length === 0) {
         if (queryDirection === 'past') {
-          return `You had no appointments${contextPhrase}.`
+          return await finalizeResponse(`You had no appointments${contextPhrase}.`)
         } else if (queryDirection === 'future') {
-          return `You have no upcoming appointments${contextPhrase}.`
+          return await finalizeResponse(`You have no upcoming appointments${contextPhrase}.`)
         }
-        return `You have no appointments scheduled${contextPhrase}.`
+        return await finalizeResponse(`You have no appointments scheduled${contextPhrase}.`)
       }
 
       // If statistical query, provide count-focused response
@@ -1691,7 +1710,7 @@ async function synthesizeResponse(
           response += `\n*Showing 5 of ${appointments.length} appointments*`
         }
         
-        return response.trim()
+        return await finalizeResponse(response.trim())
       }
 
       // Standard detailed list response
@@ -1720,17 +1739,17 @@ async function synthesizeResponse(
         response += `\n*... and ${appointments.length - 15} more appointment${appointments.length - 15 > 1 ? 's' : ''}*`
       }
 
-      return response.trim()
+      return await finalizeResponse(response.trim())
     }
 
     case 'appointment_booking': {
       const data = successfulResponses[0]?.data
       
       if (data?.success && data?.message) {
-        return data.message
+        return await finalizeResponse(data.message)
       }
 
-      return 'Appointment processed successfully.'
+      return await finalizeResponse('Appointment processed successfully.')
     }
 
     case 'treatment_planning': {
@@ -1747,9 +1766,9 @@ async function synthesizeResponse(
           response += `\n\n*Confidence: ${data.confidence}%*`
         }
 
-        return response
+        return await finalizeResponse(response)
       }
-      return 'Treatment recommendation generated. Please review the detailed analysis.'
+      return await finalizeResponse('Treatment recommendation generated. Please review the detailed analysis.')
     }
 
     case 'patient_inquiry': {
@@ -1764,9 +1783,9 @@ async function synthesizeResponse(
           response += `\n**Medical History:** ${patient.medical_history_summary}`
         }
 
-        return response
+        return await finalizeResponse(response)
       }
-      return 'Patient information retrieved.'
+      return await finalizeResponse('Patient information retrieved.')
     }
 
     case 'task_management': {
@@ -1795,7 +1814,7 @@ async function synthesizeResponse(
           }
         }
 
-        return response
+        return await finalizeResponse(response)
       }
 
       // Task list response
@@ -1808,7 +1827,7 @@ async function synthesizeResponse(
           if (filter.status) filterDesc = `${filter.status.replace('_', ' ')} tasks`
           if (filter.priority) filterDesc = `${filter.priority} priority tasks`
 
-          return `No ${filterDesc} found.`
+          return await finalizeResponse(`No ${filterDesc} found.`)
         }
 
         let response = `📋 **Found ${tasks.length} task${tasks.length > 1 ? 's' : ''}:**\n\n`
@@ -1843,7 +1862,7 @@ async function synthesizeResponse(
           response += `\n*... and ${tasks.length - 10} more task${tasks.length - 10 > 1 ? 's' : ''}*`
         }
 
-        return response.trim()
+        return await finalizeResponse(response.trim())
       }
 
       // Task statistics response
@@ -1861,22 +1880,82 @@ async function synthesizeResponse(
           response += `• **⚠️ Overdue:** ${stats.overdue}\n`
         }
 
-        return response
+        return await finalizeResponse(response)
       }
 
       // Error response
       if (data?.error) {
-        return data.error
+        return await finalizeResponse(data.error)
       }
 
-      return 'Task operation completed.'
+      return await finalizeResponse('Task operation completed.')
     }
 
     case 'general_question':
     default: {
       const data = successfulResponses[0]?.data
-      return data?.response || "I'm here to help! What would you like to know?"
+      return await finalizeResponse(data?.response || "I'm here to help! What would you like to know?")
     }
+  }
+}
+
+/**
+ * Translate English response to Hindi using Gemini AI
+ */
+async function translateToHindi(englishText: string, originalQuery: string): Promise<string> {
+  console.log('🌐 [TRANSLATION] translateToHindi called')
+  console.log('🌐 [TRANSLATION] English text length:', englishText.length)
+  console.log('🌐 [TRANSLATION] Original query:', originalQuery.substring(0, 100))
+  
+  try {
+    const systemInstruction = `You are a medical translator specializing in dental terminology.
+Your task is to translate English responses to natural, conversational Hindi (हिंदी) using Devanagari script.
+
+GUIDELINES:
+- Maintain medical accuracy and professionalism
+- Use natural, conversational Hindi suitable for doctor-patient communication
+- Keep medical/dental terms clear (you may use English terms in parentheses if needed)
+- Preserve markdown formatting (**, *, bullet points, etc.)
+- Preserve numbers, dates, times, and patient names as-is
+- Common dental terms:
+  - tooth/teeth = दांत
+  - appointment = अपॉइंटमेंट
+  - patient = मरीज़/रोगी
+  - treatment = इलाज/उपचार
+  - consultation = परामर्श
+  - pain = दर्द
+  - schedule = कार्यक्रम
+  - today = आज
+  - tomorrow = कल
+  - yesterday = कल (बीता हुआ)
+
+Translate the following text to Hindi, maintaining the same tone and structure:`
+
+    const userPrompt = `Original user query (for context): "${originalQuery}"
+
+English text to translate:
+${englishText}
+
+Provide ONLY the Hindi translation, no explanations.`
+
+    const messages: GeminiChatMessage[] = [
+      {
+        role: 'user',
+        parts: [{ text: userPrompt }]
+      }
+    ]
+
+    const hindiTranslation = await generateChatCompletion(messages, {
+      systemInstruction,
+      temperature: 0.3,
+      maxOutputTokens: 2048
+    })
+
+    return hindiTranslation.trim()
+  } catch (error) {
+    console.error('❌ [TRANSLATION] Failed to translate to Hindi:', error)
+    // Fallback: return English if translation fails
+    return englishText
   }
 }
 

@@ -33,6 +33,7 @@ export interface ProcessQueryResult {
 export async function processEndoFlowQuery(params: {
   query: string
   conversationId?: string | null
+  language?: 'en-US' | 'en-IN' | 'hi-IN'
 }): Promise<ProcessQueryResult> {
   const supabase = await createClient()
   const serviceSupabase = await createServiceClient()
@@ -57,6 +58,7 @@ export async function processEndoFlowQuery(params: {
 
     console.log('🎭 [ENDOFLOW ACTION] Processing query for dentist:', user.id)
     console.log('🔑 [ENDOFLOW ACTION] Received conversationId:', params.conversationId)
+    console.log('🌐 [ENDOFLOW ACTION] Received language:', params.language || 'not provided (defaulting to en-US)')
 
     // Get conversation history if conversationId provided
     let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
@@ -98,7 +100,8 @@ export async function processEndoFlowQuery(params: {
     const result = await orchestrateQuery({
       userQuery: params.query,
       dentistId: user.id,
-      conversationHistory
+      conversationHistory,
+      language: params.language || 'en-US'
     })
 
     if (!result.success) {
