@@ -30,6 +30,7 @@ export async function getAITreatmentSuggestionAction(params: {
     medicalHistory?: string
     previousTreatments?: string
   }
+  queryComplexity?: 'simple' | 'educational'
 }) {
   try {
     // Verify user is authenticated dentist
@@ -44,9 +45,17 @@ export async function getAITreatmentSuggestionAction(params: {
 
     const supabase = await createServiceClient()
 
+    // Determine RAG parameters based on query complexity
+    const queryComplexity = params.queryComplexity || 'simple'
+    const matchCount = queryComplexity === 'educational' ? 5 : 2
+    const contentChars = queryComplexity === 'educational' ? 800 : 500
+
     console.log('🤖 [AI TREATMENT] Generating suggestion for:', {
       diagnosis: params.diagnosis,
-      toothNumber: params.toothNumber
+      toothNumber: params.toothNumber,
+      queryComplexity,
+      matchCount,
+      contentChars
     })
 
     // Check cache first
@@ -124,7 +133,7 @@ export async function getAITreatmentSuggestionAction(params: {
         diagnosis_filter: diagnosisKeywords,
         specialty_filter: 'endodontics',
         match_threshold: 0.5,
-        match_count: 5
+        match_count: matchCount  // Dynamic: 2 for simple, 5 for educational queries
       })
 
     if (searchError) {
@@ -137,7 +146,7 @@ export async function getAITreatmentSuggestionAction(params: {
         .from('medical_knowledge')
         .select('*')
         .not('embedding', 'is', null)
-        .limit(5)
+        .limit(matchCount)  // Dynamic: 2 for simple, 5 for educational queries
 
       if (fallbackError) {
         return { success: false, error: 'Failed to search medical knowledge base' }
@@ -160,11 +169,11 @@ export async function getAITreatmentSuggestionAction(params: {
 
     console.log(`📚 [AI TREATMENT] Found ${relevantKnowledge.length} relevant documents`)
 
-    // Step 3: Build context from retrieved documents
+    // Step 3: Build context from retrieved documents (dynamic based on complexity)
     const context = relevantKnowledge.map((doc: any) =>
       `Title: ${doc.title}\n` +
       `Source: ${doc.journal || 'N/A'} (${doc.publication_year || 'N/A'})\n` +
-      `Content: ${doc.content.substring(0, 1500)}...\n`
+      `Content: ${doc.content.substring(0, contentChars)}...\n`  // Dynamic: 500 for simple, 800 for educational
     ).join('\n---\n\n')
 
     // Step 4: Call Gemini for treatment recommendation

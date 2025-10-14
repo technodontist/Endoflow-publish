@@ -15,7 +15,8 @@
       "Bash(pnpm build)",
       "Bash(node:*)",
       "Bash(git restore:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

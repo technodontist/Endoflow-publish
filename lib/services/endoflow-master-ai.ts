@@ -401,6 +401,43 @@ If the query is already complete and doesn't need context, return it unchanged.`
 }
 
 // ============================================================================
+// QUERY COMPLEXITY DETECTION
+// ============================================================================
+
+/**
+ * Detect query complexity to determine appropriate RAG document count
+ * Educational/procedural queries need more context (5 papers)
+ * Simple diagnosis queries need less (2 papers)
+ */
+function detectQueryComplexity(query: string): 'simple' | 'educational' {
+  const educationalKeywords = [
+    // English keywords
+    'how to', 'teach', 'steps', 'procedure', 'explain', 'guide', 'instruct',
+    'demonstrate', 'show me how', 'walk me through', 'can you teach',
+    'tell me how', 'educate', 'learn', 'tutorial', 'step by step',
+    // Hindi keywords (transliteration and Devanagari)
+    'kaise', 'sikhao', 'sikha', 'batao', 'kaise karte hain', 'kaise karu',
+    'sikha sakte ho', 'bata sakte ho', 'procedure kya hai',
+    'सिखा', 'बता', 'कैसे', 'प्रक्रिया'
+  ]
+
+  const lowerQuery = query.toLowerCase()
+
+  // Check if query contains educational keywords
+  const isEducational = educationalKeywords.some(keyword =>
+    lowerQuery.includes(keyword.toLowerCase())
+  )
+
+  if (isEducational) {
+    console.log('📚 [QUERY COMPLEXITY] Educational query detected - using comprehensive context (5 papers)')
+    return 'educational'
+  }
+
+  console.log('⚡ [QUERY COMPLEXITY] Simple query detected - using fast mode (2 papers)')
+  return 'simple'
+}
+
+// ============================================================================
 // SPECIALIZED AGENT DELEGATION
 // ============================================================================
 
@@ -876,7 +913,7 @@ async function delegateToTreatmentPlanning(
 
     // Extract context from conversation history
     const extractedContext = conversationHistory ? extractConversationContext(conversationHistory) : undefined
-    
+
     // Enhance query with conversation context
     let enhancedQuery = userQuery
     if (conversationHistory && conversationHistory.length > 0) {
@@ -893,10 +930,14 @@ async function delegateToTreatmentPlanning(
       }
     }
 
+    // NEW: Detect query complexity to determine RAG document count
+    const queryComplexity = detectQueryComplexity(enhancedQuery)
+
     const result = await getAITreatmentSuggestionAction({
       diagnosis: entities.diagnosis || 'General consultation',
       toothNumber: entities.toothNumber || 'Not specified',
-      patientContext: undefined
+      patientContext: undefined,
+      queryComplexity  // NEW: Pass complexity to treatment agent
     })
 
     return {
@@ -1906,37 +1947,26 @@ async function translateToHindi(englishText: string, originalQuery: string): Pro
   console.log('🌐 [TRANSLATION] translateToHindi called')
   console.log('🌐 [TRANSLATION] English text length:', englishText.length)
   console.log('🌐 [TRANSLATION] Original query:', originalQuery.substring(0, 100))
-  
+
   try {
-    const systemInstruction = `You are a medical translator specializing in dental terminology.
-Your task is to translate English responses to natural, conversational Hindi (हिंदी) using Devanagari script.
+    // Simplified system instruction for faster translation
+    const systemInstruction = `You are a medical translator for dental communication.
+Translate English to natural Hindi (हिंदी) using Devanagari script.
 
-GUIDELINES:
-- Maintain medical accuracy and professionalism
-- Use natural, conversational Hindi suitable for doctor-patient communication
-- Keep medical/dental terms clear (you may use English terms in parentheses if needed)
-- Preserve markdown formatting (**, *, bullet points, etc.)
-- Preserve numbers, dates, times, and patient names as-is
-- Common dental terms:
-  - tooth/teeth = दांत
-  - appointment = अपॉइंटमेंट
-  - patient = मरीज़/रोगी
-  - treatment = इलाज/उपचार
-  - consultation = परामर्श
-  - pain = दर्द
-  - schedule = कार्यक्रम
-  - today = आज
-  - tomorrow = कल
-  - yesterday = कल (बीता हुआ)
+KEY TERMS:
+tooth/teeth=दांत, appointment=अपॉइंटमेंट, patient=मरीज़, treatment=इलाज, pain=दर्द, today=आज, tomorrow=कल
 
-Translate the following text to Hindi, maintaining the same tone and structure:`
+RULES:
+- Maintain medical accuracy
+- Preserve markdown (**, *, bullets)
+- Keep numbers, dates, names as-is
+- Use conversational Hindi
 
-    const userPrompt = `Original user query (for context): "${originalQuery}"
+Translate to Hindi:`
 
-English text to translate:
-${englishText}
+    const userPrompt = `${englishText}
 
-Provide ONLY the Hindi translation, no explanations.`
+(Context: "${originalQuery.substring(0, 100)}")`
 
     const messages: GeminiChatMessage[] = [
       {
@@ -1947,8 +1977,8 @@ Provide ONLY the Hindi translation, no explanations.`
 
     const hindiTranslation = await generateChatCompletion(messages, {
       systemInstruction,
-      temperature: 0.3,
-      maxOutputTokens: 2048
+      temperature: 0.5,  // Faster generation, still accurate for translation
+      maxOutputTokens: 1024  // Sufficient for most responses
     })
 
     return hindiTranslation.trim()

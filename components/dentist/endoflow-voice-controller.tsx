@@ -1212,9 +1212,9 @@ export const EndoFlowVoiceController = memo(function EndoFlowVoiceController({
     try {
       console.log('📤 [ENDOFLOW] Sending query:', query, 'conversationId:', conversationId)
       
-      // Add timeout to prevent indefinite waiting
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout - server took too long to respond')), 30000)
+      // Add timeout to prevent indefinite waiting (90s to accommodate Hindi translation + complex queries)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout - server took too long to respond')), 90000)
       )
       
       const resultPromise = processEndoFlowQuery({
