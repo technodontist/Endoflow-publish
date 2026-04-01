@@ -1735,7 +1735,7 @@ export function EnhancedNewConsultationV2({ selectedPatientId, appointmentId, de
       </div>
 
       <Dialog open={!!activeSection} onOpenChange={() => setActiveSection(null)}>
-        <DialogContent className="max-w-4xl h-[90vh] overflow-hidden">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl h-[90vh] overflow-hidden">
           <DialogHeader className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

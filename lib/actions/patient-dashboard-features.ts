@@ -499,11 +499,30 @@ export async function getAvailableDentistsAction() {
   const serviceSupabase = await createServiceClient()
 
   try {
-    const { data: dentists, error } = await serviceSupabase
+    // Scope to current user's clinic
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
+
+    let query = serviceSupabase
       .schema('api')
       .from('dentists')
       .select('id, full_name, specialty')
-      .order('full_name', { ascending: true })
+
+    // Filter by clinic if user has one
+    if (ctx?.clinicId) {
+      const { data: clinicDentistIds } = await serviceSupabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'dentist')
+        .eq('status', 'active')
+        .eq('clinic_id', ctx.clinicId)
+
+      if (clinicDentistIds && clinicDentistIds.length > 0) {
+        query = query.in('id', clinicDentistIds.map(d => d.id))
+      }
+    }
+
+    const { data: dentists, error } = await query.order('full_name', { ascending: true })
 
     if (error) {
       console.error('Error fetching dentists:', error)

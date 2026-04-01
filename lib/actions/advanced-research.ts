@@ -102,6 +102,10 @@ export async function runAdvancedResearchQuery(filterRules: FilterRules): Promis
 async function executeGroupQuery(group: Group): Promise<QueryResult[]> {
   const supabase = createClient()
 
+  // Get clinic context for scoping
+  const { getUserContext } = await import('./user-context')
+  const ctx = await getUserContext()
+
   // Base query with joins
   let query = supabase
     .from('profiles')
@@ -125,6 +129,14 @@ async function executeGroupQuery(group: Group): Promise<QueryResult[]> {
     `)
     .eq('role', 'patient')
     .eq('status', 'active')
+
+  // Scope to clinic
+  if (ctx?.clinicId) {
+    query = query.eq('clinic_id', ctx.clinicId)
+  }
+
+  // Reset query chain for conditions below
+  query = query
 
   // Build WHERE conditions dynamically
   const { whereClause, params } = buildWhereClause(group.conditions)

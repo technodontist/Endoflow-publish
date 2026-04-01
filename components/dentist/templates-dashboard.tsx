@@ -92,7 +92,11 @@ const TEMPLATE_CATEGORIES: { value: TemplateCategory; label: string; color: stri
   { value: 'diagnostics', label: 'Diagnostics', color: 'bg-yellow-100 text-yellow-800' }
 ]
 
-export function TemplatesDashboard() {
+interface TemplatesDashboardProps {
+  isMobileView?: boolean
+}
+
+export function TemplatesDashboard({ isMobileView = false }: TemplatesDashboardProps) {
   // State Management
   const [templates, setTemplates] = useState<ClinicalTemplate[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -300,22 +304,24 @@ export function TemplatesDashboard() {
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Clinical Templates</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage reusable templates for clinical documentation and assessments
-              </p>
+        <div className={`${isMobileView ? 'px-3 py-3' : 'px-6 py-4'}`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h1 className={`${isMobileView ? 'text-lg' : 'text-2xl'} font-bold text-gray-900`}>Clinical Templates</h1>
+              {!isMobileView && (
+                <p className="text-sm text-gray-600 mt-1">
+                  Manage reusable templates for clinical documentation and assessments
+                </p>
+              )}
             </div>
             <Dialog open={isCreating} onOpenChange={setIsCreating}>
               <DialogTrigger asChild>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Template
+                <Button className={`bg-blue-600 hover:bg-blue-700 ${isMobileView ? 'h-8 text-xs' : 'h-9 text-sm'} flex-shrink-0`}>
+                  <Plus className={`w-4 h-4 ${isMobileView ? '' : 'mr-2'}`} />
+                  {isMobileView ? 'New' : 'New Template'}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Template</DialogTitle>
                 </DialogHeader>
@@ -400,22 +406,22 @@ export function TemplatesDashboard() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6">
+      <div className={`flex-1 ${isMobileView ? 'p-3' : 'p-6'}`}>
         <Card>
-          <CardHeader className="border-b">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+          <CardHeader className={`border-b ${isMobileView ? 'px-3' : 'px-6'}`}>
+            <div className={`flex ${isMobileView ? 'flex-col' : 'flex-row items-center'} justify-between gap-3`}>
+              <div className={`flex ${isMobileView ? 'flex-col' : 'flex-row items-center'} gap-2 ${isMobileView ? '' : 'gap-4'}`}>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     placeholder="Search templates..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 w-64"
+                    className={`pl-10 ${isMobileView ? 'w-full' : 'w-64'} h-9`}
                   />
                 </div>
                 <Select value={selectedCategory} onValueChange={(value: any) => setSelectedCategory(value)}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className={`${isMobileView ? 'w-full' : 'w-40'} h-9`}>
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
@@ -428,7 +434,7 @@ export function TemplatesDashboard() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className={isMobileView ? 'hidden' : 'flex items-center space-x-2'}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm">
@@ -447,18 +453,18 @@ export function TemplatesDashboard() {
             </div>
           </CardHeader>
 
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">
+                  <TableHead className={isMobileView ? 'w-10' : 'w-12'}>
                     <FileText className="w-4 h-4" />
                   </TableHead>
-                  <TableHead>Template Name</TableHead>
+                  <TableHead className="min-w-[120px]">Template Name</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Last Updated</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  {!isMobileView && <TableHead>Description</TableHead>}
+                  {!isMobileView && <TableHead>Last Updated</TableHead>}
+                  <TableHead className={isMobileView ? 'w-10' : 'w-12'}></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -496,12 +502,16 @@ export function TemplatesDashboard() {
                             {categoryInfo.label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-gray-600 max-w-md truncate">
-                          {template.description}
-                        </TableCell>
-                        <TableCell className="text-gray-500">
-                          {new Date(template.updatedAt).toLocaleDateString()}
-                        </TableCell>
+                        {!isMobileView && (
+                          <TableCell className="text-gray-600 max-w-md truncate">
+                            {template.description}
+                          </TableCell>
+                        )}
+                        {!isMobileView && (
+                          <TableCell className="text-gray-500">
+                            {new Date(template.updatedAt).toLocaleDateString()}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -544,7 +554,7 @@ export function TemplatesDashboard() {
 
       {/* Edit Template Dialog */}
       <Dialog open={!!editingTemplate} onOpenChange={() => setEditingTemplate(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Template</DialogTitle>
             <p className="text-sm text-gray-600">Update the template details below.</p>

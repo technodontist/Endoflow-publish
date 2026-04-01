@@ -24,6 +24,32 @@ export interface ProcessQueryResult {
   intent?: any
   suggestions?: string[]
   agentResponses?: any[]
+  /** Session 10+13: Action command for the frontend to execute */
+  actionCommand?: {
+    action: string
+    targetMode?: string
+    targetTab?: string
+    patientId?: string
+    patientName?: string
+    consultationMode?: string
+    appointmentId?: string
+    appointmentType?: string
+    appointmentMissing?: boolean
+    startRecording?: boolean
+    triggerAIPipeline?: boolean
+    // Session 13: Extended voice control fields
+    toothNumber?: string        // FDI notation for tooth selection
+    sectionId?: string          // consultation section to scroll to
+    gapAnswer?: string          // answer text for gap dialog
+    taskTitle?: string          // for task creation
+    taskDescription?: string
+    taskPriority?: string       // urgent | high | medium | low
+    appointmentDate?: string    // for appointment scheduling
+    appointmentTime?: string
+    appointmentReason?: string
+    recordingAction?: 'pause' | 'resume' | 'process' | 'read_back'
+    requiresConfirmation?: boolean
+  }
 }
 
 /**
@@ -34,6 +60,7 @@ export async function processEndoFlowQuery(params: {
   query: string
   conversationId?: string | null
   language?: 'en-US' | 'en-IN' | 'hi-IN'
+  isVoiceInput?: boolean
 }): Promise<ProcessQueryResult> {
   const supabase = await createClient()
   const serviceSupabase = await createServiceClient()
@@ -101,13 +128,15 @@ export async function processEndoFlowQuery(params: {
       userQuery: params.query,
       dentistId: user.id,
       conversationHistory,
-      language: params.language || 'en-US'
+      language: params.language || 'en-US',
+      isVoiceInput: params.isVoiceInput ?? true
     })
 
     if (!result.success) {
       return {
         success: false,
-        error: result.response || 'Failed to process query'
+        error: result.response || 'Failed to process query',
+        agentResponses: result.agentResponses, // Session 15: pass through for candidate data
       }
     }
 
@@ -137,13 +166,33 @@ export async function processEndoFlowQuery(params: {
     // Revalidate dentist dashboard
     revalidatePath('/dentist')
 
+    // Session 14: Check for conductor action commands first (multi-step pipelines)
+    const conductorAgent = result.agentResponses.find((r: any) => r.agentName === 'MCPConductor')
+    let actionCommand: any = undefined
+
+    if (conductorAgent && conductorAgent.data?.actionCommands?.length > 0) {
+      // Merge all conductor action commands into a single command for the frontend
+      // The last command typically has the most complete data (e.g., consultation_start with patientId)
+      const commands = conductorAgent.data!.actionCommands
+      actionCommand = commands.reduce((merged: any, cmd: any) => ({ ...merged, ...cmd }), {})
+      console.log('🎯 [ENDOFLOW ACTION] Conductor action commands:', commands.length, '→ merged:', actionCommand.action)
+    } else {
+      // Session 10: Extract action command from agent responses for frontend execution
+      // Session 15: Added patient_selection_confirm/prompt for fuzzy matching UI
+      const actionAgent = result.agentResponses.find(
+        (r: any) => r.data?.action && ['navigate', 'consultation_start', 'consultation_stop', 'patient_status', 'generate_report', 'patient_selection_confirm', 'patient_selection_prompt'].includes(r.data.action)
+      )
+      actionCommand = actionAgent?.data || undefined
+    }
+
     return {
       success: true,
       response: result.response,
       conversationId: currentConversationId || undefined,
       intent: result.intent,
       suggestions: result.suggestions,
-      agentResponses: result.agentResponses
+      agentResponses: result.agentResponses,
+      actionCommand,
     }
 
   } catch (error) {

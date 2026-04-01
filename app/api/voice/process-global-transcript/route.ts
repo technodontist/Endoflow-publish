@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { analyzeMedicalConversation } from '@/lib/services/medical-conversation-parser'
+import { refineVoiceQuery } from '@/lib/services/prompt-refinement-agent'
 import type { ToothDiagnosisData } from '@/lib/actions/tooth-diagnoses'
 
 // This endpoint processes the global voice recording and distributes content to appropriate tabs
@@ -23,14 +24,29 @@ export async function POST(request: NextRequest) {
     console.log(`🤖 [GLOBAL VOICE] Processing transcript for consultation: ${consultationId}`)
     console.log(`🌐 [GLOBAL VOICE] Language: ${language}`)
 
-    // Process transcript using AI to categorize content
-    const processedContent = await processTranscriptWithAI(transcript, language)
+    // Step 0: Refine raw voice transcript — fix dental term errors, expand abbreviations
+    let refinedTranscript = transcript
+    try {
+      const refinement = await refineVoiceQuery(transcript, { isVoiceInput: true })
+      refinedTranscript = refinement.refinedQuery
+      if (refinement.corrections.length > 0) {
+        console.log(`🔧 [GLOBAL VOICE] Transcript refined: ${refinement.corrections.length} corrections`)
+        console.log(`🔧 [GLOBAL VOICE] Original: "${transcript.slice(0, 200)}..."`)
+        console.log(`🔧 [GLOBAL VOICE] Refined:  "${refinedTranscript.slice(0, 200)}..."`)
+      }
+    } catch (refineError) {
+      console.warn('⚠️ [GLOBAL VOICE] Refinement failed, using raw transcript:', refineError)
+      // Continue with original transcript — refinement is optional
+    }
+
+    // Process refined transcript using AI to categorize content
+    const processedContent = await processTranscriptWithAI(refinedTranscript, language)
 
     // Update consultation with processed data
     const supabase = await createServiceClient()
 
-    // Extract tooth-specific diagnoses (but don't save yet - only save when consultation is saved)
-    const toothDiagnoses = await extractToothDiagnosesFromTranscript(transcript, consultationId, processedContent, language)
+    // Extract tooth-specific diagnoses using refined transcript
+    const toothDiagnoses = await extractToothDiagnosesFromTranscript(refinedTranscript, consultationId, processedContent, language)
 
     // Prepare update data - only include new fields if columns exist (graceful degradation)
     const updateData: any = {
@@ -44,9 +60,9 @@ export async function POST(request: NextRequest) {
         .schema('api')
         .from('consultations')
         .update({
-          global_voice_transcript: transcript,
+          global_voice_transcript: transcript, // Always store ORIGINAL transcript
           global_voice_processed_data: JSON.stringify(processedContent),
-          voice_recording_duration: calculateDuration(transcript),
+          voice_recording_duration: calculateDuration(refinedTranscript),
           voice_extracted_tooth_diagnoses: JSON.stringify(toothDiagnoses),
           updated_at: new Date().toISOString()
         })

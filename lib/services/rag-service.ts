@@ -10,7 +10,7 @@
  */
 
 import { createServiceClient } from '@/lib/supabase/server'
-import { generateEmbedding } from './gemini-ai'
+import { generateEmbedding3072 } from './openai-embeddings'
 import type { PatientMedicalContext } from '@/lib/actions/patient-context'
 
 export interface RAGDocument {
@@ -26,6 +26,10 @@ export interface RAGDocument {
   url?: string
   similarity: number
   topics?: string[]
+  subspecialty_tags?: string[]
+  section_title?: string
+  parent_document_id?: string
+  chunk_index?: number
 }
 
 export interface RAGQueryParams {
@@ -35,14 +39,20 @@ export interface RAGQueryParams {
   specialtyFilter?: string
   matchThreshold?: number
   matchCount?: number
-  patientMedicalContext?: PatientMedicalContext // NEW: Optional patient context
+  patientMedicalContext?: PatientMedicalContext
+  searchMode?: 'vector' | 'hybrid'
+  vectorWeight?: number
+  fulltextWeight?: number
+  subspecialtyWeights?: Record<string, number> // NEW: weighted subspecialty filtering
 }
 
 export interface RAGResult {
   documents: RAGDocument[]
   queryEmbedding: number[]
   totalMatches: number
-  patientContextIncluded?: boolean // NEW: Flag indicating patient context was used
+  patientContextIncluded?: boolean
+  searchMode?: 'vector' | 'hybrid' | 'fulltext_fallback'
+  subspecialtyFiltered?: boolean
 }
 
 /**
@@ -56,45 +66,91 @@ export async function performRAGQuery(params: RAGQueryParams): Promise<RAGResult
     diagnosisFilter,
     treatmentFilter,
     specialtyFilter,
-    matchThreshold = 0.7,
-    matchCount = 5
+    matchThreshold = 0.5,
+    matchCount = 5,
+    searchMode = 'hybrid',
+    vectorWeight = 0.6,
+    fulltextWeight = 0.4,
+    subspecialtyWeights
   } = params
 
   console.log('🔍 [RAG] Performing RAG query:', {
     query: query.substring(0, 50) + '...',
     filters: { diagnosisFilter, treatmentFilter, specialtyFilter },
+    subspecialtyWeights: subspecialtyWeights ? Object.keys(subspecialtyWeights) : null,
     matchThreshold,
-    matchCount
+    matchCount,
+    searchMode
   })
 
   try {
-    // Step 1: Generate embedding for the query using Gemini
-    console.log('🧠 [RAG] Generating query embedding...')
-    const queryEmbedding = await generateEmbedding(query, 'RETRIEVAL_QUERY')
+    // Step 1: Generate 3072-dim embedding for the query using OpenAI
+    console.log('🧠 [RAG] Generating 3072-dim query embedding (OpenAI)...')
+    const queryEmbedding = await generateEmbedding3072(query)
 
-    // Step 2: Perform vector similarity search in Supabase
-    console.log('📚 [RAG] Searching medical knowledge base...')
     const supabase = await createServiceClient()
+    let documents: RAGDocument[] | null = null
+    let actualSearchMode: 'vector' | 'hybrid' | 'fulltext_fallback' = searchMode === 'hybrid' ? 'hybrid' : 'vector'
 
-    const { data: documents, error } = await supabase
-      .schema('api')
-      .rpc('search_treatment_protocols', {
-        query_embedding: queryEmbedding,
-        diagnosis_filter: diagnosisFilter || null,
-        treatment_filter: treatmentFilter || null,
-        specialty_filter: specialtyFilter || null,
-        match_threshold: matchThreshold,
-        match_count: matchCount
-      })
+    if (searchMode === 'hybrid') {
+      // Step 2a: Try hybrid search with subspecialty weighting
+      console.log('📚 [RAG] Performing hybrid search (vector + full-text + subspecialty boost)...')
+      const { data: hybridResults, error: hybridError } = await supabase
+        .schema('api')
+        .rpc('hybrid_search_medical_knowledge', {
+          query_text: query,
+          query_embedding: queryEmbedding,
+          match_count: matchCount,
+          vector_weight: vectorWeight,
+          fulltext_weight: fulltextWeight,
+          rrf_k: 60,
+          specialty_filter: specialtyFilter || null,
+          diagnosis_filter: diagnosisFilter || null,
+          treatment_filter: treatmentFilter || null,
+          subspecialty_weights: subspecialtyWeights ? JSON.stringify(subspecialtyWeights) : null,
+          exclude_parent_docs: true,
+        })
 
-    if (error) {
-      console.error('❌ [RAG] Vector search error:', error)
-      throw new Error(`Vector search failed: ${error.message}`)
+      if (!hybridError && hybridResults && hybridResults.length > 0) {
+        documents = hybridResults.map((doc: any) => ({
+          ...doc,
+          similarity: doc.hybrid_score || doc.vector_similarity || 0
+        }))
+        console.log(`✅ [RAG] Hybrid search found ${documents!.length} results`)
+      } else if (hybridError) {
+        console.warn('⚠️ [RAG] Hybrid search RPC error, falling back to vector:', hybridError.message?.substring(0, 80))
+        actualSearchMode = 'vector'
+      }
     }
 
-    console.log(`✅ [RAG] Found ${documents?.length || 0} relevant documents`)
+    if (!documents || documents.length === 0) {
+      // Step 2b: Fall back to pure vector search (3072-dim)
+      console.log('📚 [RAG] Performing vector-only search (3072-dim)...')
+      actualSearchMode = 'vector'
 
-    // Log if patient context was included
+      const { data: vectorResults, error: vectorError } = await supabase
+        .schema('api')
+        .rpc('search_treatment_protocols', {
+          query_embedding: queryEmbedding,
+          diagnosis_filter: diagnosisFilter || null,
+          treatment_filter: treatmentFilter || null,
+          specialty_filter: specialtyFilter || null,
+          match_threshold: matchThreshold,
+          match_count: matchCount,
+          subspecialty_filter: subspecialtyWeights
+            ? Object.keys(subspecialtyWeights)
+            : null,
+        })
+
+      if (vectorError) {
+        console.error('❌ [RAG] Vector search error:', vectorError)
+        throw new Error(`Vector search failed: ${vectorError.message}`)
+      }
+
+      documents = vectorResults || []
+      console.log(`✅ [RAG] Vector search found ${documents.length} results`)
+    }
+
     if (params.patientMedicalContext) {
       console.log(`👤 [RAG] Patient medical context included for: ${params.patientMedicalContext.patientName}`)
     }
@@ -103,7 +159,9 @@ export async function performRAGQuery(params: RAGQueryParams): Promise<RAGResult
       documents: documents || [],
       queryEmbedding,
       totalMatches: documents?.length || 0,
-      patientContextIncluded: !!params.patientMedicalContext
+      patientContextIncluded: !!params.patientMedicalContext,
+      searchMode: actualSearchMode,
+      subspecialtyFiltered: !!subspecialtyWeights
     }
 
   } catch (error) {
@@ -154,6 +212,8 @@ export function formatRAGContext(
              `Title: ${doc.title}\n` +
              `Type: ${doc.source_type}\n` +
              `Source: ${source || 'N/A'}\n` +
+             (doc.subspecialty_tags?.length ? `Subspecialty: ${doc.subspecialty_tags.join(', ')}\n` : '') +
+             (doc.section_title ? `Section: ${doc.section_title}\n` : '') +
              `Similarity: ${(doc.similarity * 100).toFixed(1)}%\n` +
              `Content: ${doc.content.substring(0, 800)}...\n` +
              (doc.doi ? `DOI: ${doc.doi}\n` : '') +

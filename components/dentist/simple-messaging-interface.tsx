@@ -7,7 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Send, MessageCircle, User, Clock, Wifi } from 'lucide-react'
+import { Send, MessageCircle, User, Clock, Wifi, ArrowLeft } from 'lucide-react'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { sendMessageAction, markMessagesAsReadAction } from '@/lib/actions/simple-messaging'
 import { useRealtimeConversations, useRealtimeMessages } from '@/lib/hooks/use-realtime-messaging'
 import { formatDistanceToNow } from 'date-fns'
@@ -40,7 +46,11 @@ interface Conversation {
   }
 }
 
-export default function SimpleMessagingInterface() {
+interface SimpleMessagingInterfaceProps {
+  isMobileView?: boolean
+}
+
+export default function SimpleMessagingInterface({ isMobileView = false }: SimpleMessagingInterfaceProps) {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -114,11 +124,118 @@ export default function SimpleMessagingInterface() {
 
   const selectedConversation = conversations.find(c => c.patient_id === selectedPatientId)
 
-  return (
-    <div className="flex h-[600px] border rounded-lg overflow-hidden">
-      {/* Conversations List */}
-      <div className="w-1/3 border-r bg-gray-50">
-        <div className="p-4 border-b bg-white">
+  // Chat panel content — reused in desktop (inline) and mobile (Sheet)
+  const chatPanelContent = selectedConversation ? (
+    <div className="flex-1 flex flex-col h-full">
+      {/* Chat Header */}
+      <div className="p-4 border-b bg-card">
+        <div className="flex items-center gap-3">
+          {isMobileView && (
+            <Button variant="ghost" size="icon" onClick={() => setSelectedPatientId(null)} className="h-8 w-8">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          <Avatar className="h-10 w-10">
+            <AvatarFallback>
+              {selectedConversation.patient.full_name.split(' ').map((n: string) => n[0]).join('')}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <h4 className="font-semibold">{selectedConversation.patient.full_name}</h4>
+            <p className="text-sm text-gray-600">{selectedConversation.patient.uhid}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <ScrollArea className="flex-1 p-4">
+        {messagesLoading ? (
+          <div className="text-center py-8 text-gray-500">
+            <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+            Loading messages...
+          </div>
+        ) : messagesError ? (
+          <div className="text-center py-8 text-red-500">
+            <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>Error loading messages: {messagesError}</p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>No messages yet. Start the conversation!</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.is_from_patient ? 'justify-start' : 'justify-end'}`}
+              >
+                <div
+                  className={`max-w-[80%] p-3 rounded-lg ${
+                    message.is_from_patient
+                      ? 'bg-muted text-foreground'
+                      : 'bg-blue-500 text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <User className="h-3 w-3" />
+                    <span className="text-xs font-medium">
+                      {message.sender_name || (message.is_from_patient ? 'Patient' : 'Staff')}
+                    </span>
+                  </div>
+                  <p className="text-sm">{message.message}</p>
+                  <p className={`text-xs mt-1 ${
+                    message.is_from_patient ? 'text-gray-500' : 'text-blue-100'
+                  }`}>
+                    {(() => {
+                      try {
+                        const date = new Date(message.created_at)
+                        return isNaN(date.getTime()) ? 'just now' : formatDistanceToNow(date, { addSuffix: true })
+                      } catch (e) {
+                        return 'just now'
+                      }
+                    })()}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </ScrollArea>
+
+      {/* Message Input */}
+      <div className="p-4 border-t bg-card">
+        <div className="flex gap-2">
+          <Input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Type your message..."
+            disabled={sending}
+            className="flex-1"
+          />
+          <Button
+            onClick={sendMessage}
+            disabled={!newMessage.trim() || sending}
+            className="px-4"
+          >
+            {sending ? (
+              <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  // Conversations list content — reused
+  const conversationsList = (
+    <div className={isMobileView ? "bg-muted" : "w-1/3 border-r bg-muted"}>
+        <div className="p-4 border-b bg-card">
           <h3 className="font-semibold flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
             Patient Conversations
@@ -144,7 +261,7 @@ export default function SimpleMessagingInterface() {
                 <Card
                   key={conversation.patient_id}
                   className={`cursor-pointer transition-colors hover:bg-blue-50 ${
-                    selectedPatientId === conversation.patient_id ? 'bg-blue-100 border-blue-300' : ''
+                    selectedPatientId === conversation.patient_id ? 'bg-blue-500/15 border-blue-500/40' : ''
                   }`}
                   onClick={() => selectConversation(conversation.patient_id)}
                 >
@@ -192,115 +309,36 @@ export default function SimpleMessagingInterface() {
             )}
           </div>
         </ScrollArea>
+    </div>
+  )
+
+  // --- MOBILE LAYOUT ---
+  if (isMobileView) {
+    return (
+      <div className="border rounded-lg overflow-hidden">
+        {conversationsList}
+
+        {/* Chat Sheet (slides up from bottom) */}
+        <Sheet open={!!selectedPatientId} onOpenChange={(open) => { if (!open) setSelectedPatientId(null) }}>
+          <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl p-0 overflow-hidden">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Chat</SheetTitle>
+            </SheetHeader>
+            {chatPanelContent}
+          </SheetContent>
+        </Sheet>
       </div>
+    )
+  }
+
+  // --- DESKTOP LAYOUT ---
+  return (
+    <div className="flex h-[600px] border rounded-lg overflow-hidden">
+      {conversationsList}
 
       {/* Messages Area */}
       <div className="flex-1 flex flex-col">
-        {selectedConversation ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-4 border-b bg-white">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback>
-                    {selectedConversation.patient.full_name.split(' ').map(n => n[0]).join('')}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h4 className="font-semibold">{selectedConversation.patient.full_name}</h4>
-                  <p className="text-sm text-gray-600">{selectedConversation.patient.uhid}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
-              {messagesLoading ? (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-                  Loading messages...
-                </div>
-              ) : messagesError ? (
-                <div className="text-center py-8 text-red-500">
-                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Error loading messages: {messagesError}</p>
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>No messages yet. Start the conversation!</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.is_from_patient ? 'justify-start' : 'justify-end'}`}
-                    >
-                      <div
-                        className={`max-w-[70%] p-3 rounded-lg ${
-                          message.is_from_patient
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'bg-blue-500 text-white'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <User className="h-3 w-3" />
-                          <span className="text-xs font-medium">
-                            {message.sender_name || (message.is_from_patient ? 'Patient' : 'Staff')}
-                          </span>
-                          <Badge variant="outline" className="text-xs">
-                            {message.sender_role || message.sender_type}
-                          </Badge>
-                        </div>
-                        <p className="text-sm">{message.message}</p>
-                        <p className={`text-xs mt-1 ${
-                          message.is_from_patient ? 'text-gray-500' : 'text-blue-100'
-                        }`}>
-                          {(() => {
-                            try {
-                              const date = new Date(message.created_at)
-                              return isNaN(date.getTime()) ? 'just now' : formatDistanceToNow(date, { addSuffix: true })
-                            } catch (e) {
-                              console.error('Error formatting timestamp:', e, message.created_at)
-                              return 'just now'
-                            }
-                          })()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </ScrollArea>
-
-            {/* Message Input */}
-            <div className="p-4 border-t bg-white">
-              <div className="flex gap-2">
-                <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Type your message..."
-                  disabled={sending}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={!newMessage.trim() || sending}
-                  className="px-4"
-                >
-                  {sending ? (
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </>
-        ) : (
+        {chatPanelContent || (
           <div className="flex-1 flex items-center justify-center text-gray-500">
             <div className="text-center">
               <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />

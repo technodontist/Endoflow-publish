@@ -122,6 +122,17 @@ interface ProjectAnalytics {
 }
 
 export function ResearchProjects() {
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobilePanel, setMobilePanel] = useState<'projects' | 'definition' | 'matching'>('projects')
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // Project Management State
   const [projects, setProjects] = useState<ResearchProject[]>([])
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
@@ -608,16 +619,16 @@ export function ResearchProjects() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-muted">
       {/* Header with Save Button */}
       {(isCreatingProject || isEditingProject) && (
-        <div className="p-4 border-b bg-white shadow-sm">
+        <div className="p-4 border-b bg-card shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-foreground">
                 {isEditingProject ? 'Edit Research Project' : 'Create New Research Project'}
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Define your research parameters and patient cohort criteria
               </p>
             </div>
@@ -646,40 +657,320 @@ export function ResearchProjects() {
       )}
 
       {/* Main Header */}
-      <div className="p-6 border-b bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold" style={{ color: COLORS.primary }}>
+      <div className="p-3 md:p-6 border-b bg-card">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-xl md:text-3xl font-bold truncate" style={{ color: COLORS.primary }}>
               Research Projects
             </h2>
-            <p className="text-gray-600 mt-1">
+            <p className="text-muted-foreground mt-1 text-xs md:text-base hidden md:block">
               Manage clinical research initiatives and analyze patient cohorts with AI-powered insights
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="px-3 py-1">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Badge variant="outline" className="px-2 md:px-3 py-1 text-xs">
               {isLoadingProjects ? (
                 <span className="flex items-center">
                   <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                  Loading...
+                  <span className="hidden md:inline">Loading...</span>
                 </span>
               ) : missingTables ? (
-                <span className="text-yellow-600">Setup Required</span>
+                <span className="text-yellow-600">Setup</span>
               ) : projectsError ? (
-                <span className="text-red-600">Error Loading</span>
+                <span className="text-red-600">Error</span>
               ) : (
-                `${projects.length} Active Projects`
+                <span>{projects.length} <span className="hidden md:inline">Active </span>Projects</span>
               )}
             </Badge>
           </div>
         </div>
       </div>
 
-      {/* 3-Panel Resizable Layout */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
+      {/* Mobile Panel Switcher */}
+      {isMobile && (
+        <div className="flex border-b bg-card">
+          <button
+            onClick={() => setMobilePanel('projects')}
+            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              mobilePanel === 'projects'
+                ? 'border-teal-600 text-teal-400 bg-teal-500/10'
+                : 'border-transparent text-muted-foreground'
+            }`}
+          >
+            Projects
+          </button>
+          <button
+            onClick={() => setMobilePanel('definition')}
+            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              mobilePanel === 'definition'
+                ? 'border-teal-600 text-teal-400 bg-teal-500/10'
+                : 'border-transparent text-muted-foreground'
+            }`}
+          >
+            {selectedProject ? 'Cohort' : 'Definition'}
+          </button>
+          <button
+            onClick={() => setMobilePanel('matching')}
+            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              mobilePanel === 'matching'
+                ? 'border-teal-600 text-teal-400 bg-teal-500/10'
+                : 'border-transparent text-muted-foreground'
+            }`}
+          >
+            {selectedProject ? 'Analytics' : 'Matching'}
+          </button>
+        </div>
+      )}
+
+      {/* 3-Panel Layout: Resizable on desktop, tabbed on mobile */}
+      {isMobile && (
+        <div className="flex-1 overflow-y-auto" key="mobile-research">
+          {/* Mobile: Show one panel at a time */}
+          {mobilePanel === 'projects' && (
+            <div className="p-3 bg-card min-h-[60vh]">
+              <div className="space-y-4">
+                <Button
+                  className="w-full text-white hover:opacity-90"
+                  style={{ backgroundColor: COLORS.primary }}
+                  onClick={() => {
+                    handleCreateProject()
+                    setMobilePanel('definition')
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Research Project
+                </Button>
+
+                {isLoadingProjects ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : projects.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm">No research projects yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Create your first project above</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {projects.map((project) => (
+                      <div
+                        key={project.id}
+                        onClick={() => {
+                          setSelectedProject(project.id)
+                          setMobilePanel('definition')
+                        }}
+                        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                          selectedProject === project.id
+                            ? 'border-teal-300 bg-teal-500/10 shadow-sm'
+                            : 'border-border hover:border-border hover:bg-muted'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium text-sm text-foreground truncate flex-1">{project.name}</h4>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ml-2 flex-shrink-0 ${
+                              project.status === 'active' ? 'bg-green-500/15 text-green-400 border-green-200' :
+                              project.status === 'completed' ? 'bg-blue-500/15 text-blue-400 border-blue-200' :
+                              project.status === 'paused' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              'bg-muted text-muted-foreground border-border'
+                            }`}
+                          >
+                            {project.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{project.description}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3 h-3" /> {project.patientCount}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" /> {new Date(project.startDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mobilePanel === 'definition' && (
+            <div className="p-3 bg-card min-h-[60vh]">
+              {isCreatingProject || isEditingProject ? (
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold">
+                    {isEditingProject ? 'Edit Project' : 'New Research Project'}
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-foreground">Project Name *</label>
+                      <Input
+                        value={projectFormData.name}
+                        onChange={(e) => setProjectFormData(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder="e.g. Root Canal Success Rate Analysis"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-foreground">Description</label>
+                      <Textarea
+                        value={projectFormData.description}
+                        onChange={(e) => setProjectFormData(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Brief description of the research objective..."
+                        className="mt-1"
+                        rows={3}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-foreground">Hypothesis</label>
+                      <Textarea
+                        value={projectFormData.hypothesis || ''}
+                        onChange={(e) => setProjectFormData(prev => ({ ...prev, hypothesis: e.target.value }))}
+                        placeholder="What do you expect to find?"
+                        className="mt-1"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setIsCreatingProject(false)
+                          setIsEditingProject(false)
+                          setMobilePanel('projects')
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        className="flex-1 text-white"
+                        style={{ backgroundColor: COLORS.primary }}
+                        onClick={handleSaveProject}
+                        disabled={!projectFormData.name.trim()}
+                      >
+                        {isEditingProject ? 'Update' : 'Create'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : !selectedProject ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Activity className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="text-sm font-medium">Select a project first</p>
+                  <p className="text-xs text-muted-foreground mt-1">Go to Projects tab to select one</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => setMobilePanel('projects')}>
+                    ← Go to Projects
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Project info header */}
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm text-foreground">
+                      {projects.find(p => p.id === selectedProject)?.name || 'Project'}
+                    </h4>
+                    <Badge variant="outline" className="text-xs">
+                      {projects.find(p => p.id === selectedProject)?.status}
+                    </Badge>
+                  </div>
+                  {/* Cohort patients count */}
+                  <Card>
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-medium text-sm">Cohort Patients</h4>
+                          <p className="text-xs text-muted-foreground mt-1">{cohortPatients.length} patients enrolled</p>
+                        </div>
+                        <Badge variant="outline">{cohortPatients.length}</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  {/* Cohort patient list */}
+                  <div className="space-y-2">
+                    {cohortPatients.slice(0, 10).map((patient: any) => (
+                      <div key={patient.id} className="p-2 border rounded text-sm flex justify-between items-center">
+                        <span className="truncate">{patient.first_name} {patient.last_name}</span>
+                        <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">{patient.group || 'No group'}</span>
+                      </div>
+                    ))}
+                    {cohortPatients.length > 10 && (
+                      <p className="text-xs text-muted-foreground text-center">+{cohortPatients.length - 10} more patients</p>
+                    )}
+                    {cohortPatients.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-4">No patients in cohort yet. Use desktop view to add patients.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mobilePanel === 'matching' && (
+            <div className="p-3 bg-card min-h-[60vh]">
+              {!selectedProject ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Search className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="text-sm font-medium">Select a project first</p>
+                  <p className="text-xs text-muted-foreground mt-1">Go to Projects tab to select one</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => setMobilePanel('projects')}>
+                    ← Go to Projects
+                  </Button>
+                </div>
+              ) : projectAnalytics ? (
+                <div className="space-y-4">
+                  {/* Analytics Summary Cards */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Card><CardContent className="p-3 text-center">
+                      <p className="text-lg font-bold" style={{ color: COLORS.primary }}>{projectAnalytics.totalPatients}</p>
+                      <p className="text-[10px] text-muted-foreground">Total Patients</p>
+                    </CardContent></Card>
+                    <Card><CardContent className="p-3 text-center">
+                      <p className="text-lg font-bold text-blue-600">{projectAnalytics.meanAge?.toFixed(1) || 'N/A'}</p>
+                      <p className="text-[10px] text-muted-foreground">Mean Age</p>
+                    </CardContent></Card>
+                  </div>
+                  {/* Gender Distribution */}
+                  {projectAnalytics.genderDistribution && projectAnalytics.genderDistribution.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-2 px-3 pt-3">
+                        <CardTitle className="text-sm">Gender Distribution</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3">
+                        <ResponsiveContainer width="100%" height={180}>
+                          <PieChart>
+                            <Pie data={projectAnalytics.genderDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} label>
+                              {projectAnalytics.genderDistribution.map((_: any, index: number) => (
+                                <Cell key={index} fill={['#0d9488', '#3b82f6', '#f59e0b', '#ef4444'][index % 4]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  )}
+                  <p className="text-xs text-muted-foreground text-center">View full analytics on desktop</p>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <BarChart3 className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                  <p className="text-sm font-medium">No analytics available</p>
+                  <p className="text-xs text-muted-foreground mt-1">Add patients to the cohort first</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {!isMobile && (
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Project List */}
         <ResizablePanel defaultSize={25} minSize={20}>
-          <div className="p-4 h-full border-r bg-white">
+          <div className="p-4 h-full border-r bg-card">
             <div className="space-y-4">
               <Button
                 className="w-full text-white hover:opacity-90"
@@ -691,7 +982,7 @@ export function ResearchProjects() {
               </Button>
 
               <div className="space-y-2">
-                <h3 className="font-semibold text-gray-900 flex items-center">
+                <h3 className="font-semibold text-foreground flex items-center">
                   <Activity className="w-4 h-4 mr-2" style={{ color: COLORS.primary }} />
                   Your Research Projects
                 </h3>
@@ -700,8 +991,8 @@ export function ResearchProjects() {
                   {/* ✅ FIX: Enhanced error handling for project loading */}
                   {isLoadingProjects ? (
                     <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <RefreshCw className="w-8 h-8 animate-spin text-gray-400 mb-3" />
-                      <p className="text-sm text-gray-600">Loading research projects...</p>
+                      <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground mb-3" />
+                      <p className="text-sm text-muted-foreground">Loading research projects...</p>
                     </div>
                   ) : missingTables ? (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
@@ -745,7 +1036,7 @@ export function ResearchProjects() {
                             variant="outline"
                             size="sm"
                             onClick={loadProjects}
-                            className="text-red-700 border-red-300 hover:bg-red-100"
+                            className="text-red-700 border-red-500/40 hover:bg-red-500/20"
                           >
                             <RefreshCw className="w-3 h-3 mr-1" />
                             Try Again
@@ -756,15 +1047,15 @@ export function ResearchProjects() {
                   ) : projects.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-center">
                       <Lightbulb className="w-12 h-12 text-gray-300 mb-3" />
-                      <h4 className="text-sm font-medium text-gray-900 mb-1">No Research Projects</h4>
-                      <p className="text-xs text-gray-600 mb-3">
+                      <h4 className="text-sm font-medium text-foreground mb-1">No Research Projects</h4>
+                      <p className="text-xs text-muted-foreground mb-3">
                         Create your first research project to start analyzing patient data
                       </p>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={handleCreateProject}
-                        className="border-gray-300"
+                        className="border-border"
                       >
                         <Plus className="w-3 h-3 mr-1" />
                         Create Project
@@ -777,7 +1068,7 @@ export function ResearchProjects() {
                         className={`cursor-pointer transition-all hover:shadow-md border ${
                           selectedProject === project.id
                             ? 'ring-2 ring-opacity-50 bg-opacity-5'
-                            : 'hover:border-gray-300'
+                            : 'hover:border-border'
                         }`}
                         style={{
                           ringColor: selectedProject === project.id ? COLORS.primary : undefined,
@@ -788,10 +1079,10 @@ export function ResearchProjects() {
                         <CardHeader className="p-3">
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
-                              <CardTitle className="text-sm font-semibold text-gray-900 truncate">
+                              <CardTitle className="text-sm font-semibold text-foreground truncate">
                                 {project.name}
                               </CardTitle>
-                              <CardDescription className="text-xs text-gray-600 line-clamp-2 mt-1">
+                              <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1">
                                 {project.description}
                               </CardDescription>
                             </div>
@@ -799,7 +1090,7 @@ export function ResearchProjects() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-6 w-6 p-0 hover:bg-gray-100"
+                                className="h-6 w-6 p-0 hover:bg-muted"
                                 onClick={(e) => handleEditProject(project.id, e)}
                               >
                                 <Edit className="w-3 h-3" />
@@ -815,7 +1106,7 @@ export function ResearchProjects() {
                             </div>
                           </div>
                           <div className="flex items-center justify-between mt-3">
-                            <div className="flex items-center text-xs text-gray-600">
+                            <div className="flex items-center text-xs text-muted-foreground">
                               <Users className="w-3 h-3 mr-1" />
                               {project.patientCount} patients
                             </div>
@@ -823,12 +1114,12 @@ export function ResearchProjects() {
                               variant="outline"
                               className={`text-xs px-2 py-1 ${
                                 project.status === 'active'
-                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  ? 'bg-green-500/15 text-green-400 border-green-200'
                                   : project.status === 'completed'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  ? 'bg-blue-500/15 text-blue-400 border-blue-200'
                                   : project.status === 'paused'
                                   ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                                  : 'bg-muted text-foreground border-border'
                               }`}
                             >
                               {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
@@ -848,7 +1139,7 @@ export function ResearchProjects() {
 
         {/* Panel 2: Dynamic Content (Project Definition or Cohort) */}
         <ResizablePanel defaultSize={40} minSize={30}>
-          <div className="p-4 h-full border-r bg-white">
+          <div className="p-4 h-full border-r bg-card">
             {isCreatingProject || isEditingProject ? (
               <div className="space-y-6 h-full overflow-y-auto">
                 {/* Project Definition */}
@@ -860,19 +1151,19 @@ export function ResearchProjects() {
 
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
                         Project Name <span className="text-red-500">*</span>
                       </label>
                       <Input
                         placeholder="Enter research project name"
                         value={projectFormData.name}
                         onChange={(e) => setProjectFormData(prev => ({ ...prev, name: e.target.value }))}
-                        className="border-gray-300 focus:border-primary focus:ring-primary"
+                        className="border-border focus:border-primary focus:ring-primary"
                       />
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
                         Description
                       </label>
                       <Textarea
@@ -880,19 +1171,19 @@ export function ResearchProjects() {
                         value={projectFormData.description}
                         onChange={(e) => setProjectFormData(prev => ({ ...prev, description: e.target.value }))}
                         rows={3}
-                        className="border-gray-300 focus:border-primary focus:ring-primary"
+                        className="border-border focus:border-primary focus:ring-primary"
                       />
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
                         Research Type
                       </label>
                       <Select
                         value={projectFormData.researchType || ''}
                         onValueChange={(value) => setProjectFormData(prev => ({ ...prev, researchType: value as any }))}
                       >
-                        <SelectTrigger className="border-gray-300 focus:border-primary focus:ring-primary">
+                        <SelectTrigger className="border-border focus:border-primary focus:ring-primary">
                           <SelectValue placeholder="Select research study design..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -904,13 +1195,13 @@ export function ResearchProjects() {
                           <SelectItem value="comparative">Comparative Study</SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Choose the study design that best fits your research methodology
                       </p>
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
                         Research Hypothesis (Optional)
                       </label>
                       <Textarea
@@ -918,13 +1209,13 @@ export function ResearchProjects() {
                         value={projectFormData.hypothesis}
                         onChange={(e) => setProjectFormData(prev => ({ ...prev, hypothesis: e.target.value }))}
                         rows={2}
-                        className="border-gray-300 focus:border-primary focus:ring-primary"
+                        className="border-border focus:border-primary focus:ring-primary"
                       />
                     </div>
 
                     {isEditingProject && (
                       <div className="space-y-3">
-                        <label className="text-sm font-medium text-gray-700 mb-2 block">
+                        <label className="text-sm font-medium text-foreground mb-2 block">
                           Project Status
                         </label>
                         <div className="flex flex-wrap gap-2">
@@ -932,7 +1223,7 @@ export function ResearchProjects() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleUpdateProjectStatus('active')}
-                            className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                            className="bg-green-500/15 text-green-400 hover:bg-green-500/20 border-green-200"
                           >
                             <CheckCircle className="w-4 h-4 mr-1" />
                             Active
@@ -950,7 +1241,7 @@ export function ResearchProjects() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleUpdateProjectStatus('completed')}
-                            className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+                            className="bg-blue-500/15 text-blue-400 hover:bg-blue-500/20 border-blue-200"
                           >
                             <XCircle className="w-4 h-4 mr-1" />
                             Completed
@@ -967,7 +1258,7 @@ export function ResearchProjects() {
                     <Filter className="w-4 h-4 mr-2" />
                     Define Patient Cohort
                   </h4>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     Create filter criteria to automatically identify patients for your research cohort
                   </p>
 
@@ -983,9 +1274,9 @@ export function ResearchProjects() {
 
                   {/* Manual Filter Option */}
                   <div className="flex items-center gap-2 pt-2">
-                    <div className="flex-1 border-t border-gray-200"></div>
-                    <span className="text-xs text-gray-500 px-2">OR CREATE FILTERS MANUALLY</span>
-                    <div className="flex-1 border-t border-gray-200"></div>
+                    <div className="flex-1 border-t border-border"></div>
+                    <span className="text-xs text-muted-foreground px-2">OR CREATE FILTERS MANUALLY</span>
+                    <div className="flex-1 border-t border-border"></div>
                   </div>
 
                   <div className="space-y-3">
@@ -997,7 +1288,7 @@ export function ResearchProjects() {
                               value={criteria.logicalOperator}
                               onValueChange={(value) => updateFilterCriteria(index, { logicalOperator: value as 'AND' | 'OR' })}
                             >
-                              <SelectTrigger className="border-gray-300">
+                              <SelectTrigger className="border-border">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1023,12 +1314,12 @@ export function ResearchProjects() {
                               }
                             }}
                           >
-                            <SelectTrigger className="border-gray-300">
+                            <SelectTrigger className="border-border">
                               <SelectValue placeholder="Select filter field..." />
                             </SelectTrigger>
                             <SelectContent className="max-h-[400px]">
                               {/* Basic Demographics Section */}
-                              <div className="px-2 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 sticky top-0">
+                              <div className="px-2 py-1.5 text-xs font-semibold text-foreground bg-muted sticky top-0">
                                 {JSONB_FILTER_CATEGORIES.demographics.icon} {JSONB_FILTER_CATEGORIES.demographics.label}
                               </div>
                               {PATIENT_FILTER_FIELDS.filter(f =>
@@ -1040,13 +1331,13 @@ export function ResearchProjects() {
                               ))}
 
                               {/* Pain Assessment Section */}
-                              <div className="px-2 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 sticky top-0 mt-1">
+                              <div className="px-2 py-1.5 text-xs font-semibold text-teal-400 bg-teal-500/10 sticky top-0 mt-1">
                                 {JSONB_FILTER_CATEGORIES.pain_assessment.icon} {JSONB_FILTER_CATEGORIES.pain_assessment.label}
                               </div>
                               {PATIENT_FILTER_FIELDS.filter(f =>
                                 JSONB_FILTER_CATEGORIES.pain_assessment.fields.includes(f.key)
                               ).map((field) => (
-                                <SelectItem key={field.key} value={field.key} className="text-teal-700">
+                                <SelectItem key={field.key} value={field.key} className="text-teal-400">
                                   {field.label}
                                 </SelectItem>
                               ))}
@@ -1095,7 +1386,7 @@ export function ResearchProjects() {
                             value={criteria.operator}
                             onValueChange={(value) => updateFilterCriteria(index, { operator: value as any })}
                           >
-                            <SelectTrigger className="border-gray-300">
+                            <SelectTrigger className="border-border">
                               <SelectValue placeholder="Operator" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1123,7 +1414,7 @@ export function ResearchProjects() {
                               updateFilterCriteria(index, { value })
                             }}
                             type={criteria.dataType === 'number' ? 'number' : 'text'}
-                            className="border-gray-300 focus:border-primary focus:ring-primary"
+                            className="border-border focus:border-primary focus:ring-primary"
                           />
                         </div>
 
@@ -1143,7 +1434,7 @@ export function ResearchProjects() {
                     <Button
                       variant="outline"
                       onClick={addFilterCriteria}
-                      className="w-full border-dashed border-gray-300 hover:border-primary hover:bg-primary/5"
+                      className="w-full border-dashed border-border hover:border-primary hover:bg-primary/5"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Add Filter Rule
@@ -1151,11 +1442,11 @@ export function ResearchProjects() {
                   </div>
 
                   {filterCriteria.length > 0 && (
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                      <h5 className="text-sm font-medium text-gray-700 mb-2">Filter Summary:</h5>
+                    <div className="mt-4 p-3 bg-muted rounded-lg">
+                      <h5 className="text-sm font-medium text-foreground mb-2">Filter Summary:</h5>
                       <div className="space-y-1">
                         {filterCriteria.map((criteria, index) => (
-                          <div key={index} className="text-xs text-gray-600">
+                          <div key={index} className="text-xs text-muted-foreground">
                             {index > 0 && `${criteria.logicalOperator} `}
                             {describeCriteria(criteria)}
                           </div>
@@ -1179,20 +1470,20 @@ export function ResearchProjects() {
                       loadCohortPatients(selectedProject)
                     }}
                     disabled={isLoadingAnalytics || isLoadingCohort}
-                    className="border-gray-300"
+                    className="border-border"
                   >
                     <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAnalytics || isLoadingCohort ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
 
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   Anonymized patients matching project criteria for {currentProject.name}
                 </p>
 
                 {/* Project Info Cards */}
                 <div className="grid grid-cols-2 gap-3">
-                  <Card className="border-gray-200">
+                  <Card className="border-border">
                     <CardContent className="p-3">
                       <div className="flex items-center">
                         <Users className="w-4 h-4 mr-2" style={{ color: COLORS.primary }} />
@@ -1200,13 +1491,13 @@ export function ResearchProjects() {
                           <div className="text-lg font-bold" style={{ color: COLORS.primary }}>
                             {currentProject.patientCount}
                           </div>
-                          <div className="text-xs text-gray-600">Total Patients</div>
+                          <div className="text-xs text-muted-foreground">Total Patients</div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="border-gray-200">
+                  <Card className="border-border">
                     <CardContent className="p-3">
                       <div className="flex items-center">
                         <Activity className="w-4 h-4 mr-2" style={{ color: COLORS.secondary }} />
@@ -1214,7 +1505,7 @@ export function ResearchProjects() {
                           <div className="text-lg font-bold" style={{ color: COLORS.secondary }}>
                             {currentProject.status.charAt(0).toUpperCase() + currentProject.status.slice(1)}
                           </div>
-                          <div className="text-xs text-gray-600">Project Status</div>
+                          <div className="text-xs text-muted-foreground">Project Status</div>
                         </div>
                       </div>
                     </CardContent>
@@ -1222,8 +1513,8 @@ export function ResearchProjects() {
                 </div>
 
                 {/* Cohort Table */}
-                <div className="border rounded-lg bg-white">
-                  <div className="grid grid-cols-6 gap-4 p-3 bg-gray-50 font-medium text-sm border-b">
+                <div className="border rounded-lg bg-card">
+                  <div className="grid grid-cols-6 gap-4 p-3 bg-muted font-medium text-sm border-b">
                     <div>Anonymous ID</div>
                     <div>Patient Name</div>
                     <div>Age</div>
@@ -1234,19 +1525,19 @@ export function ResearchProjects() {
                   <div className="max-h-96 overflow-y-auto">
                     {isLoadingCohort ? (
                       <div className="flex items-center justify-center py-8">
-                        <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
                       </div>
                     ) : cohortPatients.length === 0 ? (
                       <div className="flex items-center justify-center py-8 text-center">
                         <div className="space-y-2">
-                          <Users className="w-8 h-8 mx-auto text-gray-400" />
-                          <p className="text-sm text-gray-600">No patients in cohort yet</p>
-                          <p className="text-xs text-gray-500">Add patients from Live Patient Matching</p>
+                          <Users className="w-8 h-8 mx-auto text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">No patients in cohort yet</p>
+                          <p className="text-xs text-muted-foreground">Add patients from Live Patient Matching</p>
                         </div>
                       </div>
                     ) : (
                       cohortPatients.map((patient) => (
-                        <div key={patient.id} className="grid grid-cols-6 gap-4 p-3 border-b text-sm hover:bg-gray-50 items-center">
+                        <div key={patient.id} className="grid grid-cols-6 gap-4 p-3 border-b text-sm hover:bg-muted items-center">
                           <div className="font-mono text-xs font-semibold" style={{ color: COLORS.primary }}>
                             {patient.anonymous_id}
                           </div>
@@ -1255,7 +1546,7 @@ export function ResearchProjects() {
                           <div>
                             <Badge
                               variant="outline"
-                              className="text-xs px-2 py-1 bg-teal-50 text-teal-700 border-teal-200"
+                              className="text-xs px-2 py-1 bg-teal-500/10 text-teal-400 border-teal-200"
                             >
                               {patient.group_name}
                             </Badge>
@@ -1265,8 +1556,8 @@ export function ResearchProjects() {
                               variant="outline"
                               className={`text-xs px-2 py-1 ${
                                 patient.status === 'included'
-                                  ? 'bg-green-50 text-green-700 border-green-200'
-                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                                  ? 'bg-green-500/15 text-green-400 border-green-200'
+                                  : 'bg-muted text-foreground border-border'
                               }`}
                             >
                               {patient.status}
@@ -1292,7 +1583,7 @@ export function ResearchProjects() {
                 {/* Group Summary */}
                 {cohortPatients.length > 0 && (
                   <div className="mt-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Group Distribution</h4>
+                    <h4 className="text-sm font-semibold text-foreground mb-2">Group Distribution</h4>
                     <div className="flex flex-wrap gap-2">
                       {(() => {
                         const groupCounts = cohortPatients.reduce((acc: Record<string, number>, patient) => {
@@ -1303,7 +1594,7 @@ export function ResearchProjects() {
                           <Badge
                             key={group}
                             variant="outline"
-                            className="px-3 py-1 bg-teal-50 text-teal-700 border-teal-200"
+                            className="px-3 py-1 bg-teal-500/10 text-teal-400 border-teal-200"
                           >
                             {group}: {count}
                           </Badge>
@@ -1316,9 +1607,9 @@ export function ResearchProjects() {
             ) : (
               <div className="flex items-center justify-center h-full text-center">
                 <div className="space-y-3">
-                  <Users className="w-16 h-16 mx-auto text-gray-400" />
-                  <h3 className="text-lg font-medium text-gray-900">Select a Project</h3>
-                  <p className="text-sm text-gray-600 max-w-xs">
+                  <Users className="w-16 h-16 mx-auto text-muted-foreground" />
+                  <h3 className="text-lg font-medium text-foreground">Select a Project</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs">
                     Choose a research project to view patient cohort data and manage your study
                   </p>
                 </div>
@@ -1331,7 +1622,7 @@ export function ResearchProjects() {
 
         {/* Panel 3: Live Patient Matching or Analytics Dashboard */}
         <ResizablePanel defaultSize={35} minSize={25}>
-          <div className="p-4 h-full bg-white flex flex-col">
+          <div className="p-4 h-full bg-card flex flex-col">
             {isCreatingProject || isEditingProject ? (
               <div className="flex flex-col h-full gap-4">
                 <div className="flex items-center justify-between">
@@ -1343,25 +1634,25 @@ export function ResearchProjects() {
                     size="sm"
                     onClick={handleFindMatchingPatients}
                     disabled={isLoadingPatients}
-                    className="border-gray-300"
+                    className="border-border"
                   >
                     <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingPatients ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
 
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   Real-time patient matching based on your filter criteria
                 </p>
 
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
                       placeholder="Search patients by name, ID, or condition..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 border-gray-300 focus:border-primary focus:ring-primary"
+                      className="pl-10 border-border focus:border-primary focus:ring-primary"
                     />
                   </div>
                   <Button
@@ -1378,19 +1669,19 @@ export function ResearchProjects() {
                       }
                     }}
                     disabled={!searchQuery.trim() || filteredPatients.length === 0}
-                    className="border-gray-300 text-teal-600 hover:bg-teal-50"
+                    className="border-border text-teal-400 hover:bg-teal-500/100/10"
                   >
                     <Plus className="w-4 h-4 mr-1" />
                     Add All
                   </Button>
                 </div>
 
-                <div className="border rounded-lg bg-white flex-1 flex flex-col min-h-0">
-                  <div className="grid grid-cols-5 gap-4 p-3 bg-gray-50 font-medium text-sm border-b flex-shrink-0 items-center">
+                <div className="border rounded-lg bg-card flex-1 flex flex-col min-h-0">
+                  <div className="grid grid-cols-5 gap-4 p-3 bg-muted font-medium text-sm border-b flex-shrink-0 items-center">
                     <div className="flex items-center space-x-2">
                       <input
                         type="checkbox"
-                        className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
+                        className="w-4 h-4 text-teal-400 rounded focus:ring-teal-500"
                         checked={selectedPatients.size === filteredPatients.length && filteredPatients.length > 0}
                         onChange={() => {
                           if (selectedPatients.size === filteredPatients.length) {
@@ -1411,25 +1702,25 @@ export function ResearchProjects() {
                   <div className="flex-1 min-h-0">
                     {isLoadingPatients ? (
                       <div className="flex items-center justify-center h-32">
-                        <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
                       </div>
                     ) : filteredPatients.length === 0 ? (
                       <div className="flex items-center justify-center h-32 text-center">
                         <div className="space-y-2">
-                          <AlertCircle className="w-8 h-8 mx-auto text-gray-400" />
-                          <p className="text-sm text-gray-600">No matching patients found</p>
-                          <p className="text-xs text-gray-500">Adjust your filter criteria</p>
+                          <AlertCircle className="w-8 h-8 mx-auto text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">No matching patients found</p>
+                          <p className="text-xs text-muted-foreground">Adjust your filter criteria</p>
                         </div>
                       </div>
                     ) : (
                       <div className="h-full overflow-hidden">
                         <div className="h-full overflow-y-auto">
                           {filteredPatients.map((patient) => (
-                            <div key={patient.id} className={`grid grid-cols-5 gap-4 p-3 border-b text-sm hover:bg-gray-50 items-center ${selectedPatients.has(patient.id) ? 'bg-teal-50 border-teal-200' : ''}`}>
+                            <div key={patient.id} className={`grid grid-cols-5 gap-4 p-3 border-b text-sm hover:bg-muted items-center ${selectedPatients.has(patient.id) ? 'bg-teal-500/10 border-teal-200' : ''}`}>
                               <div className="flex items-center">
                                 <input
                                   type="checkbox"
-                                  className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
+                                  className="w-4 h-4 text-teal-400 rounded focus:ring-teal-500"
                                   checked={selectedPatients.has(patient.id)}
                                   onChange={() => handlePatientToggle(patient.id)}
                                 />
@@ -1450,12 +1741,12 @@ export function ResearchProjects() {
                     )}
                   </div>
 
-                  <div className="p-3 bg-gray-50 border-t flex-shrink-0">
+                  <div className="p-3 bg-muted border-t flex-shrink-0">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-muted-foreground">
                         Total matching patients: <span className="font-semibold">{filteredPatients.length}</span>
                         {selectedPatients.size > 0 && (
-                          <span className="ml-2 text-teal-600">
+                          <span className="ml-2 text-teal-400">
                             | <span className="font-semibold">{selectedPatients.size}</span> selected
                           </span>
                         )}
@@ -1467,7 +1758,7 @@ export function ResearchProjects() {
                             variant="outline"
                             onClick={handleAddSelectedToCohort}
                             disabled={!selectedProject}
-                            className="text-xs border-teal-300 text-teal-700 hover:bg-teal-50"
+                            className="text-xs border-teal-300 text-teal-400 hover:bg-teal-500/100/10"
                           >
                             <Users className="w-3 h-3 mr-1" />
                             Add to Cohort
@@ -1504,7 +1795,7 @@ export function ResearchProjects() {
                       <div className="flex items-center justify-center py-8">
                         <div className="text-center space-y-2">
                           <RefreshCw className="w-8 h-8 animate-spin text-[#009688] mx-auto" />
-                          <p className="text-sm text-gray-600">Generating AI-powered insights...</p>
+                          <p className="text-sm text-muted-foreground">Generating AI-powered insights...</p>
                         </div>
                       </div>
                     ) : enhancedAnalytics ? (
@@ -1517,49 +1808,49 @@ export function ResearchProjects() {
 
                     {isLoadingAnalytics ? (
                       <div className="flex items-center justify-center h-32">
-                        <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
                       </div>
                     ) : projectAnalytics ? (
                       <div className="space-y-4">
                         {/* Statistical Summary Section */}
-                        <Card className="border-gray-200 bg-gradient-to-br from-teal-50 to-white">
+                        <Card className="border-border bg-gradient-to-br from-teal-50 to-white">
                           <CardHeader className="pb-3">
                             <CardTitle className="text-sm font-semibold flex items-center">
-                              <Activity className="w-4 h-4 mr-2 text-teal-600" />
+                              <Activity className="w-4 h-4 mr-2 text-teal-400" />
                               Statistical Summary
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-2">
                             <div className="grid grid-cols-2 gap-3">
-                              <div className="bg-white rounded-lg p-2 border border-gray-100">
-                                <p className="text-xs text-gray-500">Mean Age</p>
+                              <div className="bg-card rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-muted-foreground">Mean Age</p>
                                 <p className="text-lg font-bold" style={{ color: COLORS.primary }}>
                                   {projectAnalytics.ageStats.mean} yrs
                                 </p>
-                                <p className="text-xs text-gray-400">
+                                <p className="text-xs text-muted-foreground">
                                   95% CI: {projectAnalytics.ageStats.ci95Lower}-{projectAnalytics.ageStats.ci95Upper}
                                 </p>
                               </div>
-                              <div className="bg-white rounded-lg p-2 border border-gray-100">
-                                <p className="text-xs text-gray-500">Mode Age</p>
+                              <div className="bg-card rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-muted-foreground">Mode Age</p>
                                 <p className="text-lg font-bold" style={{ color: COLORS.secondary }}>
                                   {projectAnalytics.ageStats.mode} yrs
                                 </p>
-                                <p className="text-xs text-gray-400">Most frequent</p>
+                                <p className="text-xs text-muted-foreground">Most frequent</p>
                               </div>
-                              <div className="bg-white rounded-lg p-2 border border-gray-100">
-                                <p className="text-xs text-gray-500">Std Dev (σ)</p>
+                              <div className="bg-card rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-muted-foreground">Std Dev (σ)</p>
                                 <p className="text-lg font-bold text-orange-600">
                                   ±{projectAnalytics.ageStats.sd}
                                 </p>
-                                <p className="text-xs text-gray-400">Variability</p>
+                                <p className="text-xs text-muted-foreground">Variability</p>
                               </div>
-                              <div className="bg-white rounded-lg p-2 border border-gray-100">
-                                <p className="text-xs text-gray-500">Age Range</p>
+                              <div className="bg-card rounded-lg p-2 border border-gray-100">
+                                <p className="text-xs text-muted-foreground">Age Range</p>
                                 <p className="text-lg font-bold text-purple-600">
                                   {projectAnalytics.ageStats.min}-{projectAnalytics.ageStats.max}
                                 </p>
-                                <p className="text-xs text-gray-400">{projectAnalytics.totalPatients} patients</p>
+                                <p className="text-xs text-muted-foreground">{projectAnalytics.totalPatients} patients</p>
                               </div>
                             </div>
                           </CardContent>
@@ -1567,7 +1858,7 @@ export function ResearchProjects() {
 
                         {/* Age Distribution Histogram */}
                         {projectAnalytics.ageDistribution.length > 0 && (
-                          <Card className="border-gray-200">
+                          <Card className="border-border">
                             <CardHeader className="pb-2">
                               <CardTitle className="text-sm">Age Distribution</CardTitle>
                             </CardHeader>
@@ -1592,7 +1883,7 @@ export function ResearchProjects() {
                         {/* Distribution Charts Grid */}
                         <div className="grid grid-cols-2 gap-3">
                           {/* Gender Distribution */}
-                          <Card className="border-gray-200">
+                          <Card className="border-border">
                             <CardHeader className="pb-2">
                               <CardTitle className="text-xs">Gender</CardTitle>
                             </CardHeader>
@@ -1619,7 +1910,7 @@ export function ResearchProjects() {
                           </Card>
 
                           {/* Outcome Distribution */}
-                          <Card className="border-gray-200">
+                          <Card className="border-border">
                             <CardHeader className="pb-2">
                               <CardTitle className="text-xs">Outcomes</CardTitle>
                             </CardHeader>
@@ -1647,7 +1938,7 @@ export function ResearchProjects() {
 
                         {/* Condition Distribution - Top Conditions */}
                         {projectAnalytics.conditionDistribution.length > 0 && (
-                          <Card className="border-gray-200">
+                          <Card className="border-border">
                             <CardHeader className="pb-2">
                               <CardTitle className="text-sm">Top Conditions</CardTitle>
                             </CardHeader>
@@ -1679,7 +1970,7 @@ export function ResearchProjects() {
                         )}
 
                         {/* Treatment Analysis */}
-                        <Card className="border-gray-200">
+                        <Card className="border-border">
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm">Treatment Comparison</CardTitle>
                           </CardHeader>
@@ -1697,7 +1988,7 @@ export function ResearchProjects() {
                         </Card>
 
                         {/* Healing Time Comparison */}
-                        <Card className="border-gray-200">
+                        <Card className="border-border">
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm">Healing Time Analysis</CardTitle>
                           </CardHeader>
@@ -1715,15 +2006,15 @@ export function ResearchProjects() {
                         </Card>
 
                         {/* Statistical Insights */}
-                        <Card className="border-teal-200 bg-teal-50">
+                        <Card className="border-teal-200 bg-teal-500/10">
                           <CardHeader className="pb-2">
-                            <CardTitle className="text-sm flex items-center text-teal-800">
+                            <CardTitle className="text-sm flex items-center text-teal-300">
                               <Lightbulb className="w-4 h-4 mr-2" />
                               Key Insights
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-2">
-                            <div className="text-xs text-teal-700 space-y-1">
+                            <div className="text-xs text-teal-400 space-y-1">
                               <p>• <strong>Sample Size:</strong> N={projectAnalytics.totalPatients} patients {projectAnalytics.totalPatients >= 30 ? '(adequate for statistical analysis)' : '(consider increasing sample size)'}</p>
                               <p>• <strong>Confidence Interval:</strong> 95% CI for mean age is [{projectAnalytics.ageStats.ci95Lower}, {projectAnalytics.ageStats.ci95Upper}] years</p>
                               <p>• <strong>Age Variability:</strong> Standard deviation of ±{projectAnalytics.ageStats.sd} years indicates {projectAnalytics.ageStats.sd < 10 ? 'low' : projectAnalytics.ageStats.sd < 15 ? 'moderate' : 'high'} variability</p>
@@ -1737,8 +2028,8 @@ export function ResearchProjects() {
                     ) : (
                       <div className="flex items-center justify-center h-32 text-center">
                         <div className="space-y-2">
-                          <BarChart3 className="w-8 h-8 mx-auto text-gray-400" />
-                          <p className="text-sm text-gray-600">No analytics data available</p>
+                          <BarChart3 className="w-8 h-8 mx-auto text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">No analytics data available</p>
                         </div>
                       </div>
                     )}
@@ -1763,9 +2054,9 @@ export function ResearchProjects() {
             ) : (
               <div className="flex items-center justify-center h-full text-center">
                 <div className="space-y-3">
-                  <TrendingUp className="w-16 h-16 mx-auto text-gray-400" />
-                  <h3 className="text-lg font-medium text-gray-900">Analysis Dashboard</h3>
-                  <p className="text-sm text-gray-600 max-w-xs">
+                  <TrendingUp className="w-16 h-16 mx-auto text-muted-foreground" />
+                  <h3 className="text-lg font-medium text-foreground">Analysis Dashboard</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs">
                     Select a research project to view analytics and interact with the AI assistant
                   </p>
                 </div>
@@ -1774,6 +2065,7 @@ export function ResearchProjects() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+      )}
 
       {/* Group Selector Dialog */}
       <GroupSelectorDialog

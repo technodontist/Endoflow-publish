@@ -41,31 +41,24 @@ export async function uploadMedicalKnowledgeAction(formData: {
       uploadedBy: user.id
     })
 
-    // Generate embedding using Google Gemini
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-    if (!GEMINI_API_KEY) {
-      return { success: false, error: 'GEMINI_API_KEY not configured. Please add it to .env.local' }
+    // Check for OPENAI_API_KEY (required for 3072-dim embeddings)
+    if (!process.env.OPENAI_API_KEY) {
+      return { success: false, error: 'OPENAI_API_KEY not configured. Please add it to .env.local' }
     }
 
-    // Create embedding text (combine title and content)
-    const embeddingText = `${formData.title}\n\n${formData.content}`
+    // Process document: auto-classify subspecialty, chunk, and generate 3072-dim embeddings
+    const { processDocumentForUpload } = await import('@/lib/services/document-processor')
 
-    console.log('🔮 [MEDICAL KNOWLEDGE] Generating 768-dim embedding with Gemini...')
+    console.log('🧠 [MEDICAL KNOWLEDGE] Processing document (classify + chunk + embed)...')
+    const processed = await processDocumentForUpload({
+      title: formData.title,
+      content: formData.content,
+      existingTopics: formData.topics,
+      existingDiagnosisKeywords: formData.diagnosisKeywords,
+    })
 
-    // Import Gemini service
-    const { generateEmbedding } = await import('@/lib/services/gemini-ai')
-
-    let embedding: number[]
-    try {
-      embedding = await generateEmbedding(embeddingText, 'RETRIEVAL_DOCUMENT')
-      console.log('✅ [MEDICAL KNOWLEDGE] Gemini embedding generated, dimensions:', embedding.length)
-    } catch (error) {
-      console.error('❌ [MEDICAL KNOWLEDGE] Gemini embedding failed:', error)
-      return { success: false, error: 'Failed to generate embeddings with Gemini API' }
-    }
-
-    // Insert into database with embedding
-    const { data: knowledgeEntry, error: insertError} = await supabase
+    // Insert parent document (full content, no embedding — chunks have embeddings)
+    const { data: parentEntry, error: parentError } = await supabase
       .schema('api')
       .from('medical_knowledge')
       .insert({
@@ -79,26 +72,75 @@ export async function uploadMedicalKnowledgeAction(formData: {
         doi: formData.doi || null,
         url: formData.url || null,
         isbn: formData.isbn || null,
-        embedding: embedding,
         topics: formData.topics,
         diagnosis_keywords: formData.diagnosisKeywords,
         treatment_keywords: formData.treatmentKeywords,
-        uploaded_by: user.id
+        subspecialty_tags: processed.parentEntry.subspecialtyTags,
+        uploaded_by: user.id,
+        chunk_index: -1, // -1 marks parent document
       })
-      .select()
+      .select('id')
       .single()
 
-    if (insertError) {
-      console.error('❌ [MEDICAL KNOWLEDGE] Database insert failed:', insertError)
-      return { success: false, error: insertError.message }
+    if (parentError) {
+      console.error('❌ [MEDICAL KNOWLEDGE] Parent insert failed:', parentError)
+      return { success: false, error: parentError.message }
     }
 
-    console.log('✅ [MEDICAL KNOWLEDGE] Successfully uploaded:', knowledgeEntry.id)
+    console.log(`✅ [MEDICAL KNOWLEDGE] Parent document created: ${parentEntry.id}`)
+
+    // Insert chunks with embeddings
+    if (processed.chunks.length > 0) {
+      const chunkRows = processed.chunks.map((chunk) => ({
+        title: `${formData.title} — ${chunk.sectionTitle || `Chunk ${chunk.chunkIndex + 1}`}`,
+        content: chunk.content,
+        source_type: formData.sourceType,
+        specialty: formData.specialty,
+        authors: formData.authors || null,
+        publication_year: formData.publicationYear || null,
+        journal: formData.journal || null,
+        doi: formData.doi || null,
+        url: formData.url || null,
+        isbn: formData.isbn || null,
+        topics: formData.topics,
+        diagnosis_keywords: formData.diagnosisKeywords,
+        treatment_keywords: formData.treatmentKeywords,
+        subspecialty_tags: chunk.subspecialtyTags,
+        embedding_3072: chunk.embedding,
+        parent_document_id: parentEntry.id,
+        chunk_index: chunk.chunkIndex,
+        section_title: chunk.sectionTitle || null,
+        uploaded_by: user.id,
+      }))
+
+      const { error: chunkError } = await supabase
+        .schema('api')
+        .from('medical_knowledge')
+        .insert(chunkRows)
+
+      if (chunkError) {
+        console.error('❌ [MEDICAL KNOWLEDGE] Chunk insert failed:', chunkError)
+        // Clean up parent if chunks fail
+        await supabase.schema('api').from('medical_knowledge').delete().eq('id', parentEntry.id)
+        return { success: false, error: `Chunk insert failed: ${chunkError.message}` }
+      }
+
+      console.log(`✅ [MEDICAL KNOWLEDGE] ${processed.chunks.length} chunks inserted`)
+    }
+
+    console.log('✅ [MEDICAL KNOWLEDGE] Successfully uploaded with chunking:', parentEntry.id)
 
     revalidatePath('/dentist')
     revalidatePath('/dentist/knowledge')
 
-    return { success: true, data: knowledgeEntry }
+    return {
+      success: true,
+      data: {
+        id: parentEntry.id,
+        chunksCreated: processed.chunks.length,
+        subspecialtyTags: processed.parentEntry.subspecialtyTags,
+      }
+    }
 
   } catch (error) {
     console.error('❌ [MEDICAL KNOWLEDGE] Upload error:', error)
@@ -126,6 +168,7 @@ export async function getMedicalKnowledgeAction(filters?: {
       .schema('api')
       .from('medical_knowledge')
       .select('*')
+      .eq('uploaded_by', user.id)
       .order('created_at', { ascending: false })
 
     // Apply filters
@@ -219,6 +262,7 @@ export async function getKnowledgeStatsAction() {
       .schema('api')
       .from('medical_knowledge')
       .select('source_type, specialty, topics')
+      .eq('uploaded_by', user.id)
 
     if (!allKnowledge) {
       return { success: true, data: { total: 0, byType: {}, bySpecialty: {}, byTopic: {} } }
@@ -287,7 +331,7 @@ export async function analyzeMedicalKeywordsFromPDFAction(params: {
     let aiTreatments: string[] | undefined
 
     try {
-      const { generateChatCompletion } = await import('@/lib/services/gemini-ai')
+      const { aiChatCompletion } = await import('@/lib/services/ai-provider')
 
       const systemInstruction = `You are a dental NLP tagger. Extract concise, domain-relevant tags from the provided text.
 Return ONLY valid JSON with these keys and arrays of snake_case strings (lowercase, words separated by underscores):
@@ -303,11 +347,11 @@ Return ONLY valid JSON with these keys and arrays of snake_case strings (lowerca
 
       const userPrompt = `Analyze the following text and extract tags in JSON as specified.\n\n${textForAnalysis}`
 
-      const responseText = await generateChatCompletion(
+      const responseText = await aiChatCompletion(
         [
           { role: 'user', parts: [{ text: userPrompt }] }
         ],
-        { model: 'gemini-2.0-flash', temperature: 0.1, responseFormat: 'json', systemInstruction }
+        { task: 'data_extraction', provider: 'gemini', temperature: 0.1, responseFormat: 'json', systemInstruction }
       )
 
       const parsed = JSON.parse(responseText || '{}')
@@ -407,35 +451,29 @@ export async function uploadMedicalKnowledgeFromPDFAction(pdfData: {
     const title = pdfData.title || pdfContent.title || pdfData.pdfFile.name.replace('.pdf', '')
     const authors = pdfData.authors || pdfContent.author || undefined
 
-    // Generate embedding using Gemini
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-    if (!GEMINI_API_KEY) {
-      return { success: false, error: 'GEMINI_API_KEY not configured. Please add it to .env.local' }
+    // Check for OPENAI_API_KEY (required for 3072-dim embeddings)
+    if (!process.env.OPENAI_API_KEY) {
+      return { success: false, error: 'OPENAI_API_KEY not configured. Please add it to .env.local' }
     }
 
-    // Limit content for embedding (first 8000 chars)
-    const embeddingText = `${title}\n\n${pdfContent.text.substring(0, 8000)}`
+    // Process document: auto-classify subspecialty, chunk, and generate 3072-dim embeddings
+    const { processDocumentForUpload } = await import('@/lib/services/document-processor')
 
-    console.log('🔮 [PDF UPLOAD] Generating 768-dim embedding with Gemini...')
+    console.log('🧠 [PDF UPLOAD] Processing document (classify + chunk + embed)...')
+    const processed = await processDocumentForUpload({
+      title,
+      content: pdfContent.text,
+      existingTopics: pdfData.topics,
+      existingDiagnosisKeywords: pdfData.diagnosisKeywords,
+    })
 
-    const { generateEmbedding } = await import('@/lib/services/gemini-ai')
-
-    let embedding: number[]
-    try {
-      embedding = await generateEmbedding(embeddingText, 'RETRIEVAL_DOCUMENT')
-      console.log('✅ [PDF UPLOAD] Gemini embedding generated, dimensions:', embedding.length)
-    } catch (error) {
-      console.error('❌ [PDF UPLOAD] Gemini embedding failed:', error)
-      return { success: false, error: 'Failed to generate embeddings with Gemini API' }
-    }
-
-    // Insert into database with embedding
-    const { data: knowledgeEntry, error: insertError } = await supabase
+    // Insert parent document (full content, no embedding — chunks have embeddings)
+    const { data: parentEntry, error: parentError } = await supabase
       .schema('api')
       .from('medical_knowledge')
       .insert({
         title,
-        content: pdfContent.text, // Store full extracted text
+        content: pdfContent.text,
         source_type: pdfData.sourceType,
         specialty: pdfData.specialty,
         authors: authors || null,
@@ -444,33 +482,78 @@ export async function uploadMedicalKnowledgeFromPDFAction(pdfData: {
         doi: pdfData.doi || null,
         url: pdfData.url || null,
         isbn: pdfData.isbn || null,
-        embedding: embedding,
         topics: pdfData.topics,
         diagnosis_keywords: pdfData.diagnosisKeywords,
         treatment_keywords: pdfData.treatmentKeywords,
+        subspecialty_tags: processed.parentEntry.subspecialtyTags,
         uploaded_by: user.id,
+        chunk_index: -1,
         metadata: JSON.stringify({
           originalFileName: pdfData.pdfFile.name,
           pdfPages: pdfContent.pages,
           extractedAt: new Date().toISOString()
         })
       })
-      .select()
+      .select('id')
       .single()
 
-    if (insertError) {
-      console.error('❌ [PDF UPLOAD] Database insert failed:', insertError)
-      return { success: false, error: insertError.message }
+    if (parentError) {
+      console.error('❌ [PDF UPLOAD] Parent insert failed:', parentError)
+      return { success: false, error: parentError.message }
     }
 
-    console.log('✅ [PDF UPLOAD] Successfully uploaded PDF:', knowledgeEntry.id)
+    console.log(`✅ [PDF UPLOAD] Parent document created: ${parentEntry.id}`)
+
+    // Insert chunks with 3072-dim embeddings
+    if (processed.chunks.length > 0) {
+      const chunkRows = processed.chunks.map((chunk) => ({
+        title: `${title} — ${chunk.sectionTitle || `Chunk ${chunk.chunkIndex + 1}`}`,
+        content: chunk.content,
+        source_type: pdfData.sourceType,
+        specialty: pdfData.specialty,
+        authors: authors || null,
+        publication_year: pdfData.publicationYear || null,
+        journal: pdfData.journal || null,
+        doi: pdfData.doi || null,
+        url: pdfData.url || null,
+        isbn: pdfData.isbn || null,
+        topics: pdfData.topics,
+        diagnosis_keywords: pdfData.diagnosisKeywords,
+        treatment_keywords: pdfData.treatmentKeywords,
+        subspecialty_tags: chunk.subspecialtyTags,
+        embedding_3072: chunk.embedding,
+        parent_document_id: parentEntry.id,
+        chunk_index: chunk.chunkIndex,
+        section_title: chunk.sectionTitle || null,
+        uploaded_by: user.id,
+      }))
+
+      const { error: chunkError } = await supabase
+        .schema('api')
+        .from('medical_knowledge')
+        .insert(chunkRows)
+
+      if (chunkError) {
+        console.error('❌ [PDF UPLOAD] Chunk insert failed:', chunkError)
+        await supabase.schema('api').from('medical_knowledge').delete().eq('id', parentEntry.id)
+        return { success: false, error: `Chunk insert failed: ${chunkError.message}` }
+      }
+
+      console.log(`✅ [PDF UPLOAD] ${processed.chunks.length} chunks inserted`)
+    }
+
+    console.log('✅ [PDF UPLOAD] Successfully uploaded PDF with chunking:', parentEntry.id)
 
     revalidatePath('/dentist')
     revalidatePath('/dentist/knowledge')
 
     return {
       success: true,
-      data: knowledgeEntry,
+      data: {
+        id: parentEntry.id,
+        chunksCreated: processed.chunks.length,
+        subspecialtyTags: processed.parentEntry.subspecialtyTags,
+      },
       extractedText: pdfContent.text,
       extractedPages: pdfContent.pages
     }
@@ -493,10 +576,12 @@ export async function getMedicalKnowledgeListAction() {
 
     const supabase = await createServiceClient()
 
+    // Only show knowledge uploaded by this dentist (clinic-scoped)
     const { data, error } = await supabase
       .schema('api')
       .from('medical_knowledge')
       .select('id, title, source_type, specialty, authors, publication_year, journal, topics, created_at, uploaded_by')
+      .eq('uploaded_by', user.id)
       .order('created_at', { ascending: false })
 
     if (error) {

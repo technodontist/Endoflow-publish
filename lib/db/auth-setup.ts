@@ -32,7 +32,7 @@ async function setupDentistAuth() {
 
     console.log('✅ Found auth users:', authUsers?.users?.length || 0);
 
-    const existingNisarg = authUsers?.users?.find(user => user.email === 'dr.nisarg@endoflow.com');
+    const existingNisarg = authUsers?.users?.find(user => user.email === 'nisarg@endoflow.com');
     const existingPranav = authUsers?.users?.find(user => user.email === 'dr.pranav@endoflow.com');
 
     // Create Dr. Nisarg auth user if missing
@@ -40,7 +40,7 @@ async function setupDentistAuth() {
       console.log('🔧 Creating auth user for Dr. Nisarg...');
 
       const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
-        email: 'dr.nisarg@endoflow.com',
+        email: 'nisarg@endoflow.com',
         password: 'endoflow123',
         email_confirm: true,
         user_metadata: {

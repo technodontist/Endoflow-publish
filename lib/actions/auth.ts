@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 
-async function getUserProfile(supabase: any, userId: string): Promise<{ role: string; status: string } | null> {
+async function getUserProfile(supabase: any, userId: string): Promise<{ role: string; status: string; full_name?: string } | null> {
   console.log('🔍 [DEBUG] Starting profile lookup for user ID:', userId)
 
   try {
@@ -86,51 +86,8 @@ export async function getCurrentUser() {
   }
 }
 
-export async function login(email: string, password: string) {
-  console.log('🚀 [LOGIN] Starting login process for email:', email)
-  const supabase = await createClient()
-
-  console.log('🔐 [LOGIN] Attempting Supabase Auth login...')
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  if (error) {
-    console.error('🚨 [LOGIN ERROR] Supabase Auth signInWithPassword failed:', error.message)
-    return { error: error.message }
-  }
-  if (!data.user) {
-    console.error('🚨 [LOGIN ERROR] No user data returned from Supabase Auth despite no error')
-    return { error: 'Authentication failed - no user data returned' }
-  }
-
-  console.log('✅ [LOGIN] Supabase Auth successful. User data:', { id: data.user.id })
-
-  console.log('🔍 [LOGIN] Now checking user profile in database...')
-  const userProfile = await getUserProfile(supabase, data.user.id)
-
-  if (!userProfile) {
-    console.error('🚨 [LOGIN ERROR] User authenticated successfully but not found in profiles table.')
-    return { error: 'User not found in system. Please contact support.' }
-  }
-
-  // Check if user is pending approval
-  if (userProfile.status === 'pending') {
-    console.log('⏳ [LOGIN] User is pending approval')
-    return { error: 'Your account is pending approval. Please wait for an administrator to verify your account.' }
-  }
-
-  // Check if user is active
-  if (userProfile.status !== 'active') {
-    console.log('❌ [LOGIN] User account is not active:', userProfile.status)
-    return { error: 'Your account is not active. Please contact support.' }
-  }
-
-  console.log('✅ [LOGIN] User profile found and active:', userProfile.role)
-  revalidatePath('/', 'layout')
-  redirect(getRoleBasedRedirect(userProfile.role))
-}
+// Session 15: Dead login() server action removed — login uses /api/auth/login Route Handler
+// See app/api/auth/login/route.ts for the active login flow
 
 export async function signup(formData: {
   firstName: string;
@@ -452,14 +409,7 @@ export async function rejectAssistantAction(assistantId: string) {
   }
 }
 
-function getRoleBasedRedirect(role: string): string {
-  switch (role) {
-    case 'patient': return '/patient'
-    case 'assistant': return '/assistant'
-    case 'dentist': return '/dentist'
-    default: return '/'
-  }
-}
+// Session 15: getRoleBasedRedirect removed (was only used by dead login())
 
 // Enhanced staff approval functions for multi-role system
 export async function approveStaffMemberAction(userId: string, role: 'assistant' | 'dentist') {

@@ -32,7 +32,7 @@ export async function POST() {
     }
 
     // Find problematic users (Dr. Nisarg and Dr. Pranav)
-    const problematicEmails = ['dr.nisarg@endoflow.com', 'dr.pranav@endoflow.com'];
+    const problematicEmails = ['nisarg@endoflow.com', 'dr.pranav@endoflow.com'];
 
     for (const email of problematicEmails) {
       const existingUser = authUsers?.users?.find(u => u.email === email);

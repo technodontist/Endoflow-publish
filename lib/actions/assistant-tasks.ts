@@ -136,6 +136,10 @@ export async function getTasksAction(filters?: {
       return { error: 'User not authorized' }
     }
 
+    // Get clinic context for scoping
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
+
     let query = supabase
       .schema('api')
       .from('assistant_tasks')
@@ -145,6 +149,18 @@ export async function getTasksAction(filters?: {
     // If assistant, only show tasks assigned to them or unassigned
     if (userProfile.role === 'assistant') {
       query = query.or(`assigned_to.eq.${currentUser.id},assigned_to.is.null`)
+    }
+
+    // If dentist, only show tasks created by dentists in their clinic
+    if (userProfile.role === 'dentist' && ctx?.clinicId) {
+      const { data: clinicDentists } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'dentist')
+        .eq('clinic_id', ctx.clinicId)
+      if (clinicDentists && clinicDentists.length > 0) {
+        query = query.in('created_by', clinicDentists.map(d => d.id))
+      }
     }
 
     // Apply filters
@@ -443,18 +459,25 @@ export async function getTaskCommentsAction(taskId: string) {
   }
 }
 
-// Get available assistants for task assignment
+// Get available assistants for task assignment - scoped to clinic
 export async function getAvailableAssistantsAction() {
   try {
     console.log('👥 [GET_ASSISTANTS] Starting assistant lookup...')
     const supabase = await createServiceClient()
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
 
-    const { data: assistants, error } = await supabase
+    let query = supabase
       .from('profiles')
       .select('id, full_name')
       .eq('role', 'assistant')
       .eq('status', 'active')
-      .order('full_name')
+
+    if (ctx?.clinicId) {
+      query = query.eq('clinic_id', ctx.clinicId)
+    }
+
+    const { data: assistants, error } = await query.order('full_name')
 
     if (error) {
       console.error('👥 [GET_ASSISTANTS] Database error:', error)
@@ -570,6 +593,9 @@ export async function getTaskStatsAction() {
       return { error: 'User not authorized' }
     }
 
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
+
     let query = supabase
       .schema('api')
       .from('assistant_tasks')
@@ -578,6 +604,18 @@ export async function getTaskStatsAction() {
     // If assistant, only count their tasks
     if (userProfile.role === 'assistant') {
       query = query.or(`assigned_to.eq.${currentUser.id},assigned_to.is.null`)
+    }
+
+    // If dentist, only count tasks from their clinic
+    if (userProfile.role === 'dentist' && ctx?.clinicId) {
+      const { data: clinicDentists } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'dentist')
+        .eq('clinic_id', ctx.clinicId)
+      if (clinicDentists && clinicDentists.length > 0) {
+        query = query.in('created_by', clinicDentists.map(d => d.id))
+      }
     }
 
     const { data: tasks, error } = await query

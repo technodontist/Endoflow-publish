@@ -36,6 +36,7 @@ export async function getAIDiagnosisSuggestionAction(params: {
     age?: number
     medicalHistory?: string
   }
+  conversationContext?: import('@/lib/services/medical-conversation-parser').ConversationContext
 }) {
   try {
     // Verify user is authenticated dentist
@@ -60,7 +61,8 @@ export async function getAIDiagnosisSuggestionAction(params: {
     const clinicalText = params.clinicalFindings || ''
     const toothText = params.toothNumber ? `Tooth ${params.toothNumber}` : ''
 
-    const cacheKey = `${symptomText}_${painText}_${toothText}`.substring(0, 200)
+    const contextKey = params.conversationContext?.chiefComplaint?.primary_complaint?.substring(0, 40) || ''
+    const cacheKey = `${symptomText}_${painText}_${toothText}_${contextKey}`.substring(0, 200)
 
     // Check cache first
     const { data: cachedSuggestion } = await supabase
@@ -105,47 +107,91 @@ export async function getAIDiagnosisSuggestionAction(params: {
     }
 
     // Step 1: Generate embedding for the symptom query using Gemini
-    const queryText = `Symptoms: ${symptomText}. ${painText}. ${clinicalText}. ${toothText}. ${
+    // Include conversation context for richer RAG retrieval
+    const ccContext = params.conversationContext
+    const contextText = ccContext
+      ? `Chief complaint: ${ccContext.chiefComplaint?.primary_complaint || ''}. ` +
+        `${ccContext.medicalHistory?.medical_conditions?.length ? `Medical conditions: ${ccContext.medicalHistory.medical_conditions.join(', ')}. ` : ''}` +
+        `${ccContext.hopi?.associated_symptoms?.length ? `Associated symptoms: ${ccContext.hopi.associated_symptoms.join(', ')}.` : ''}`
+      : ''
+    const queryText = `Symptoms: ${symptomText}. ${painText}. ${clinicalText}. ${toothText}. ${contextText} ${
       params.patientContext ? `Patient: Age ${params.patientContext.age}, History: ${params.patientContext.medicalHistory}` : ''
     }`
 
-    console.log('🔮 [AI DIAGNOSIS] Generating 768-dim query embedding with Gemini...')
+    console.log('🔮 [AI DIAGNOSIS] Generating 3072-dim query embedding with OpenAI...')
 
-    const { generateEmbedding } = await import('@/lib/services/gemini-ai')
+    const { generateEmbedding3072 } = await import('@/lib/services/openai-embeddings')
 
     let queryEmbedding: number[]
     try {
-      queryEmbedding = await generateEmbedding(queryText, 'RETRIEVAL_QUERY')
-      console.log('✅ [AI DIAGNOSIS] Gemini query embedding generated')
+      queryEmbedding = await generateEmbedding3072(queryText)
+      console.log('✅ [AI DIAGNOSIS] OpenAI 3072-dim query embedding generated')
     } catch (error) {
-      console.error('❌ [AI DIAGNOSIS] Gemini embedding generation failed:', error)
-      return { success: false, error: 'Failed to generate query embedding with Gemini' }
+      console.error('❌ [AI DIAGNOSIS] OpenAI embedding generation failed:', error)
+      return { success: false, error: 'Failed to generate query embedding with OpenAI' }
     }
 
-    // Step 2: Search medical knowledge base using vector similarity
-    console.log('🔍 [AI DIAGNOSIS] Searching medical knowledge with vector similarity...')
+    // Step 2: Search medical knowledge base using hybrid search (vector + full-text)
+    console.log('🔍 [AI DIAGNOSIS] Searching medical knowledge with hybrid search...')
 
     let relevantKnowledge: any[] | null = null
+    let searchSource = 'hybrid'
 
-    // For diagnosis, we search without diagnosis_filter (want diagnostic/symptom content)
-    // We pass NULL instead of empty array to match function signature
-    const { data: vectorResults, error: searchError } = await supabase
-      .schema('api')
-      .rpc('search_treatment_protocols', {
-        query_embedding: queryEmbedding,
-        diagnosis_filter: null, // NULL means no filter, search all diagnostic content
-        treatment_filter: null,
-        specialty_filter: 'endodontics',
-        match_threshold: 0.3, // Lower threshold for diagnostic queries (symptoms are less specific)
-        match_count: 10 // More results for better diagnostic coverage
-      })
+    // Try hybrid search first (vector + BM25 full-text with RRF fusion)
+    try {
+      const { data: hybridResults, error: hybridError } = await supabase
+        .schema('api')
+        .rpc('hybrid_search_medical_knowledge', {
+          query_text: queryText,
+          query_embedding: queryEmbedding,
+          match_count: 10,
+          vector_weight: 0.5,     // Equal weight for diagnosis — keywords matter as much as semantics
+          fulltext_weight: 0.5,
+          rrf_k: 60,
+          specialty_filter: 'endodontics',
+          diagnosis_filter: null,
+          treatment_filter: null
+        })
 
-    if (searchError) {
-      console.error('❌ [AI DIAGNOSIS] Vector search failed:', searchError)
-      console.log('💡 [AI DIAGNOSIS] Falling back to direct query...')
+      if (!hybridError && hybridResults && hybridResults.length > 0) {
+        relevantKnowledge = hybridResults.map((doc: any) => ({
+          ...doc,
+          similarity: doc.hybrid_score || doc.vector_similarity || 0
+        }))
+        searchSource = 'hybrid'
+        console.log(`✅ [AI DIAGNOSIS] Hybrid search found ${relevantKnowledge!.length} results`)
+      } else if (hybridError) {
+        console.warn('⚠️ [AI DIAGNOSIS] Hybrid search not available:', hybridError.message?.substring(0, 80))
+      }
+    } catch (hybridErr) {
+      console.warn('⚠️ [AI DIAGNOSIS] Hybrid search failed, trying vector-only...')
+    }
 
-      // Fallback to direct query if vector search fails
-      // Look for diagnostic/symptom-related content
+    // Fallback to pure vector search if hybrid didn't work
+    if (!relevantKnowledge || relevantKnowledge.length === 0) {
+      const { data: vectorResults, error: searchError } = await supabase
+        .schema('api')
+        .rpc('search_treatment_protocols', {
+          query_embedding: queryEmbedding,
+          diagnosis_filter: null,
+          treatment_filter: null,
+          specialty_filter: 'endodontics',
+          match_threshold: 0.3,
+          match_count: 10
+        })
+
+      if (!searchError && vectorResults && vectorResults.length > 0) {
+        relevantKnowledge = vectorResults
+        searchSource = 'vector'
+        console.log(`✅ [AI DIAGNOSIS] Vector search found ${vectorResults.length} results`)
+      } else if (searchError) {
+        console.error('❌ [AI DIAGNOSIS] Vector search failed:', searchError)
+      }
+    }
+
+    // Last fallback: direct text query
+    if (!relevantKnowledge || relevantKnowledge.length === 0) {
+      console.log('💡 [AI DIAGNOSIS] Falling back to direct text query...')
       const { data: fallbackKnowledge, error: fallbackError } = await supabase
         .schema('api')
         .from('medical_knowledge')
@@ -167,10 +213,8 @@ export async function getAIDiagnosisSuggestionAction(params: {
       }
 
       relevantKnowledge = fallbackKnowledge
-      console.log(`🔄 [AI DIAGNOSIS] Fallback found ${fallbackKnowledge?.length || 0} documents`)
-    } else {
-      relevantKnowledge = vectorResults
-      console.log(`✅ [AI DIAGNOSIS] Vector search successful with ${vectorResults?.length || 0} results`)
+      searchSource = 'text_fallback'
+      console.log(`🔄 [AI DIAGNOSIS] Text fallback found ${fallbackKnowledge?.length || 0} documents`)
     }
 
     if (!relevantKnowledge || relevantKnowledge.length === 0) {
@@ -187,8 +231,9 @@ export async function getAIDiagnosisSuggestionAction(params: {
           painCharacteristics: params.painCharacteristics,
           clinicalFindings: params.clinicalFindings,
           toothNumber: params.toothNumber,
-          medicalContext: [], // No RAG context, pure Gemini knowledge
-          patientContext: params.patientContext
+          medicalContext: [], // No RAG context, pure AI knowledge
+          patientContext: params.patientContext,
+          conversationContext: params.conversationContext
         })
         
         const processingTime = Date.now() - startTime
@@ -216,7 +261,7 @@ export async function getAIDiagnosisSuggestionAction(params: {
             differential_diagnoses: suggestion.differentialDiagnoses || [],
             recommended_tests: suggestion.recommendedTests || [],
             evidence_sources: suggestion.sources,
-            ai_model: 'gemini-1.5-flash-no-rag',
+            ai_model: 'gemini-2.5-flash-no-rag',
             processing_time: processingTime
           })
         
@@ -242,7 +287,7 @@ export async function getAIDiagnosisSuggestionAction(params: {
     console.log(`📚 [AI DIAGNOSIS] Found ${relevantKnowledge.length} relevant documents`)
 
     // Step 3: Call Gemini for diagnosis recommendation
-    console.log('🧠 [AI DIAGNOSIS] Calling Gemini 1.5 Flash for diagnostic recommendation...')
+    console.log('🧠 [AI DIAGNOSIS] Calling Gemini 2.5 Flash for diagnostic recommendation...')
 
     const { generateDiagnosisSuggestion } = await import('@/lib/services/gemini-ai')
 
@@ -263,7 +308,8 @@ export async function getAIDiagnosisSuggestionAction(params: {
         clinicalFindings: params.clinicalFindings,
         toothNumber: params.toothNumber,
         medicalContext,
-        patientContext: params.patientContext
+        patientContext: params.patientContext,
+        conversationContext: params.conversationContext
       })
     } catch (error) {
       console.error('❌ [AI DIAGNOSIS] Gemini call failed:', error)
@@ -295,7 +341,7 @@ export async function getAIDiagnosisSuggestionAction(params: {
         differential_diagnoses: suggestion.differentialDiagnoses || [],
         recommended_tests: suggestion.recommendedTests || [],
         evidence_sources: suggestion.sources,
-        ai_model: 'gemini-1.5-flash',
+        ai_model: 'gemini-2.5-flash',
         processing_time: processingTime
       })
 

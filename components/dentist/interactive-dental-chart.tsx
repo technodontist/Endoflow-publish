@@ -16,6 +16,8 @@ import { mapInitialStatusFromDiagnosis } from "@/lib/utils/toothStatus"
 import { ToothDiagnosisDialogV2 } from "./tooth-diagnosis-dialog-v2"
 import { PrescriptionManagement } from "./prescription-management"
 import { FollowUpManagement } from "./follow-up-management"
+import { ToothSurfaceDiagram, SurfaceConditionLegend } from "./tooth-surface-diagram"
+import type { ToothSurfaceData } from "@/lib/types/dual-diagnosis"
 
 interface ToothData {
   number: string
@@ -25,6 +27,8 @@ interface ToothData {
   date?: string
   notes?: string
   colorCode?: string // Add color code for dynamic styling
+  surfaceConditions?: ToothSurfaceData | null // Session 7: per-surface conditions
+  cariesNotation?: string // Session 7: e.g., "MOD"
 }
 
 interface InteractiveDentalChartProps {
@@ -74,6 +78,7 @@ export function InteractiveDentalChart({
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null)
   const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [followUpRequired, setFollowUpRequired] = useState<string>("no")
+  const [viewMode, setViewMode] = useState<'classic' | 'surface'>('classic')
   
   // Debounced reload function to prevent excessive API calls
   const debouncedLoadToothData = useCallback(() => {
@@ -457,27 +462,27 @@ export function InteractiveDentalChart({
   const getToothColor = (status: string, colorCode?: string) => {
     // Use status-based colors ALWAYS - this ensures colors show even without color_code
     const baseColors = {
-      "healthy": "bg-green-100 border-green-300 hover:bg-green-200 text-green-800",
-      "caries": "bg-red-100 border-red-300 hover:bg-red-200 text-red-800",
-      "filled": "bg-blue-100 border-blue-300 hover:bg-blue-200 text-blue-800",
-      "crown": "bg-yellow-100 border-yellow-300 hover:bg-yellow-200 text-yellow-800",
-      "missing": "bg-gray-200 border-gray-400 text-gray-600 cursor-not-allowed opacity-50",
-      "attention": "bg-orange-100 border-orange-300 hover:bg-orange-200 text-orange-800",
-      "root_canal": "bg-purple-100 border-purple-300 hover:bg-purple-200 text-purple-800",
-      "extraction_needed": "bg-red-200 border-red-400 hover:bg-red-300 text-red-900",
-      "implant": "bg-cyan-100 border-cyan-300 hover:bg-cyan-200 text-cyan-800",
-      "bridge": "bg-indigo-100 border-indigo-300 hover:bg-indigo-200 text-indigo-800",
-      "veneer": "bg-pink-100 border-pink-300 hover:bg-pink-200 text-pink-800",
-      "orthodontic": "bg-teal-100 border-teal-300 hover:bg-teal-200 text-teal-800"
+      "healthy": "bg-green-500/100/15 border-green-300 hover:bg-green-500/100/20 text-green-400",
+      "caries": "bg-red-500/100/15 border-red-300 hover:bg-red-500/100/20 text-red-400",
+      "filled": "bg-blue-500/100/15 border-blue-300 hover:bg-blue-500/100/20 text-blue-400",
+      "crown": "bg-yellow-500/15 border-yellow-300 hover:bg-yellow-500/20 text-yellow-400",
+      "missing": "bg-muted border-gray-400 text-muted-foreground cursor-not-allowed opacity-50",
+      "attention": "bg-orange-500/15 border-orange-300 hover:bg-orange-500/20 text-orange-400",
+      "root_canal": "bg-purple-500/100/15 border-purple-300 hover:bg-purple-500/100/20 text-purple-400",
+      "extraction_needed": "bg-red-500/100/25 border-red-400 hover:bg-red-500/100/30 text-red-400",
+      "implant": "bg-cyan-500/10 border-cyan-300 hover:bg-cyan-500/20 text-cyan-400",
+      "bridge": "bg-indigo-500/15 border-indigo-300 hover:bg-indigo-500/20 text-indigo-400",
+      "veneer": "bg-pink-500/10 border-pink-300 hover:bg-pink-500/20 text-pink-400",
+      "orthodontic": "bg-teal-500/15 border-teal-300 hover:bg-teal-500/20 text-teal-400"
     }
     
     // Get base color class for the status
-    const baseColor = baseColors[status as keyof typeof baseColors] || "bg-white border-gray-300 hover:bg-gray-50 text-gray-700"
+    const baseColor = baseColors[status as keyof typeof baseColors] || "bg-card border-border hover:bg-muted text-foreground"
     
     // If we have a custom color code, we'll use dynamic styling but keep the base classes for compatibility
     if (colorCode && colorCode !== '#22c55e') {
       const isLight = isColorLight(colorCode)
-      const textColor = isLight ? 'text-gray-800' : 'text-white'
+      const textColor = isLight ? 'text-foreground' : 'text-white'
       return `${baseColor} ${textColor}` // Combine base classes with custom text color
     }
     
@@ -503,11 +508,11 @@ export function InteractiveDentalChart({
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case "healthy":
-        return "bg-green-500"
+        return "bg-green-500/100"
       case "caries":
-        return "bg-red-500"
+        return "bg-red-500/100"
       case "filled":
-        return "bg-blue-500"
+        return "bg-blue-500/100"
       case "crown":
         return "bg-yellow-500"
       case "missing":
@@ -515,13 +520,27 @@ export function InteractiveDentalChart({
       case "attention":
         return "bg-orange-500"
       case "root_canal":
-        return "bg-purple-500"
+        return "bg-purple-500/100"
       case "extraction_needed":
         return "bg-red-700"
       default:
         return "bg-gray-400"
     }
   }
+
+  // Session 13: Voice-driven tooth selection via custom event
+  useEffect(() => {
+    const handleVoiceToothSelect = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.toothNumber) {
+        const tn = String(detail.toothNumber)
+        console.log(`🦷 [VOICE] Selecting tooth ${tn} via voice command`)
+        handleToothClick(tn)
+      }
+    }
+    window.addEventListener('endoflow:select_tooth', handleVoiceToothSelect)
+    return () => window.removeEventListener('endoflow:select_tooth', handleVoiceToothSelect)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToothClick = (toothNumber: string, event?: React.MouseEvent) => {
     const tooth = toothData[toothNumber]
@@ -562,34 +581,34 @@ export function InteractiveDentalChart({
 
     // Show quick context menu for tooth status
     const contextMenu = document.createElement('div')
-    contextMenu.className = 'fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-48'
+    contextMenu.className = 'fixed z-50 bg-card border border-border rounded-lg shadow-xl py-1 min-w-48'
     contextMenu.style.left = event.clientX + 'px'
     contextMenu.style.top = event.clientY + 'px'
 
     // Add header
     const header = document.createElement('div')
-    header.className = 'px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100'
+    header.className = 'px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border'
     header.textContent = `Tooth ${toothNumber} - Quick Actions`
     contextMenu.appendChild(header)
 
     const quickOptions = [
-      { status: 'healthy', label: 'Healthy', color: 'text-green-600', icon: '✓' },
-      { status: 'caries', label: 'Caries', color: 'text-red-600', icon: '⚠' },
-      { status: 'filled', label: 'Filled', color: 'text-blue-600', icon: '●' },
-      { status: 'crown', label: 'Crown', color: 'text-yellow-600', icon: '♕' },
-      { status: 'missing', label: 'Missing', color: 'text-gray-600', icon: '×' },
-      { status: 'attention', label: 'Needs Attention', color: 'text-orange-600', icon: '!' },
-      { status: 'root_canal', label: 'Root Canal', color: 'text-purple-600', icon: '⚡' },
-      { status: 'extraction_needed', label: 'Extraction Needed', color: 'text-red-800', icon: '🗑' },
-      { status: 'implant', label: 'Implant', color: 'text-cyan-600', icon: '🔧' },
-      { status: 'bridge', label: 'Bridge', color: 'text-indigo-600', icon: '🌉' },
-      { status: 'veneer', label: 'Veneer', color: 'text-pink-600', icon: '✨' },
-      { status: 'orthodontic', label: 'Orthodontic', color: 'text-teal-600', icon: '⬜' }
+      { status: 'healthy', label: 'Healthy', color: 'text-green-400', icon: '✓' },
+      { status: 'caries', label: 'Caries', color: 'text-red-400', icon: '⚠' },
+      { status: 'filled', label: 'Filled', color: 'text-blue-400', icon: '●' },
+      { status: 'crown', label: 'Crown', color: 'text-yellow-400', icon: '♕' },
+      { status: 'missing', label: 'Missing', color: 'text-muted-foreground', icon: '×' },
+      { status: 'attention', label: 'Needs Attention', color: 'text-orange-400', icon: '!' },
+      { status: 'root_canal', label: 'Root Canal', color: 'text-purple-400', icon: '⚡' },
+      { status: 'extraction_needed', label: 'Extraction Needed', color: 'text-red-400', icon: '🗑' },
+      { status: 'implant', label: 'Implant', color: 'text-cyan-400', icon: '🔧' },
+      { status: 'bridge', label: 'Bridge', color: 'text-indigo-400', icon: '🌉' },
+      { status: 'veneer', label: 'Veneer', color: 'text-pink-400', icon: '✨' },
+      { status: 'orthodontic', label: 'Orthodontic', color: 'text-teal-400', icon: '⬜' }
     ]
 
     quickOptions.forEach(option => {
       const button = document.createElement('button')
-      button.className = `block w-full px-4 py-2 text-left text-sm hover:bg-gray-100 transition-colors duration-150 flex items-center gap-2 ${option.color}`
+      button.className = `block w-full px-4 py-2 text-left text-sm hover:bg-muted transition-colors duration-150 flex items-center gap-2 ${option.color}`
       button.innerHTML = `<span class="text-base">${option.icon}</span><span>${option.label}</span>`
       button.onclick = () => {
         handleQuickStatusChange(toothNumber, option.status as ToothData['status'])
@@ -606,11 +625,11 @@ export function InteractiveDentalChart({
 
     // Add divider and full diagnosis option
     const divider = document.createElement('div')
-    divider.className = 'border-t border-gray-200 my-2'
+    divider.className = 'border-t border-border my-2'
     contextMenu.appendChild(divider)
 
     const fullDiagnosisButton = document.createElement('button')
-    fullDiagnosisButton.className = 'block w-full px-4 py-3 text-left text-sm hover:bg-blue-50 text-blue-600 font-medium transition-colors duration-150 flex items-center gap-2'
+    fullDiagnosisButton.className = 'block w-full px-4 py-3 text-left text-sm hover:bg-blue-500/10 text-blue-400 font-medium transition-colors duration-150 flex items-center gap-2'
     fullDiagnosisButton.innerHTML = '<span class="text-base">📋</span><span>Full Diagnosis & Treatment</span>'
     fullDiagnosisButton.onclick = () => {
       handleToothClick(toothNumber)
@@ -850,6 +869,22 @@ export function InteractiveDentalChart({
       console.log(`🦷 [TOOTH-${toothNumber}] Status: ${tooth.status}, ColorCode: ${tooth.colorCode || 'none'}, Classes: ${colorClass}`)
     }
 
+    // Surface view mode (Session 7)
+    if (viewMode === 'surface') {
+      return (
+        <ToothSurfaceDiagram
+          key={toothNumber}
+          toothNumber={toothNumber}
+          surfaces={tooth.surfaceConditions}
+          size={46}
+          selected={selectedTooth === toothNumber || selectedTeeth.includes(toothNumber)}
+          notation={tooth.cariesNotation}
+          onToothClick={() => handleToothClick(toothNumber, { ctrlKey: false, metaKey: false, preventDefault: () => {} } as any)}
+        />
+      )
+    }
+
+    // Classic view mode (original)
     return (
       <div
         key={toothNumber}
@@ -858,7 +893,7 @@ export function InteractiveDentalChart({
           transition-all duration-200 flex items-center justify-center
           ${tooth.status === "missing" ? "opacity-50" : "hover:scale-105 hover:shadow-md"}
           ${selectedTooth === toothNumber ? "ring-2 ring-blue-500 ring-offset-1" : ""}
-          ${selectedTeeth.includes(toothNumber) ? "ring-2 ring-purple-500 ring-offset-1 bg-purple-50" : ""}
+          ${selectedTeeth.includes(toothNumber) ? "ring-2 ring-purple-500 ring-offset-1 bg-purple-500/10" : ""}
         `}
         style={dynamicStyle}
         onClick={(e) => handleToothClick(toothNumber, e)}
@@ -875,7 +910,7 @@ export function InteractiveDentalChart({
 
   const renderFullScreenChart = () => (
     <Dialog open={isFullScreen} onOpenChange={setIsFullScreen}>
-      <DialogContent className="max-w-6xl h-[90vh]">
+      <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Layers className="h-5 w-5" />
@@ -896,7 +931,7 @@ export function InteractiveDentalChart({
 
     return (
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-6xl h-[90vh] overflow-hidden">
+        <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] overflow-hidden">
           <DialogHeader className="border-b pb-4">
             <DialogTitle className="text-xl font-bold flex items-center gap-3">
               <div className={`w-8 h-8 rounded-full ${getToothColor(tooth.status)} border-2 flex items-center justify-center`}>
@@ -909,8 +944,8 @@ export function InteractiveDentalChart({
           <div className="flex-1 grid grid-cols-2 gap-6 overflow-hidden">
             {/* Diagnosis Section */}
             <div className="space-y-4 overflow-auto">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h3 className="text-lg font-semibold text-blue-900 mb-3">Diagnosis</h3>
+              <div className="bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
+                <h3 className="text-lg font-semibold text-blue-400 mb-3">Diagnosis</h3>
 
                 <div className="space-y-3">
                   <div>
@@ -1004,8 +1039,8 @@ export function InteractiveDentalChart({
 
             {/* Treatment Plan Section */}
             <div className="space-y-4 overflow-auto">
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <h3 className="text-lg font-semibold text-green-900 mb-3">Treatment Plan</h3>
+              <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20">
+                <h3 className="text-lg font-semibold text-green-400 mb-3">Treatment Plan</h3>
 
                 <div className="space-y-3">
                   <div>
@@ -1165,7 +1200,7 @@ export function InteractiveDentalChart({
     <div className="space-y-8">
       {/* Upper Teeth */}
       <div className="text-center">
-        <div className="text-sm font-medium text-gray-600 mb-3">Upper Jaw (Maxilla)</div>
+        <div className="text-sm font-medium text-muted-foreground mb-3">Upper Jaw (Maxilla)</div>
         <div className="flex justify-center gap-2 flex-wrap">
           {upperTeeth.map((tooth) => renderTooth(tooth, true))}
         </div>
@@ -1173,19 +1208,24 @@ export function InteractiveDentalChart({
 
       {/* Divider */}
       <div className="relative">
-        <div className="border-t-2 border-dashed border-gray-300"></div>
-        <div className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white px-3">
-          <span className="text-xs text-gray-500 font-medium">BITE LINE</span>
+        <div className="border-t-2 border-dashed border-border"></div>
+        <div className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-card px-3">
+          <span className="text-xs text-muted-foreground font-medium">BITE LINE</span>
         </div>
       </div>
 
       {/* Lower Teeth */}
       <div className="text-center">
-        <div className="text-sm font-medium text-gray-600 mb-3">Lower Jaw (Mandible)</div>
+        <div className="text-sm font-medium text-muted-foreground mb-3">Lower Jaw (Mandible)</div>
         <div className="flex justify-center gap-2 flex-wrap">
           {lowerTeeth.map((tooth) => renderTooth(tooth, false))}
         </div>
       </div>
+
+      {/* Surface condition legend (Session 7) */}
+      {viewMode === 'surface' && (
+        <SurfaceConditionLegend className="mt-4 justify-center" />
+      )}
     </div>
   )
 
@@ -1223,22 +1263,31 @@ export function InteractiveDentalChart({
                   'bg-red-400'
                 }`} title={`Real-time updates: ${connectionStatus}`} />
                 {lastUpdateTime && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted-foreground">
                     Last update: {lastUpdateTime.toLocaleTimeString()}
                   </span>
                 )}
               </div>
             )}
           </h3>
-          <p className="text-sm text-gray-600">Click on any tooth to add or view diagnosis</p>
+          <p className="text-sm text-muted-foreground">Click on any tooth to add or view diagnosis</p>
           {/* Error Display */}
           {error && (
-            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-sm text-red-400">
               {error}
             </div>
           )}
         </div>
         <div className="flex gap-2">
+          <Button
+            variant={viewMode === 'surface' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'classic' ? 'surface' : 'classic')}
+            className={`flex items-center gap-2 ${viewMode === 'surface' ? 'bg-teal-600 hover:bg-teal-700' : ''}`}
+          >
+            <Layers className="h-4 w-4" />
+            {viewMode === 'surface' ? 'Classic View' : 'Surface View'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -1248,27 +1297,20 @@ export function InteractiveDentalChart({
             <Expand className="h-4 w-4" />
             Full Screen
           </Button>
-          <Button
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Layers className="h-4 w-4" />
-            3D View
-          </Button>
         </div>
       </div>
 
       {/* Multi-select Control Panel */}
       {multiSelectMode && selectedTeeth.length > 0 && (
-        <Card className="border-purple-200 bg-purple-50">
+        <Card className="border-purple-500/20 bg-purple-500/10">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                  <Badge variant="secondary" className="bg-purple-500/100/15 text-purple-400">
                     {selectedTeeth.length} teeth selected
                   </Badge>
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     Teeth: {selectedTeeth.sort((a, b) => parseInt(a) - parseInt(b)).join(', ')}
                   </span>
                 </div>
@@ -1327,9 +1369,9 @@ export function InteractiveDentalChart({
 
       {/* Instructions for Multi-select */}
       {multiSelectMode && (
-        <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
-          <p className="font-medium text-blue-800 mb-1">Multi-select Mode Active</p>
-          <p>Hold <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Ctrl</kbd> and click teeth to select multiple. Selected teeth will have a purple border.</p>
+        <div className="text-sm text-muted-foreground bg-blue-500/10 p-3 rounded-lg border border-blue-500/20">
+          <p className="font-medium text-blue-400 mb-1">Multi-select Mode Active</p>
+          <p>Hold <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl</kbd> and click teeth to select multiple. Selected teeth will have a purple border.</p>
         </div>
       )}
 
@@ -1343,13 +1385,13 @@ export function InteractiveDentalChart({
         </CardHeader>
         <CardContent className="flex flex-wrap gap-4">
           {[
-            { status: "healthy", label: "Healthy", color: "bg-green-100 border-green-300" },
-            { status: "caries", label: "Caries", color: "bg-red-100 border-red-300" },
-            { status: "filled", label: "Filled", color: "bg-blue-100 border-blue-300" },
-            { status: "crown", label: "Crown", color: "bg-yellow-100 border-yellow-300" },
-            { status: "root_canal", label: "Root Canal", color: "bg-purple-100 border-purple-300" },
-            { status: "missing", label: "Missing", color: "bg-gray-200 border-gray-400" },
-            { status: "attention", label: "Needs Attention", color: "bg-orange-100 border-orange-300" },
+            { status: "healthy", label: "Healthy", color: "bg-green-500/100/15 border-green-300" },
+            { status: "caries", label: "Caries", color: "bg-red-500/100/15 border-red-300" },
+            { status: "filled", label: "Filled", color: "bg-blue-500/100/15 border-blue-300" },
+            { status: "crown", label: "Crown", color: "bg-yellow-500/15 border-yellow-300" },
+            { status: "root_canal", label: "Root Canal", color: "bg-purple-500/100/15 border-purple-300" },
+            { status: "missing", label: "Missing", color: "bg-muted border-gray-400" },
+            { status: "attention", label: "Needs Attention", color: "bg-orange-500/15 border-orange-300" },
           ].map(({ status, label, color }) => (
             <div key={status} className="flex items-center gap-2">
               <div className={`w-4 h-4 ${color} border rounded`}></div>
@@ -1370,50 +1412,50 @@ export function InteractiveDentalChart({
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-green-600">{healthyCount}</div>
-            <div className="text-xs text-gray-600">Healthy</div>
+            <div className="text-xl font-bold text-green-400">{healthyCount}</div>
+            <div className="text-xs text-muted-foreground">Healthy</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-red-600">{cariesCount}</div>
-            <div className="text-xs text-gray-600">Caries</div>
+            <div className="text-xl font-bold text-red-400">{cariesCount}</div>
+            <div className="text-xs text-muted-foreground">Caries</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-blue-600">{filledCount}</div>
-            <div className="text-xs text-gray-600">Filled</div>
+            <div className="text-xl font-bold text-blue-400">{filledCount}</div>
+            <div className="text-xs text-muted-foreground">Filled</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-yellow-600">{crownCount}</div>
-            <div className="text-xs text-gray-600">Crown</div>
+            <div className="text-xl font-bold text-yellow-400">{crownCount}</div>
+            <div className="text-xs text-muted-foreground">Crown</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-purple-600">{rootCanalCount}</div>
-            <div className="text-xs text-gray-600">RCT</div>
+            <div className="text-xl font-bold text-purple-400">{rootCanalCount}</div>
+            <div className="text-xs text-muted-foreground">RCT</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-orange-600">{needsAttentionCount}</div>
-            <div className="text-xs text-gray-600">Attention</div>
+            <div className="text-xl font-bold text-orange-400">{needsAttentionCount}</div>
+            <div className="text-xs text-muted-foreground">Attention</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-gray-600">{missingCount}</div>
-            <div className="text-xs text-gray-600">Missing</div>
+            <div className="text-xl font-bold text-muted-foreground">{missingCount}</div>
+            <div className="text-xs text-muted-foreground">Missing</div>
           </CardContent>
         </Card>
         <Card className="transition-all hover:shadow-md">
           <CardContent className="p-3 text-center">
-            <div className="text-xl font-bold text-red-800">{extractionNeededCount}</div>
-            <div className="text-xs text-gray-600">Extraction</div>
+            <div className="text-xl font-bold text-red-400">{extractionNeededCount}</div>
+            <div className="text-xs text-muted-foreground">Extraction</div>
           </CardContent>
         </Card>
       </div>
@@ -1435,11 +1477,11 @@ export function InteractiveDentalChart({
                     <Badge variant="outline">Tooth {tooth.number}</Badge>
                     <span className="text-sm">{tooth.treatment}</span>
                   </div>
-                  <span className="text-xs text-gray-500">{tooth.date}</span>
+                  <span className="text-xs text-muted-foreground">{tooth.date}</span>
                 </div>
               ))}
             {Object.values(toothData).filter(t => t.date).length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">No recent procedures recorded</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No recent procedures recorded</p>
             )}
           </div>
         </CardContent>
@@ -1451,7 +1493,7 @@ export function InteractiveDentalChart({
 
       {/* Prescription Management Dialog */}
       <Dialog open={isPrescriptionOpen} onOpenChange={setIsPrescriptionOpen}>
-        <DialogContent className="max-w-6xl h-[90vh]">
+        <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh]">
           <DialogHeader>
             <DialogTitle>Prescription Management</DialogTitle>
           </DialogHeader>
@@ -1469,7 +1511,7 @@ export function InteractiveDentalChart({
 
       {/* Follow-up Management Dialog */}
       <Dialog open={isFollowUpOpen} onOpenChange={setIsFollowUpOpen}>
-        <DialogContent className="max-w-6xl h-[90vh]">
+        <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh]">
           <DialogHeader>
             <DialogTitle>Follow-up Management</DialogTitle>
           </DialogHeader>

@@ -4,7 +4,8 @@
  * for Chief Complaint and HOPI tabs
  */
 
-import { generateChatCompletion, GeminiChatMessage } from './gemini-ai'
+import { GeminiChatMessage } from './gemini-ai'
+import { aiChatCompletion } from './ai-provider'
 
 export interface ChiefComplaintData {
   primary_complaint: string
@@ -89,6 +90,69 @@ export interface VoiceTranscriptAnalysis {
   confidence: number
   auto_extracted: boolean
   extraction_timestamp: string
+}
+
+/**
+ * Serializable subset of VoiceTranscriptAnalysis for passing conversation context
+ * through server action boundaries to AI Diagnosis & Treatment copilots.
+ * Used to give Claude the full clinical picture when diagnosing a specific tooth.
+ */
+export interface ConversationContext {
+  chiefComplaint?: {
+    primary_complaint: string
+    patient_description?: string
+    onset_duration?: string
+    associated_symptoms?: string[]
+    triggers?: string[]
+  }
+  hopi?: {
+    pain_characteristics?: {
+      quality: string
+      intensity: number
+      frequency: string
+      duration: string
+    }
+    aggravating_factors?: string[]
+    relieving_factors?: string[]
+    associated_symptoms?: string[]
+    previous_treatments?: string[]
+  }
+  medicalHistory?: {
+    medical_conditions?: string[]
+    current_medications?: string[]
+    allergies?: string[]
+    previous_dental_treatments?: string[]
+  }
+  clinicalExamination?: {
+    extraoral_findings?: string[]
+    intraoral_findings?: string[]
+    oral_hygiene?: string
+    gingival_condition?: string
+  }
+  // Session 20: Explicit investigations field for clinical tests
+  investigations?: {
+    vitality_tests?: string
+    percussion_test?: string
+    palpation_test?: string
+    radiographic_findings?: string
+    radiographic_types?: string[]
+    additional_tests?: string[]
+  }
+  restorationAssessment?: {
+    caries_extent?: string
+    surfaces_involved?: string[]
+    existing_restoration?: string
+    restoration_quality?: string
+    remaining_tooth_structure?: string
+    cusp_involvement?: string[]
+    ferrule_assessment?: string
+    isolation_feasibility?: string
+    esthetic_zone?: string
+    occlusal_load?: string
+    material_preference?: string
+    restoration_type_preference?: string
+  }
+  confidence?: number
 }
 
 /**
@@ -282,11 +346,11 @@ CONFIDENCE SCORING:
       }]
     }]
 
-    console.log('🔄 [MEDICAL PARSER] Calling Gemini API...')
-    const response = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
-      temperature: 0.2, // Low temperature for consistent medical data extraction
-      maxOutputTokens: 4096, // Increased to handle comprehensive extraction
+    console.log('🔄 [MEDICAL PARSER] Calling AI (Claude → Gemini fallback)...')
+    const response = await aiChatCompletion(messages, {
+      task: 'medical_parsing',
+      temperature: 0.2,
+      maxOutputTokens: 4096,
       systemInstruction,
       responseFormat: 'json'
     })

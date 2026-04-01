@@ -41,7 +41,7 @@ export async function parseTaskRequest(
     console.log('🤖 [AI TASK PARSER] Parsing request:', naturalLanguageInput)
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash',
       generationConfig: {
         temperature: 0.1, // Low temperature for consistent parsing
         topP: 0.8,
@@ -116,18 +116,45 @@ Return ONLY the JSON object, no other text.`
     const result = await model.generateContent(prompt)
     const responseText = result.response.text()
 
-    console.log('🤖 [AI TASK PARSER] Raw AI response:', responseText)
+    console.log('🤖 [AI TASK PARSER] Raw AI response:', responseText.substring(0, 200))
 
-    // Clean the response - remove markdown code blocks if present
+    // Robust JSON extraction - handle markdown, truncation, and partial responses
     let jsonText = responseText.trim()
-    if (jsonText.startsWith('```json')) {
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    } else if (jsonText.startsWith('```')) {
-      jsonText = jsonText.replace(/```\n?/g, '').trim()
+
+    // Strip markdown code blocks
+    jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/g, '').trim()
+
+    // Try to extract JSON object if there's surrounding text
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      jsonText = jsonMatch[0]
     }
 
-    // Parse the JSON
-    const parsed: ParsedTaskRequest = JSON.parse(jsonText)
+    // Fix common truncation issues - ensure JSON is properly closed
+    const openBraces = (jsonText.match(/\{/g) || []).length
+    const closeBraces = (jsonText.match(/\}/g) || []).length
+    if (openBraces > closeBraces) {
+      // Truncated response - try to fix by closing open strings and braces
+      // Remove any trailing incomplete key-value pair
+      jsonText = jsonText.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, '')
+      for (let i = 0; i < openBraces - closeBraces; i++) {
+        jsonText += '}'
+      }
+      console.warn('⚠️ [AI TASK PARSER] Fixed truncated JSON response')
+    }
+
+    let parsed: ParsedTaskRequest
+    try {
+      parsed = JSON.parse(jsonText)
+    } catch (parseErr) {
+      console.error('❌ [AI TASK PARSER] JSON parse failed, attempting recovery...')
+      // Last resort: try to fix common issues
+      jsonText = jsonText
+        .replace(/[\x00-\x1F]+/g, ' ') // Remove control characters
+        .replace(/,\s*([}\]])/g, '$1') // Remove trailing commas
+        .replace(/"([^"]*)\n([^"]*)"/, '"$1 $2"') // Fix split strings
+      parsed = JSON.parse(jsonText)
+    }
 
     // Add the raw input for reference
     parsed.rawInput = naturalLanguageInput

@@ -5,7 +5,8 @@
  */
 
 import { performRAGQuery, formatRAGContext, extractCitations, type RAGDocument } from './rag-service'
-import { generateChatCompletion, GeminiChatMessage } from './gemini-ai'
+import { GeminiChatMessage } from './gemini-ai'
+import { aiChatCompletion } from './ai-provider'
 import type { ToothFinding } from './dental-voice-parser'
 
 export interface TreatmentSuggestion {
@@ -190,8 +191,8 @@ Respond with a JSON array of treatment suggestions in this format:
       parts: [{ text: prompt }]
     }]
     
-    const response = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
+    const response = await aiChatCompletion(messages, {
+      task: 'evidence_synthesis',
       temperature: 0.3,
       maxOutputTokens: 2048,
       systemInstruction,
@@ -383,4 +384,139 @@ export function extractSuccessRates(documents: RAGDocument[]): {
   })
   
   return stats
+}
+
+// ============================================================================
+// CLINICAL DATA RAG — Query actual patient/treatment outcomes from your clinic
+// ============================================================================
+
+export interface ClinicalDataContext {
+  treatmentOutcomes: {
+    treatmentType: string
+    totalCases: number
+    completedCases: number
+    successRate: number
+    avgVisits: number
+  }[]
+  recentConsultations: {
+    diagnosis: string
+    treatmentPlan: string
+    prognosis: string
+    date: string
+  }[]
+  summary: string
+}
+
+/**
+ * Query your clinic's actual treatment data for a given diagnosis/treatment type
+ * This provides personalized "your practice" context alongside medical literature
+ */
+export async function getClinicalDataContext(params: {
+  diagnosis?: string
+  treatmentType?: string
+  toothNumber?: string
+  dentistId: string
+}): Promise<ClinicalDataContext> {
+  const { createServiceClient } = await import('@/lib/supabase/server')
+  const supabase = await createServiceClient()
+
+  console.log('🏥 [CLINICAL RAG] Querying clinic data for:', params)
+
+  const treatmentOutcomes: ClinicalDataContext['treatmentOutcomes'] = []
+  const recentConsultations: ClinicalDataContext['recentConsultations'] = []
+
+  try {
+    // 1. Query treatment outcomes — how many of this treatment type have you done?
+    let treatmentQuery = supabase
+      .schema('api')
+      .from('treatments')
+      .select('treatment_type, status, total_visits, completed_visits, tooth_number')
+      .eq('dentist_id', params.dentistId)
+
+    if (params.treatmentType) {
+      treatmentQuery = treatmentQuery.ilike('treatment_type', `%${params.treatmentType}%`)
+    }
+
+    const { data: treatments } = await treatmentQuery.limit(200)
+
+    if (treatments && treatments.length > 0) {
+      // Aggregate by treatment type
+      const typeMap = new Map<string, { total: number; completed: number; totalVisits: number }>()
+
+      for (const t of treatments) {
+        const type = t.treatment_type || 'Unknown'
+        const existing = typeMap.get(type) || { total: 0, completed: 0, totalVisits: 0 }
+        existing.total++
+        if (t.status === 'completed') existing.completed++
+        existing.totalVisits += (t.total_visits || 1)
+        typeMap.set(type, existing)
+      }
+
+      for (const [type, stats] of typeMap) {
+        treatmentOutcomes.push({
+          treatmentType: type,
+          totalCases: stats.total,
+          completedCases: stats.completed,
+          successRate: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+          avgVisits: stats.total > 0 ? Math.round(stats.totalVisits / stats.total * 10) / 10 : 0
+        })
+      }
+
+      console.log(`📊 [CLINICAL RAG] Found ${treatments.length} treatment records across ${typeMap.size} types`)
+    }
+
+    // 2. Query recent consultations with similar diagnosis
+    if (params.diagnosis) {
+      const { data: consultations } = await supabase
+        .schema('api')
+        .from('consultations')
+        .select('diagnosis, treatment_plan, prognosis, consultation_date, chief_complaint')
+        .eq('dentist_id', params.dentistId)
+        .eq('status', 'completed')
+        .ilike('diagnosis', `%${params.diagnosis}%`)
+        .order('consultation_date', { ascending: false })
+        .limit(10)
+
+      if (consultations) {
+        for (const c of consultations) {
+          // Parse JSON fields safely
+          let diagnosisText = c.diagnosis || ''
+          let treatmentPlanText = c.treatment_plan || ''
+
+          try { diagnosisText = typeof diagnosisText === 'string' && diagnosisText.startsWith('{') ? JSON.parse(diagnosisText).summary || diagnosisText : diagnosisText } catch {}
+          try { treatmentPlanText = typeof treatmentPlanText === 'string' && treatmentPlanText.startsWith('{') ? JSON.parse(treatmentPlanText).summary || treatmentPlanText : treatmentPlanText } catch {}
+
+          recentConsultations.push({
+            diagnosis: diagnosisText.substring(0, 200),
+            treatmentPlan: treatmentPlanText.substring(0, 200),
+            prognosis: c.prognosis || 'Not assessed',
+            date: c.consultation_date ? new Date(c.consultation_date).toLocaleDateString() : 'Unknown'
+          })
+        }
+
+        console.log(`📋 [CLINICAL RAG] Found ${consultations.length} relevant consultations`)
+      }
+    }
+
+    // 3. Build summary
+    let summary = ''
+    if (treatmentOutcomes.length > 0) {
+      const topOutcome = treatmentOutcomes[0]
+      summary += `Your clinic data: ${topOutcome.totalCases} cases of ${topOutcome.treatmentType} (${topOutcome.successRate}% completion rate, avg ${topOutcome.avgVisits} visits). `
+    }
+    if (recentConsultations.length > 0) {
+      summary += `${recentConsultations.length} recent consultations with similar diagnosis found.`
+    }
+    if (!summary) {
+      summary = 'No matching clinical data found in your practice records.'
+    }
+
+    console.log('✅ [CLINICAL RAG] Clinical context ready:', summary)
+
+    return { treatmentOutcomes, recentConsultations, summary }
+
+  } catch (error) {
+    console.error('❌ [CLINICAL RAG] Error querying clinical data:', error)
+    return { treatmentOutcomes: [], recentConsultations: [], summary: 'Unable to query clinical data.' }
+  }
 }

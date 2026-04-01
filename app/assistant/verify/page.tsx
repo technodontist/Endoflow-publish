@@ -4,14 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getPendingPatients } from "@/lib/db/queries"
+import { getUserContext } from "@/lib/actions/user-context"
 import { ArrowLeft, User, UserCheck, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ResizablePatientLayout } from "@/components/resizable-patient-layout"
 
 export default async function VerifyPage() {
+  const ctx = await getUserContext()
   // Only get pending patients from profiles table - this is our unified approach
-  const pendingPatients = await getPendingPatients()
+  const pendingPatients = await getPendingPatients(ctx?.clinicId)
   
   console.log(`✅ [VERIFY PAGE] Found ${pendingPatients.length} pending patient(s) for verification`)
   

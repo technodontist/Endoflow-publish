@@ -84,6 +84,8 @@ export async function manualPatientRegistration(formData: ManualPatientRegistrat
     console.log('✅ [MANUAL REGISTRATION] Auth user created:', userId)
 
     // 2. Create profile entry with ACTIVE status (critical for assistant-created patients)
+    // Assign to default clinic for multi-tenant isolation
+    const DEFAULT_CLINIC_ID = '00000000-0000-0000-0000-000000000001'
     console.log('🏥 [MANUAL REGISTRATION] Creating profile with ACTIVE status...')
     const { error: profileError } = await serviceSupabase
       .from('profiles')
@@ -91,7 +93,8 @@ export async function manualPatientRegistration(formData: ManualPatientRegistrat
         id: userId,
         role: 'patient',
         status: 'active', // CRITICAL: Directly active since created by staff
-        full_name: `${validatedData.firstName} ${validatedData.lastName}`
+        full_name: `${validatedData.firstName} ${validatedData.lastName}`,
+        clinic_id: DEFAULT_CLINIC_ID
       })
 
     if (profileError) {

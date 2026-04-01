@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client"
 import { format } from "date-fns"
 import { useCallback, useTransition } from "react"
 import { createNewPatientAction } from "@/lib/actions/dentist"
+import { getActivePatientsAction } from "@/lib/actions/appointments"
 
 export type QueuePatient = {
   id: string
@@ -46,16 +47,12 @@ export function PatientQueueList({ selectedPatientId, onPatientSelect }: Patient
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .schema("api")
-        .from("patients")
-        .select("id, first_name, last_name, email, phone, date_of_birth, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200)
+      // Use server action for clinic-scoped patient list
+      const result = await getActivePatientsAction()
+      const data = result.success ? result.data : null
 
-      if (error) {
-        console.error("Failed loading patients:", error)
+      if (!data) {
+        console.error("Failed loading patients")
         setPatients([])
         return
       }
@@ -114,13 +111,13 @@ export function PatientQueueList({ selectedPatientId, onPatientSelect }: Patient
   const getStatusBadge = (status: QueuePatient["status"]) => {
     switch (status) {
       case "active":
-        return "bg-green-100 text-green-800 border-green-200"
+        return "bg-green-500/15 text-green-400 border-green-300"
       case "inactive":
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-muted text-foreground border-border"
       case "new":
-        return "bg-blue-100 text-blue-800 border-blue-200"
+        return "bg-blue-500/15 text-blue-400 border-blue-300"
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-muted text-foreground border-border"
     }
   }
 
@@ -275,7 +272,7 @@ export function PatientQueueList({ selectedPatientId, onPatientSelect }: Patient
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="px-3 py-2 border border-border rounded-lg text-sm"
               >
                 <option value="all">All Patients</option>
                 <option value="active">Active</option>

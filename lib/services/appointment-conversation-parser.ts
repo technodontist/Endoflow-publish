@@ -26,7 +26,7 @@ export async function analyzeAppointmentConversation(
   console.log('🤖 [GEMINI AI] Starting appointment conversation analysis...')
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const prompt = `You are an AI assistant helping to schedule dental appointments. Analyze the following voice transcript and extract appointment scheduling information.
 

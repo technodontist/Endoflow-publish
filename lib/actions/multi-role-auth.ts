@@ -54,13 +54,18 @@ export async function multiRoleSignup(formData: MultiRoleSignupData) {
     // 2. Create profile entry (central auth table)
     const profileStatus = formData.role === 'patient' ? 'pending' : 'pending' // All roles need approval
 
+    // Determine clinic_id: for now, all new signups go to the default clinic
+    // TODO: Support clinic selection during registration for multi-clinic deployments
+    const DEFAULT_CLINIC_ID = '00000000-0000-0000-0000-000000000001'
+
     const { error: profileError } = await serviceSupabase
       .from('profiles')
       .insert({
         id: authData.user.id,
         role: formData.role,
         status: profileStatus,
-        full_name: `${formData.firstName} ${formData.lastName}`
+        full_name: `${formData.firstName} ${formData.lastName}`,
+        clinic_id: DEFAULT_CLINIC_ID
       })
 
     if (profileError && profileError.code !== '23505') { // Ignore unique constraint violations

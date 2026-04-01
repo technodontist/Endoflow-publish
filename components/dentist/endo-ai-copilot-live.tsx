@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, Sparkles, BookOpen, CheckCircle2, AlertCircle, Clock, TrendingUp } from 'lucide-react'
 import { getAITreatmentSuggestionAction, AISuggestion } from '@/lib/actions/ai-treatment-suggestions'
 import { cn } from '@/lib/utils'
+import type { ConversationContext } from '@/lib/services/medical-conversation-parser'
 
 interface EndoAICopilotLiveProps {
   diagnosis: string
@@ -16,6 +17,7 @@ interface EndoAICopilotLiveProps {
     medicalHistory?: string
     previousTreatments?: string
   }
+  conversationContext?: ConversationContext
   onAcceptSuggestion?: (treatment: string) => void
 }
 
@@ -23,6 +25,7 @@ export default function EndoAICopilotLive({
   diagnosis,
   toothNumber,
   patientContext,
+  conversationContext,
   onAcceptSuggestion
 }: EndoAICopilotLiveProps) {
   const [suggestion, setSuggestion] = useState<AISuggestion | null>(null)
@@ -50,7 +53,8 @@ export default function EndoAICopilotLive({
       const result = await getAITreatmentSuggestionAction({
         diagnosis,
         toothNumber,
-        patientContext
+        patientContext,
+        conversationContext
       })
 
       if (result.success && result.data) {
@@ -77,11 +81,11 @@ export default function EndoAICopilotLive({
   // Empty state
   if (!diagnosis || !toothNumber) {
     return (
-      <Card className="border-dashed border-2 border-gray-300">
+      <Card className="border-dashed border-2 border-border">
         <CardContent className="flex flex-col items-center justify-center py-8 text-center">
-          <Sparkles className="h-12 w-12 text-gray-400 mb-3" />
-          <h3 className="font-semibold text-gray-700 mb-2">Endo-AI Co-Pilot Ready</h3>
-          <p className="text-sm text-gray-500 max-w-xs">
+          <Sparkles className="h-12 w-12 text-muted-foreground/70 mb-3" />
+          <h3 className="font-semibold text-foreground mb-2">Endo-AI Co-Pilot Ready</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
             Select a diagnosis to receive AI-powered treatment recommendations based on latest research
           </p>
         </CardContent>
@@ -94,15 +98,15 @@ export default function EndoAICopilotLive({
     return (
       <Card className="border-teal-200 border-2">
         <CardHeader className="bg-gradient-to-r from-teal-50 to-blue-50">
-          <CardTitle className="flex items-center gap-2 text-teal-700">
+          <CardTitle className="flex items-center gap-2 text-teal-400">
             <Sparkles className="h-5 w-5 animate-pulse" />
             Endo-AI Co-Pilot
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 text-teal-600 animate-spin mb-4" />
-          <p className="text-sm text-gray-600 mb-2">Analyzing medical evidence...</p>
-          <p className="text-xs text-gray-500">Searching research papers and textbooks</p>
+          <Loader2 className="h-8 w-8 text-teal-400 animate-spin mb-4" />
+          <p className="text-sm text-muted-foreground mb-2">Analyzing medical evidence...</p>
+          <p className="text-xs text-muted-foreground">Searching research papers and textbooks</p>
         </CardContent>
       </Card>
     )
@@ -112,8 +116,8 @@ export default function EndoAICopilotLive({
   if (error) {
     return (
       <Card className="border-orange-200 border-2">
-        <CardHeader className="bg-orange-50">
-          <CardTitle className="flex items-center gap-2 text-orange-700">
+        <CardHeader className="bg-orange-500/10">
+          <CardTitle className="flex items-center gap-2 text-orange-400">
             <AlertCircle className="h-5 w-5" />
             Endo-AI Co-Pilot
           </CardTitle>
@@ -121,13 +125,13 @@ export default function EndoAICopilotLive({
         <CardContent className="py-6">
           <div className="flex flex-col items-center text-center">
             <AlertCircle className="h-8 w-8 text-orange-500 mb-3" />
-            <p className="text-sm text-gray-700 mb-4">{error}</p>
+            <p className="text-sm text-foreground mb-4">{error}</p>
             {error.includes('No relevant medical knowledge') && (
-              <div className="bg-blue-50 p-3 rounded-lg text-left w-full">
-                <p className="text-xs text-blue-700 mb-2">
+              <div className="bg-blue-500/10 p-3 rounded-lg text-left w-full">
+                <p className="text-xs text-blue-400 mb-2">
                   <strong>To enable AI suggestions:</strong>
                 </p>
-                <ol className="text-xs text-blue-600 space-y-1 list-decimal list-inside">
+                <ol className="text-xs text-blue-400 space-y-1 list-decimal list-inside">
                   <li>Upload medical textbooks and research papers</li>
                   <li>Ensure database migration is complete</li>
                   <li>Configure OpenAI API key</li>
@@ -154,7 +158,7 @@ export default function EndoAICopilotLive({
       <Card className="border-teal-300 border-2 shadow-lg">
         <CardHeader className="bg-gradient-to-r from-teal-50 to-blue-50 border-b">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-teal-700">
+            <CardTitle className="flex items-center gap-2 text-teal-400">
               <Sparkles className="h-5 w-5" />
               Endo-AI Co-Pilot
               {cached && (
@@ -179,29 +183,29 @@ export default function EndoAICopilotLive({
             </div>
           </div>
           {processingTime && !cached && (
-            <p className="text-xs text-gray-500 mt-1">Generated in {processingTime}ms</p>
+            <p className="text-xs text-muted-foreground mt-1">Generated in {processingTime}ms</p>
           )}
         </CardHeader>
 
         <CardContent className="pt-4 space-y-4">
           {/* Primary Treatment Recommendation */}
-          <div className="bg-teal-50 p-4 rounded-lg border border-teal-200">
+          <div className="bg-teal-500/10 p-4 rounded-lg border border-teal-200">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-teal-600 mt-0.5 flex-shrink-0" />
+              <CheckCircle2 className="h-5 w-5 text-teal-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <h4 className="font-semibold text-teal-900 mb-1">Recommended Treatment</h4>
-                <p className="text-sm text-gray-800 font-medium">{suggestion.treatment}</p>
+                <h4 className="font-semibold text-teal-400 mb-1">Recommended Treatment</h4>
+                <p className="text-sm text-foreground font-medium">{suggestion.treatment}</p>
               </div>
             </div>
           </div>
 
           {/* Evidence-Based Reasoning */}
           <div>
-            <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+            <h4 className="font-semibold text-foreground mb-2 flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
               Evidence-Based Reasoning
             </h4>
-            <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-lg border">
+            <p className="text-sm text-foreground leading-relaxed bg-muted p-3 rounded-lg border">
               {suggestion.reasoning}
             </p>
           </div>
@@ -209,15 +213,15 @@ export default function EndoAICopilotLive({
           {/* Research Sources */}
           {suggestion.sources && suggestion.sources.length > 0 && (
             <div>
-              <h4 className="font-semibold text-gray-700 mb-2">Research Sources</h4>
+              <h4 className="font-semibold text-foreground mb-2">Research Sources</h4>
               <div className="space-y-2">
                 {suggestion.sources.map((source, idx) => (
-                  <div key={idx} className="text-xs bg-white p-3 rounded border border-gray-200">
-                    <p className="font-medium text-gray-800">{source.title}</p>
-                    <p className="text-gray-600 mt-1">
+                  <div key={idx} className="text-xs bg-card p-3 rounded border border-border">
+                    <p className="font-medium text-foreground">{source.title}</p>
+                    <p className="text-muted-foreground mt-1">
                       {source.journal} • {source.year}
                       {source.doi && (
-                        <span className="ml-2 text-blue-600">DOI: {source.doi}</span>
+                        <span className="ml-2 text-blue-400">DOI: {source.doi}</span>
                       )}
                     </p>
                   </div>
@@ -229,12 +233,12 @@ export default function EndoAICopilotLive({
           {/* Alternative Treatments */}
           {suggestion.alternativeTreatments && suggestion.alternativeTreatments.length > 0 && (
             <div>
-              <h4 className="font-semibold text-gray-700 mb-2">Alternative Treatments</h4>
+              <h4 className="font-semibold text-foreground mb-2">Alternative Treatments</h4>
               <ul className="text-sm space-y-1">
                 {suggestion.alternativeTreatments.map((alt, idx) => (
                   <li key={idx} className="flex items-start gap-2">
-                    <span className="text-gray-400 mt-0.5">•</span>
-                    <span className="text-gray-700">{alt}</span>
+                    <span className="text-muted-foreground/70 mt-0.5">•</span>
+                    <span className="text-foreground">{alt}</span>
                   </li>
                 ))}
               </ul>
@@ -243,8 +247,8 @@ export default function EndoAICopilotLive({
 
           {/* Contraindications */}
           {suggestion.contraindications && suggestion.contraindications.length > 0 && (
-            <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
-              <h4 className="font-semibold text-orange-800 mb-2 flex items-center gap-2">
+            <div className="bg-orange-500/10 p-3 rounded-lg border border-orange-200">
+              <h4 className="font-semibold text-orange-400 mb-2 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4" />
                 Contraindications
               </h4>
@@ -252,7 +256,7 @@ export default function EndoAICopilotLive({
                 {suggestion.contraindications.map((contra, idx) => (
                   <li key={idx} className="flex items-start gap-2">
                     <span className="text-orange-400 mt-0.5">⚠</span>
-                    <span className="text-orange-700">{contra}</span>
+                    <span className="text-orange-400">{contra}</span>
                   </li>
                 ))}
               </ul>
@@ -278,7 +282,7 @@ export default function EndoAICopilotLive({
           </div>
 
           {/* Disclaimer */}
-          <div className="text-xs text-gray-500 italic border-t pt-3">
+          <div className="text-xs text-muted-foreground italic border-t pt-3">
             ⚕️ AI-generated suggestion based on medical literature. Always verify with clinical judgment and patient-specific factors.
           </div>
         </CardContent>

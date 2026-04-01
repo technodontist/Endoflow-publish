@@ -1068,7 +1068,7 @@ export function DentistAppointmentOrganizer({ dentistId, dentistName, onRefreshS
 
       {/* Follow-Up Assessment Form Dialog */}
       <Dialog open={showFollowUpForm} onOpenChange={setShowFollowUpForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Stethoscope className="w-5 h-5 text-amber-600" />
@@ -1091,7 +1091,7 @@ export function DentistAppointmentOrganizer({ dentistId, dentistName, onRefreshS
 
       {/* Contextual Appointment Form Dialog */}
       <Dialog open={showContextualForm} onOpenChange={setShowContextualForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-blue-600" />

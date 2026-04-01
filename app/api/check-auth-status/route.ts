@@ -47,14 +47,14 @@ export async function GET() {
         results.recommendations.push('MANUAL ACTION REQUIRED: Create auth users through Supabase Dashboard');
         results.recommendations.push('1. Go to Supabase Dashboard > Authentication > Users');
         results.recommendations.push('2. Click "Add user" > "Create a new user"');
-        results.recommendations.push('3. Email: dr.nisarg@endoflow.com, Password: endoflow123');
+        results.recommendations.push('3. Email: nisarg@endoflow.com, Password: endoflow123');
         results.recommendations.push('4. Email: dr.pranav@endoflow.com, Password: endoflow123');
         results.recommendations.push('5. Make sure "Auto Confirm User" is checked');
       } else {
         results.auth_users_accessible = true;
         results.recommendations.push(`Found ${authUsers?.users?.length || 0} auth users`);
 
-        const nisargAuth = authUsers?.users?.find(u => u.email === 'dr.nisarg@endoflow.com');
+        const nisargAuth = authUsers?.users?.find(u => u.email === 'nisarg@endoflow.com');
         const pranavAuth = authUsers?.users?.find(u => u.email === 'dr.pranav@endoflow.com');
 
         if (!nisargAuth) {

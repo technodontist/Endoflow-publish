@@ -273,10 +273,12 @@ export async function getDentistAvailableSlots(
   }
 }
 
-// Get patients for dentist booking
+// Get patients for dentist booking - scoped to clinic
 export async function getPatientsForBooking() {
   try {
-    const patients = await getActivePatients()
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
+    const patients = await getActivePatients(ctx?.clinicId)
     return { success: true, data: patients }
   } catch (error) {
     console.error('Error getting patients:', error)

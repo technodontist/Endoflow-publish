@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils"
 import { saveToothDiagnosis, type ToothDiagnosisData } from "@/lib/actions/tooth-diagnoses"
 import EndoAICopilotLive from "./endo-ai-copilot-live"
 import DiagnosisAICopilot from "./diagnosis-ai-copilot"
+import DiagnosticGapDialog from "./diagnostic-gap-dialog"
+import type { ConversationContext } from '@/lib/services/medical-conversation-parser'
 
 interface ToothDiagnosisDialogProps {
   isOpen: boolean
@@ -24,6 +26,9 @@ interface ToothDiagnosisDialogProps {
   consultationId?: string
   existingData?: ToothDiagnosisData
   onDataSaved?: () => void
+  conversationContext?: ConversationContext
+  rawTranscript?: string
+  patientAge?: number | null
 }
 
 export function ToothDiagnosisDialogV2({
@@ -33,7 +38,10 @@ export function ToothDiagnosisDialogV2({
   patientId,
   consultationId,
   existingData,
-  onDataSaved
+  onDataSaved,
+  conversationContext,
+  rawTranscript,
+  patientAge
 }: ToothDiagnosisDialogProps) {
   const [selectedDiagnoses, setSelectedDiagnoses] = useState<string[]>([])
   const [selectedTreatments, setSelectedTreatments] = useState<string[]>([])
@@ -48,7 +56,7 @@ export function ToothDiagnosisDialogV2({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [manualSymptoms, setManualSymptoms] = useState<string[]>([])
-  const [activeAITab, setActiveAITab] = useState<'diagnosis' | 'treatment'>('diagnosis')
+  const [activeAITab, setActiveAITab] = useState<'unified' | 'diagnosis' | 'treatment'>('unified')
 
   // Helper function to normalize and match diagnosis names
   const normalizeDiagnosisName = (diagnosis: string): string | null => {
@@ -161,6 +169,36 @@ export function ToothDiagnosisDialogV2({
     }
     setError(null)
   }, [isOpen, existingData, toothNumber])
+
+  // Session 13: Voice-driven accept/reject/close
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleAccept = () => {
+      console.log('✅ [VOICE] Accepting diagnosis via voice command')
+      handleSave()
+    }
+    const handleReject = () => {
+      console.log('❌ [VOICE] Rejecting diagnosis via voice command')
+      setSelectedDiagnoses([])
+      setSelectedTreatments([])
+      setStatus('healthy')
+    }
+    const handleClose = () => {
+      console.log('🔇 [VOICE] Closing dialog via voice command')
+      onClose()
+    }
+
+    window.addEventListener('endoflow:accept_diagnosis', handleAccept)
+    window.addEventListener('endoflow:reject_diagnosis', handleReject)
+    window.addEventListener('endoflow:close_tooth_dialog', handleClose)
+
+    return () => {
+      window.removeEventListener('endoflow:accept_diagnosis', handleAccept)
+      window.removeEventListener('endoflow:reject_diagnosis', handleReject)
+      window.removeEventListener('endoflow:close_tooth_dialog', handleClose)
+    }
+  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const predefinedDiagnoses = {
     "Caries & Cavities": [
@@ -472,9 +510,9 @@ export function ToothDiagnosisDialogV2({
             "overflow-hidden flex flex-col p-0",
             "border bg-background shadow-lg sm:rounded-lg"
           )}>
-        <div className="flex-shrink-0 px-6 pt-6 pb-4 bg-gradient-to-r from-blue-50 to-teal-50 border-b">
+        <div className="flex-shrink-0 px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 bg-gradient-to-r from-blue-50 to-teal-50 border-b">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-2xl font-bold">
+          <DialogTitle className="flex items-center gap-2 text-lg md:text-2xl font-bold">
             Clinical Record for Tooth #{toothNumber}
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           </DialogTitle>
@@ -496,7 +534,7 @@ export function ToothDiagnosisDialogV2({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Search className="h-5 w-5 text-blue-600" />
+                <Search className="h-5 w-5 text-blue-400" />
                 Diagnosis & Status
               </CardTitle>
             </CardHeader>
@@ -505,12 +543,12 @@ export function ToothDiagnosisDialogV2({
               {existingData && (existingData as any).isVoiceExtracted && !existingData.id && (
                 <div className="bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-lg p-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-teal-600" />
-                    <span className="text-sm font-semibold text-teal-700">
+                    <Sparkles className="h-4 w-4 text-teal-400" />
+                    <span className="text-sm font-semibold text-teal-400">
                       🎤 Auto-populated from Voice Recognition
                     </span>
                   </div>
-                  <p className="text-xs text-teal-600 mt-1">
+                  <p className="text-xs text-teal-400 mt-1">
                     Diagnosis extracted from your voice recording. Review and modify as needed.
                   </p>
                 </div>
@@ -552,12 +590,12 @@ export function ToothDiagnosisDialogV2({
                     {selectedDiagnoses.map((diagnosis) => (
                       <div
                         key={diagnosis}
-                        className="bg-blue-100 text-blue-800 px-3 py-2 rounded text-sm flex items-center gap-2"
+                        className="bg-blue-500/15 text-blue-400 px-3 py-2 rounded text-sm flex items-center gap-2"
                       >
                         {diagnosis}
                         <button
                           onClick={() => handleDiagnosisToggle(diagnosis)}
-                          className="ml-1 text-blue-600 hover:text-blue-800"
+                          className="ml-1 text-blue-400 hover:text-blue-400"
                         >
                           ×
                         </button>
@@ -571,7 +609,7 @@ export function ToothDiagnosisDialogV2({
               <div className="max-h-64 overflow-y-auto space-y-4">
                 {Object.entries(filteredDiagnoses).map(([category, diagnoses]) => (
                   <div key={category} className="border rounded-lg p-4">
-                    <h4 className="font-medium text-sm text-blue-600 mb-3">{category}</h4>
+                    <h4 className="font-medium text-sm text-blue-400 mb-3">{category}</h4>
                     <div className="grid grid-cols-1 gap-3">
                       {diagnoses.map((diagnosis) => (
                         <div key={diagnosis} className="flex items-center space-x-3">
@@ -596,18 +634,27 @@ export function ToothDiagnosisDialogV2({
           <Card className="lg:row-span-2">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-teal-600" />
+                <Sparkles className="h-5 w-5 text-teal-400" />
                 Endo AI Co-pilot
               </CardTitle>
               {/* Tab Switcher */}
               <div className="flex gap-2 mt-3">
+                <Button
+                  variant={activeAITab === 'unified' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveAITab('unified')}
+                  className="flex-1"
+                >
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Unified AI
+                </Button>
                 <Button
                   variant={activeAITab === 'diagnosis' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setActiveAITab('diagnosis')}
                   className="flex-1"
                 >
-                  🔍 Diagnosis Assistant
+                  Diagnosis
                 </Button>
                 <Button
                   variant={activeAITab === 'treatment' ? 'default' : 'outline'}
@@ -615,18 +662,41 @@ export function ToothDiagnosisDialogV2({
                   onClick={() => setActiveAITab('treatment')}
                   className="flex-1"
                 >
-                  💊 Treatment Assistant
+                  Treatment
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
+              {/* Unified AI Tab Content */}
+              {activeAITab === 'unified' && (
+                <DiagnosticGapDialog
+                  conversationContext={conversationContext || {}}
+                  toothNumber={toothNumber}
+                  patientId={patientId}
+                  consultationId={consultationId}
+                  rawTranscript={rawTranscript}
+                  patientAge={patientAge}
+                  onDiagnosisAccepted={(diagnosis) => {
+                    const normalizedDiagnosis = normalizeDiagnosisName(diagnosis)
+                    if (normalizedDiagnosis && !selectedDiagnoses.includes(normalizedDiagnosis)) {
+                      handleDiagnosisToggle(normalizedDiagnosis)
+                    }
+                  }}
+                  onTreatmentAccepted={(treatment) => {
+                    if (!selectedTreatments.includes(treatment)) {
+                      setSelectedTreatments(prev => [...prev, treatment])
+                    }
+                  }}
+                />
+              )}
+
               {/* Diagnosis Tab Content */}
               {activeAITab === 'diagnosis' && (
                 <div className="space-y-4">
                   {/* Quick Symptom Entry - Always visible in Diagnosis tab */}
                   <div className="space-y-3">
                     <Label className="text-sm font-medium flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-blue-600" />
+                      <Sparkles className="h-4 w-4 text-blue-400" />
                       Quick Symptom Entry
                     </Label>
                     <div className="flex flex-wrap gap-2">
@@ -650,7 +720,7 @@ export function ToothDiagnosisDialogV2({
                       ))}
                     </div>
                     {(manualSymptoms.length > 0 || (existingData?.symptoms && existingData.symptoms.length > 0)) && (
-                      <p className="text-xs text-blue-600 flex items-center gap-1">
+                      <p className="text-xs text-blue-400 flex items-center gap-1">
                         <Sparkles className="h-3 w-3" />
                         AI will suggest diagnosis based on symptoms
                       </p>
@@ -674,8 +744,10 @@ export function ToothDiagnosisDialogV2({
                         clinicalFindings={existingData?.clinicalFindings}
                         toothNumber={toothNumber}
                         patientContext={{
-                          age: 35
+                          age: patientAge ?? 35,
+                          medicalHistory: conversationContext?.medicalHistory?.medical_conditions?.join(', ')
                         }}
+                        conversationContext={conversationContext}
                         onAcceptSuggestion={(diagnosis) => {
                           const normalizedDiagnosis = normalizeDiagnosisName(diagnosis)
                           if (normalizedDiagnosis && !selectedDiagnoses.includes(normalizedDiagnosis)) {
@@ -685,11 +757,11 @@ export function ToothDiagnosisDialogV2({
                       />
                     </div>
                   ) : (
-                    <div className="h-48 flex items-center justify-center p-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                    <div className="h-48 flex items-center justify-center p-6 bg-muted border-2 border-dashed border-border rounded-lg text-center">
                       <div>
-                        <Sparkles className="h-10 w-10 text-gray-400 mx-auto mb-2" />
-                        <p className="text-gray-600 font-medium text-sm">Select symptoms above</p>
-                        <p className="text-xs text-gray-500 mt-1">AI diagnosis suggestions will appear here</p>
+                        <Sparkles className="h-10 w-10 text-muted-foreground/70 mx-auto mb-2" />
+                        <p className="text-muted-foreground font-medium text-sm">Select symptoms above</p>
+                        <p className="text-xs text-muted-foreground mt-1">AI diagnosis suggestions will appear here</p>
                       </div>
                     </div>
                   )}
@@ -701,16 +773,16 @@ export function ToothDiagnosisDialogV2({
                 <div>
                   {selectedDiagnoses.length > 0 ? (
                     <div className="bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-xl shadow-lg p-1">
-                      <div className="bg-white/80 backdrop-blur rounded-lg p-4">
+                      <div className="bg-card/80 backdrop-blur rounded-lg p-4">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="flex items-center justify-center w-10 h-10 bg-teal-500 rounded-full">
+                          <div className="flex items-center justify-center w-10 h-10 bg-teal-500/100 rounded-full">
                             <Sparkles className="h-6 w-6 text-white" />
                           </div>
                           <div>
-                            <h3 className="text-xl font-bold text-teal-700">AI Treatment Suggestions</h3>
+                            <h3 className="text-xl font-bold text-teal-400">AI Treatment Suggestions</h3>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs bg-teal-100 text-teal-600 px-2 py-1 rounded-full font-semibold">POWERED BY GEMINI</span>
-                              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-medium">Diagnosis: {selectedDiagnoses[0]}</span>
+                              <span className="text-xs bg-teal-500/15 text-teal-400 px-2 py-1 rounded-full font-semibold">AI-POWERED</span>
+                              <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-1 rounded-full font-medium">Diagnosis: {selectedDiagnoses[0]}</span>
                             </div>
                           </div>
                         </div>
@@ -719,17 +791,19 @@ export function ToothDiagnosisDialogV2({
                           toothNumber={toothNumber}
                           onAcceptSuggestion={handleAcceptAISuggestion}
                           patientContext={{
-                            age: 35
+                            age: patientAge ?? 35,
+                            medicalHistory: conversationContext?.medicalHistory?.medical_conditions?.join(', ')
                           }}
+                          conversationContext={conversationContext}
                         />
                       </div>
                     </div>
                   ) : (
-                    <div className="h-full flex items-center justify-center p-8 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                    <div className="h-full flex items-center justify-center p-8 bg-muted border-2 border-dashed border-border rounded-lg text-center">
                       <div>
-                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-600 font-medium">Select a diagnosis first</p>
-                        <p className="text-sm text-gray-500 mt-1">Choose a diagnosis from the left panel to get AI treatment suggestions</p>
+                        <AlertCircle className="h-12 w-12 text-muted-foreground/70 mx-auto mb-3" />
+                        <p className="text-muted-foreground font-medium">Select a diagnosis first</p>
+                        <p className="text-sm text-muted-foreground mt-1">Choose a diagnosis from the left panel to get AI treatment suggestions</p>
                       </div>
                     </div>
                   )}
@@ -742,7 +816,7 @@ export function ToothDiagnosisDialogV2({
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Settings className="h-5 w-5 text-green-600" />
+                <Settings className="h-5 w-5 text-green-400" />
                 Treatment Plan
               </CardTitle>
             </CardHeader>
@@ -783,12 +857,12 @@ export function ToothDiagnosisDialogV2({
                     {selectedTreatments.map((treatment) => (
                       <div
                         key={treatment}
-                        className="bg-green-100 text-green-800 px-3 py-2 rounded text-sm flex items-center gap-2"
+                        className="bg-green-500/15 text-green-400 px-3 py-2 rounded text-sm flex items-center gap-2"
                       >
                         {treatment}
                         <button
                           onClick={() => handleTreatmentToggle(treatment)}
-                          className="ml-1 text-green-600 hover:text-green-800"
+                          className="ml-1 text-green-400 hover:text-green-400"
                         >
                           ×
                         </button>
@@ -802,7 +876,7 @@ export function ToothDiagnosisDialogV2({
               <div className="max-h-64 overflow-y-auto space-y-4">
                 {Object.entries(filteredTreatments).map(([category, treatments]) => (
                   <div key={category} className="border rounded-lg p-4">
-                    <h4 className="font-medium text-sm text-green-600 mb-3">{category}</h4>
+                    <h4 className="font-medium text-sm text-green-400 mb-3">{category}</h4>
                     <div className="grid grid-cols-1 gap-3">
                       {treatments.map((treatment) => (
                         <div key={treatment} className="flex items-center space-x-3">
@@ -881,7 +955,7 @@ export function ToothDiagnosisDialogV2({
         </div>
         </div>
 
-        <div className="flex-shrink-0 px-6 py-4 border-t bg-white">
+        <div className="flex-shrink-0 px-6 py-4 border-t bg-card">
           <div className="flex justify-end gap-4">
             <Button variant="outline" onClick={onClose} disabled={loading}>
               Cancel

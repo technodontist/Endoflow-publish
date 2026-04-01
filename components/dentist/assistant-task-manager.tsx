@@ -165,35 +165,40 @@ export function AssistantTaskManager() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Assistant Tasks</h1>
-          <p className="text-gray-600">Manage and assign tasks to your assistants</p>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Assistant Tasks</h1>
+          <p className="text-sm md:text-base text-muted-foreground hidden md:block">Manage and assign tasks to your assistants</p>
         </div>
         <div className="flex gap-2">
           <Button
             onClick={() => setAiSchedulerOpen(!aiSchedulerOpen)}
             variant={aiSchedulerOpen ? "default" : "outline"}
-            className={aiSchedulerOpen ? "bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white" : "border-teal-600 text-teal-600 hover:bg-teal-50"}
+            size="sm"
+            className={`h-8 md:h-9 text-xs md:text-sm ${aiSchedulerOpen ? "bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white" : "border-teal-600 text-teal-600 hover:bg-teal-50"}`}
           >
             {aiSchedulerOpen ? (
               <>
-                <X className="w-4 h-4 mr-2" />
-                Close AI Scheduler
+                <X className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Close AI Scheduler</span>
+                <span className="md:hidden ml-1">Close</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4 mr-2" />
-                AI Task Scheduler
+                <Sparkles className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">AI Task Scheduler</span>
+                <span className="md:hidden ml-1">AI</span>
               </>
             )}
           </Button>
           <Button
             onClick={() => setCreateTaskOpen(true)}
-            className="bg-teal-600 hover:bg-teal-700 text-white"
+            size="sm"
+            className="bg-teal-600 hover:bg-teal-700 text-white h-8 md:h-9 text-xs md:text-sm"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Task
+            <Plus className="w-4 h-4 md:mr-2" />
+            <span className="hidden md:inline">Create Task</span>
+            <span className="md:hidden ml-1">New</span>
           </Button>
         </div>
       </div>
@@ -202,43 +207,43 @@ export function AssistantTaskManager() {
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            <div className="text-sm text-gray-500">Total Tasks</div>
+            <div className="text-2xl font-bold text-foreground">{stats.total}</div>
+            <div className="text-sm text-muted-foreground">Total Tasks</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold text-blue-600">{stats.todo}</div>
-            <div className="text-sm text-gray-500">To Do</div>
+            <div className="text-sm text-muted-foreground">To Do</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold text-yellow-600">{stats.inProgress}</div>
-            <div className="text-sm text-gray-500">In Progress</div>
+            <div className="text-sm text-muted-foreground">In Progress</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-            <div className="text-sm text-gray-500">Completed</div>
+            <div className="text-sm text-muted-foreground">Completed</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold text-red-600">{stats.urgent}</div>
-            <div className="text-sm text-gray-500">Urgent</div>
+            <div className="text-sm text-muted-foreground">Urgent</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold text-orange-600">{stats.overdue}</div>
-            <div className="text-sm text-gray-500">Overdue</div>
+            <div className="text-sm text-muted-foreground">Overdue</div>
           </CardContent>
         </Card>
       </div>
@@ -302,18 +307,18 @@ export function AssistantTaskManager() {
             </CardHeader>
 
             <CardContent className="pt-0">
-              <p className="text-sm text-gray-600 mb-4 line-clamp-3">{task.description}</p>
+              <p className="text-sm text-muted-foreground mb-4 line-clamp-3">{task.description}</p>
 
               <div className="space-y-2">
                 {task.patient_name && (
-                  <div className="flex items-center text-sm text-gray-500">
+                  <div className="flex items-center text-sm text-muted-foreground">
                     <Users className="w-4 h-4 mr-2" />
                     <span>Patient: {task.patient_name}</span>
                   </div>
                 )}
 
                 {task.assigned_to_profile && (
-                  <div className="flex items-center text-sm text-gray-500">
+                  <div className="flex items-center text-sm text-muted-foreground">
                     <Users className="w-4 h-4 mr-2" />
                     <span>Assigned: {task.assigned_to_profile.full_name}</span>
                   </div>
@@ -327,7 +332,7 @@ export function AssistantTaskManager() {
                 )}
 
                 {task.due_date && (
-                  <div className="flex items-center text-sm text-gray-500">
+                  <div className="flex items-center text-sm text-muted-foreground">
                     <Clock className="w-4 h-4 mr-2" />
                     <span>Due: {format(new Date(task.due_date), 'MMM dd, yyyy')}</span>
                   </div>
@@ -345,7 +350,7 @@ export function AssistantTaskManager() {
       {filteredTasks.length === 0 && (
         <Card>
           <CardContent className="text-center py-8">
-            <p className="text-gray-500">No tasks found matching the selected filter.</p>
+            <p className="text-muted-foreground">No tasks found matching the selected filter.</p>
             <Button
               onClick={() => setCreateTaskOpen(true)}
               className="mt-4 bg-teal-600 hover:bg-teal-700 text-white"

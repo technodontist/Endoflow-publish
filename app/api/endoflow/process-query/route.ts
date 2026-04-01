@@ -13,7 +13,7 @@ import { processEndoFlowQuery } from '@/lib/actions/endoflow-master'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { query, conversationId } = body
+    const { query, conversationId, language, isVoiceInput } = body
 
     if (!query || typeof query !== 'string') {
       return NextResponse.json(
@@ -26,13 +26,21 @@ export async function POST(request: NextRequest) {
 
     const result = await processEndoFlowQuery({
       query,
-      conversationId: conversationId || null
+      conversationId: conversationId || null,
+      language: language || 'en-US',
+      isVoiceInput: isVoiceInput ?? true,
     })
 
     if (!result.success) {
+      // Session 15: Include agentResponses even on failure — may contain candidate data
       return NextResponse.json(
-        { success: false, error: result.error || 'Failed to process query' },
-        { status: 500 }
+        {
+          success: false,
+          error: result.error || 'Failed to process query',
+          agentResponses: (result as any).agentResponses,
+          actionCommand: (result as any).actionCommand,
+        },
+        { status: 200 } // 200 not 500 — this is a "no result" not a server error
       )
     }
 
@@ -42,7 +50,9 @@ export async function POST(request: NextRequest) {
       conversationId: result.conversationId,
       intent: result.intent,
       suggestions: result.suggestions,
-      agentResponses: result.agentResponses
+      agentResponses: result.agentResponses,
+      actionCommand: result.actionCommand,
+      error: result.error,
     })
 
   } catch (error) {

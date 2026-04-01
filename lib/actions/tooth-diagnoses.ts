@@ -34,6 +34,17 @@ export interface ToothDiagnosisData {
   notes?: string
   createdAt?: string
   updatedAt?: string
+  // Dual-diagnosis fields (Session 7)
+  endodonticDiagnosis?: string
+  endodonticConfidence?: number
+  restorativeDiagnosis?: string
+  restorativeConfidence?: number
+  cariesSurfaces?: string // e.g., 'MOD'
+  cariesDepth?: string
+  restorationType?: string
+  restorationMaterial?: string
+  surfaceConditions?: Record<string, { condition: string; color: string }> | null
+  combinedTreatmentSequence?: string
 }
 
 export interface ToothChartData {
@@ -108,7 +119,18 @@ export async function getPatientLatestToothDiagnoses(
         examinationDate: diagnosis.examination_date,
         notes: diagnosis.notes,
         createdAt: diagnosis.created_at,
-        updatedAt: diagnosis.updated_at
+        updatedAt: diagnosis.updated_at,
+        // Dual-diagnosis fields (Session 7)
+        endodonticDiagnosis: diagnosis.endodontic_diagnosis,
+        endodonticConfidence: diagnosis.endodontic_confidence,
+        restorativeDiagnosis: diagnosis.restorative_diagnosis,
+        restorativeConfidence: diagnosis.restorative_confidence,
+        cariesSurfaces: diagnosis.caries_surfaces,
+        cariesDepth: diagnosis.caries_depth,
+        restorationType: diagnosis.restoration_type,
+        restorationMaterial: diagnosis.restoration_material,
+        surfaceConditions: diagnosis.surface_conditions,
+        combinedTreatmentSequence: diagnosis.combined_treatment_sequence,
       }
     })
 
@@ -259,7 +281,18 @@ export async function saveToothDiagnosis(
       scheduled_date: toothDiagnosisData.scheduledDate,
       follow_up_required: toothDiagnosisData.followUpRequired || false,
       examination_date: toothDiagnosisData.examinationDate || new Date().toISOString().split('T')[0],
-      notes: toothDiagnosisData.notes
+      notes: toothDiagnosisData.notes,
+      // Dual-diagnosis fields (Session 7)
+      endodontic_diagnosis: toothDiagnosisData.endodonticDiagnosis || null,
+      endodontic_confidence: toothDiagnosisData.endodonticConfidence || null,
+      restorative_diagnosis: toothDiagnosisData.restorativeDiagnosis || null,
+      restorative_confidence: toothDiagnosisData.restorativeConfidence || null,
+      caries_surfaces: toothDiagnosisData.cariesSurfaces || null,
+      caries_depth: toothDiagnosisData.cariesDepth || null,
+      restoration_type: toothDiagnosisData.restorationType || null,
+      restoration_material: toothDiagnosisData.restorationMaterial || null,
+      surface_conditions: toothDiagnosisData.surfaceConditions || null,
+      combined_treatment_sequence: toothDiagnosisData.combinedTreatmentSequence || null,
     }
 
     let result

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   BarChart,
   Bar,
@@ -31,7 +32,8 @@ import {
   Bot,
   FileText,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  History
 } from "lucide-react"
 import {
   getAllAnalyticsDataAction,
@@ -78,21 +80,21 @@ function StatisticCard({ title, value, growth, icon, prefix = '', suffix = '' }:
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-gray-600">{title}</p>
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
             <div className="flex items-baseline space-x-1">
-              <span className="text-3xl font-bold text-gray-900">
+              <span className="text-3xl font-bold text-foreground">
                 {prefix}{typeof value === 'number' ? value.toLocaleString() : value}{suffix}
               </span>
             </div>
             <div className={`flex items-center text-sm ${
-              isPositive ? 'text-green-600' : 'text-red-600'
+              isPositive ? 'text-green-400' : 'text-red-400'
             }`}>
               <GrowthIcon className="w-4 h-4 mr-1" />
               <span>{Math.abs(growth).toFixed(1)}% from last month</span>
             </div>
           </div>
-          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-teal-100">
-            <div className="text-teal-600">
+          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-teal-500/15">
+            <div className="text-teal-400">
               {icon}
             </div>
           </div>
@@ -123,12 +125,12 @@ function ClinicalResearchChat({ onSendMessage, messages, isLoading }: ClinicalRe
     <Card className="h-[600px] flex flex-col">
       <CardHeader className="flex-shrink-0 border-b">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center">
-            <Bot className="w-5 h-5 text-teal-600" />
+          <div className="w-10 h-10 rounded-full bg-teal-500/15 flex items-center justify-center">
+            <Bot className="w-5 h-5 text-teal-400" />
           </div>
           <div>
             <CardTitle className="text-lg">Clinical Research Assistant</CardTitle>
-            <p className="text-sm text-gray-500">AI-powered clinical insights</p>
+            <p className="text-sm text-muted-foreground">AI-powered clinical insights</p>
           </div>
         </div>
       </CardHeader>
@@ -139,9 +141,9 @@ function ClinicalResearchChat({ onSendMessage, messages, isLoading }: ClinicalRe
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <Bot className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 mb-1">Hello! I'm your Clinical Research Assistant.</p>
-                <p className="text-sm text-gray-400">
+                <Bot className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-muted-foreground mb-1">Hello! I'm your Clinical Research Assistant.</p>
+                <p className="text-sm text-muted-foreground/70">
                   I can help you analyze your clinical data, provide insights on treatment outcomes,
                   and answer questions about evidence-based practices. What would you like to know?
                 </p>
@@ -154,11 +156,11 @@ function ClinicalResearchChat({ onSendMessage, messages, isLoading }: ClinicalRe
               <div className={`max-w-[80%] rounded-lg p-3 ${
                 message.role === 'user'
                   ? 'bg-teal-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
+                  : 'bg-muted text-foreground'
               }`}>
                 <p className="text-sm">{message.content}</p>
                 <p className={`text-xs mt-1 ${
-                  message.role === 'user' ? 'text-teal-100' : 'text-gray-500'
+                  message.role === 'user' ? 'text-teal-100' : 'text-muted-foreground'
                 }`}>
                   {message.timestamp}
                 </p>
@@ -168,10 +170,10 @@ function ClinicalResearchChat({ onSendMessage, messages, isLoading }: ClinicalRe
 
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-gray-100 rounded-lg p-3">
+              <div className="bg-muted rounded-lg p-3">
                 <div className="flex items-center space-x-2">
-                  <div className="animate-spin w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full"></div>
-                  <span className="text-sm text-gray-600">Analyzing clinical data...</span>
+                  <div className="animate-spin w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full"></div>
+                  <span className="text-sm text-muted-foreground">Analyzing clinical data...</span>
                 </div>
               </div>
             </div>
@@ -203,7 +205,11 @@ function ClinicalResearchChat({ onSendMessage, messages, isLoading }: ClinicalRe
   );
 }
 
-export function ClinicAnalysis() {
+interface ClinicAnalysisProps {
+  isMobileView?: boolean
+}
+
+export function ClinicAnalysis({ isMobileView = false }: ClinicAnalysisProps) {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [patientRecords, setPatientRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -519,6 +525,8 @@ export function ClinicAnalysis() {
   }, [memoizedAnalyticsData, patientRecords, currentSessionId, loadChatSessions]);
 
   // Load analytics data and chat sessions on mount
+  // Initial data load - only runs once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadAnalyticsData();
     loadChatSessions();
@@ -529,28 +537,28 @@ export function ClinicAnalysis() {
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(refreshInterval);
-  }, [loadAnalyticsData, loadChatSessions]);
+  }, []); // Empty deps - load once on mount, not on every callback recreation
 
   if (isLoading) {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="flex items-center justify-between">
           <div className="space-y-2">
-            <div className="h-8 bg-gray-200 rounded w-48"></div>
-            <div className="h-4 bg-gray-200 rounded w-64"></div>
+            <div className="h-8 bg-muted rounded w-48"></div>
+            <div className="h-4 bg-muted rounded w-64"></div>
           </div>
-          <div className="h-9 bg-gray-200 rounded w-32"></div>
+          <div className="h-9 bg-muted rounded w-32"></div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+            <div key={i} className="h-32 bg-muted rounded-lg"></div>
           ))}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-64 bg-gray-200 rounded-lg"></div>
-          <div className="h-64 bg-gray-200 rounded-lg"></div>
+          <div className="h-64 bg-muted rounded-lg"></div>
+          <div className="h-64 bg-muted rounded-lg"></div>
         </div>
       </div>
     );
@@ -560,34 +568,37 @@ export function ClinicAnalysis() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Clinic Analytics</h1>
-          <div className="flex items-center space-x-4">
-            <p className="text-gray-500">Comprehensive insights into your practice performance</p>
-            <div className="flex items-center text-sm text-gray-400">
-              <Activity className="w-4 h-4 mr-1" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Clinic Analytics</h1>
+          <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+            <p className="text-sm md:text-base text-muted-foreground hidden md:block">Comprehensive insights into your practice performance</p>
+            <div className="flex items-center text-xs md:text-sm text-muted-foreground/70">
+              <Activity className="w-3.5 h-3.5 mr-1 flex-shrink-0" />
               <span>Last updated: {lastRefreshTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="outline"
             size="sm"
             onClick={loadAnalyticsData}
             disabled={isLoading}
+            className="h-8 md:h-9 text-xs md:text-sm"
           >
-            <Activity className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh Data
+            <Activity className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden md:inline ml-2">Refresh Data</span>
+            <span className="md:hidden ml-1">Refresh</span>
           </Button>
           <Button
             size="sm"
-            className="bg-teal-600 hover:bg-teal-700"
+            className="bg-teal-600 hover:bg-teal-700 h-8 md:h-9 text-xs md:text-sm"
             onClick={loadAnalyticsData}
           >
-            <FileText className="w-4 h-4 mr-2" />
-            Generate Report
+            <FileText className="w-4 h-4" />
+            <span className="hidden md:inline ml-2">Generate Report</span>
+            <span className="md:hidden ml-1">Report</span>
           </Button>
         </div>
       </div>
@@ -630,17 +641,17 @@ export function ClinicAnalysis() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <div className="space-y-1">
               <CardTitle className="text-lg flex items-center">
-                <BarChart3 className="w-5 h-5 mr-2 text-teal-600" />
+                <BarChart3 className="w-5 h-5 mr-2 text-teal-400" />
                 Treatment Distribution
               </CardTitle>
-              <p className="text-sm text-gray-500">Most common procedures this month</p>
+              <p className="text-sm text-muted-foreground">Most common procedures this month</p>
             </div>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               {TreatmentChart}
             </div>
-            <div className="mt-4 text-center text-sm text-gray-500">
+            <div className="mt-4 text-center text-sm text-muted-foreground">
               {treatmentData.length > 0 && (
                 <span>
                   Root Canals: {treatmentData[0]?.percentage || 45}% |
@@ -657,17 +668,17 @@ export function ClinicAnalysis() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <div className="space-y-1">
               <CardTitle className="text-lg flex items-center">
-                <PieChartIcon className="w-5 h-5 mr-2 text-teal-600" />
+                <PieChartIcon className="w-5 h-5 mr-2 text-teal-400" />
                 Patient Demographics
               </CardTitle>
-              <p className="text-sm text-gray-500">Age distribution of patients</p>
+              <p className="text-sm text-muted-foreground">Age distribution of patients</p>
             </div>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               {DemographicsChart}
             </div>
-            <div className="mt-4 text-center text-sm text-gray-500">
+            <div className="mt-4 text-center text-sm text-muted-foreground">
               {demographicsData.length > 0 && (
                 <span>
                   18-30: {demographicsData.find(d => d.ageGroup === '18-30')?.percentage || 25}% |
@@ -683,30 +694,64 @@ export function ClinicAnalysis() {
       {/* Clinical Research Assistant with Chat History */}
       <div>
         <div className="mb-4">
-          <h2 className="text-xl font-semibold text-gray-900">Clinical Research Assistant</h2>
-          <p className="text-gray-500">Ask questions about your clinical data, treatment outcomes, and evidence-based practices</p>
+          <h2 className={`${isMobileView ? 'text-lg' : 'text-xl'} font-semibold text-foreground`}>Clinical Research Assistant</h2>
+          {!isMobileView && <p className="text-base text-muted-foreground">Ask questions about your clinical data and treatment outcomes</p>}
         </div>
 
         {/* Chat Interface with Sidebar */}
-        <div className="flex gap-4 h-[600px]">
-          {/* Chat History Sidebar */}
-          <ClinicChatHistorySidebar
-            sessions={chatSessions}
-            currentSessionId={currentSessionId}
-            onSessionSelect={handleSessionSelect}
-            onNewChat={handleNewChat}
-            onDeleteSession={handleDeleteSession}
-            onRenameSession={handleRenameSession}
-            isLoading={sessionsLoading}
-          />
+        <div className={`flex gap-4 ${isMobileView ? 'h-[500px]' : 'h-[600px]'}`}>
+          {/* Chat History Sidebar - Desktop */}
+          {!isMobileView && (
+            <ClinicChatHistorySidebar
+                sessions={chatSessions}
+                currentSessionId={currentSessionId}
+                onSessionSelect={handleSessionSelect}
+                onNewChat={handleNewChat}
+                onDeleteSession={handleDeleteSession}
+                onRenameSession={handleRenameSession}
+                isLoading={sessionsLoading}
+            />
+          )}
 
           {/* Chat Component */}
-          <div className="flex-1">
-            <ClinicalResearchChat
-              onSendMessage={handleSendMessage}
-              messages={chatMessages}
-              isLoading={isChatLoading}
-            />
+          <div className="flex-1 flex flex-col">
+            {/* Mobile History Button */}
+            {isMobileView && (
+              <div className="flex items-center gap-2 mb-2">
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 text-xs">
+                      <History className="w-3.5 h-3.5 mr-1.5" />
+                      History
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-72 p-0">
+                    <SheetHeader className="px-4 pt-4 pb-2">
+                      <SheetTitle className="text-sm">Chat History</SheetTitle>
+                    </SheetHeader>
+                    <ClinicChatHistorySidebar
+                        sessions={chatSessions}
+                        currentSessionId={currentSessionId}
+                        onSessionSelect={handleSessionSelect}
+                        onNewChat={handleNewChat}
+                        onDeleteSession={handleDeleteSession}
+                        onRenameSession={handleRenameSession}
+                        isLoading={sessionsLoading}
+                    />
+                  </SheetContent>
+                </Sheet>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleNewChat}>
+                  New Chat
+                </Button>
+              </div>
+            )}
+            <div className="flex-1">
+              <ClinicalResearchChat
+                onSendMessage={handleSendMessage}
+                messages={chatMessages}
+                isLoading={isChatLoading}
+              />
+            </div>
           </div>
         </div>
       </div>

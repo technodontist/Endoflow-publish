@@ -1,7 +1,20 @@
-import { pgTable, text, timestamp, uuid, date, pgSchema, boolean, integer, time } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, date, pgSchema, boolean, integer, time, jsonb } from 'drizzle-orm/pg-core';
 
 // Create api schema
 export const apiSchema = pgSchema('api');
+
+// Clinics table (public schema) - Multi-tenant isolation
+export const clinics = pgTable('clinics', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  name: text('name').notNull(),
+  slug: text('slug').unique(),
+  address: text('address'),
+  phone: text('phone'),
+  email: text('email'),
+  status: text('status', { enum: ['active', 'inactive', 'suspended'] }).notNull().default('active'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 // Main profiles table (public schema) - Central authentication table
 export const profiles = pgTable('profiles', {
@@ -9,6 +22,7 @@ export const profiles = pgTable('profiles', {
   role: text('role', { enum: ['patient', 'assistant', 'dentist'] }).notNull(),
   status: text('status', { enum: ['active', 'pending', 'inactive'] }).notNull().default('pending'),
   fullName: text('full_name').notNull(),
+  clinicId: uuid('clinic_id'), // References clinics.id - multi-tenant isolation
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -80,6 +94,13 @@ export const appointments = apiSchema.table('appointments', {
   appointmentType: text('appointment_type').notNull(),
   status: text('status', { enum: ['scheduled', 'in_progress', 'completed', 'cancelled', 'no_show'] }).notNull().default('scheduled'),
   notes: text('notes'),
+  // Consultation linkage (Phase 1: Longitudinal Tracking)
+  consultationId: uuid('consultation_id'), // References api.consultations.id
+  // Session 10 Phase 3: Appointment ↔ Diagnosis chain — so follow-up appointments know WHY they exist
+  linkedEpisodeId: uuid('linked_episode_id'),       // Treatment episode this appointment is for
+  linkedToothNumbers: text('linked_tooth_numbers'),  // JSON array: ["46", "14"]
+  linkedDiagnosis: text('linked_diagnosis'),          // e.g., "Irreversible pulpitis"
+  linkedTreatmentPlan: text('linked_treatment_plan'), // e.g., "RCT - Visit 2: Obturation"
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -109,6 +130,8 @@ export const notifications = apiSchema.table('notifications', {
 });
 
 // Define types for easier use
+export type Clinic = typeof clinics.$inferSelect;
+export type NewClinic = typeof clinics.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type Assistant = typeof assistants.$inferSelect;
@@ -217,6 +240,14 @@ export const consultations = apiSchema.table('consultations', {
   prescriptionData: text('prescription_data'), // JSON string
   followUpData: text('follow_up_data'), // JSON string
 
+  // Consultation mode & linkage (Phase 1: Longitudinal Tracking)
+  consultationMode: text('consultation_mode', {
+    enum: ['new_consultation', 'treatment_visit', 'follow_up', 'emergency']
+  }).notNull().default('new_consultation'),
+  appointmentId: uuid('appointment_id'), // References api.appointments.id
+  episodeId: uuid('episode_id'), // References api.treatment_episodes.id
+  imageReferences: jsonb('image_references').default([]), // Array of patient_files IDs for X-rays/photos
+
   // Additional
   additionalNotes: text('additional_notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -246,6 +277,18 @@ export const toothDiagnoses = apiSchema.table('tooth_diagnoses', {
   treatmentDetails: text('treatment_details'),
   estimatedDuration: integer('estimated_duration'), // in minutes
   estimatedCost: text('estimated_cost'), // Using text for decimal handling
+
+  // Dual-diagnosis fields (Session 7)
+  endodonticDiagnosis: text('endodontic_diagnosis'),
+  endodonticConfidence: integer('endodontic_confidence'),
+  restorativeDiagnosis: text('restorative_diagnosis'),
+  restorativeConfidence: integer('restorative_confidence'),
+  cariesSurfaces: text('caries_surfaces'), // e.g., 'MOD', 'OB', 'DO'
+  cariesDepth: text('caries_depth'), // superficial_enamel, into_dentin, deep_dentin, near_pulp, into_pulp
+  restorationType: text('restoration_type'), // direct_composite, indirect_onlay, indirect_crown, etc.
+  restorationMaterial: text('restoration_material'), // composite, zirconia, emax, pfm, etc.
+  surfaceConditions: jsonb('surface_conditions'), // JSONB: per-surface condition + color
+  combinedTreatmentSequence: text('combined_treatment_sequence'), // e.g., "1. RCT → 2. Post & core → 3. Crown"
 
   // Visual and scheduling
   colorCode: text('color_code').notNull().default('#22c55e'), // Green for healthy
@@ -870,6 +913,124 @@ export type TemplateCategory = typeof templateCategories.$inferSelect;
 export type NewTemplateCategory = typeof templateCategories.$inferInsert;
 
 // ===============================================
+// LONGITUDINAL PATIENT TRACKING SCHEMA
+// Treatment Episodes, Episode Visits, Tooth Timeline
+// ===============================================
+
+// Treatment Episodes - Groups related visits under one clinical unit
+export const treatmentEpisodes = apiSchema.table('treatment_episodes', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  patientId: uuid('patient_id').notNull(), // References auth.users.id
+  dentistId: uuid('dentist_id').notNull(), // References auth.users.id
+  clinicId: uuid('clinic_id'), // References public.clinics.id
+
+  // Episode classification
+  episodeType: text('episode_type', {
+    enum: ['single_tooth', 'prosthetic_unit', 'surgical', 'periodontal']
+  }).notNull().default('single_tooth'),
+  linkedTeeth: text('linked_teeth').array().notNull().default([]), // FDI tooth numbers
+
+  // Original diagnosis context
+  originalDiagnosis: text('original_diagnosis').notNull(),
+  originalDiagnosisConsultationId: uuid('original_diagnosis_consultation_id'), // FK to consultations
+  treatmentPlan: text('treatment_plan').notNull(),
+  combinedTreatmentSequence: text('combined_treatment_sequence'), // e.g., "1. RCT → 2. Post & Core → 3. Crown"
+
+  // Visit tracking
+  plannedVisits: integer('planned_visits').notNull().default(1),
+  completedVisits: integer('completed_visits').notNull().default(0),
+
+  // Status and priority
+  status: text('status', {
+    enum: ['planned', 'in_progress', 'completed', 'on_hold', 'failed', 'cancelled']
+  }).notNull().default('planned'),
+  priority: text('priority', {
+    enum: ['urgent', 'high', 'medium', 'low']
+  }).notNull().default('medium'),
+
+  // Timestamps
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  estimatedCompletionDate: date('estimated_completion_date'),
+
+  // Outcome tracking
+  outcome: text('outcome'), // success | partial_success | failure | ongoing
+  outcomeNotes: text('outcome_notes'),
+  aiPrognosis: jsonb('ai_prognosis'), // AI assessment JSON
+
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Episode Visits - Individual visits within a treatment episode
+export const episodeVisits = apiSchema.table('episode_visits', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  episodeId: uuid('episode_id').notNull(), // FK to treatment_episodes (CASCADE delete)
+  consultationId: uuid('consultation_id'), // References api.consultations.id
+  appointmentId: uuid('appointment_id'), // References api.appointments.id
+
+  // Visit details
+  visitNumber: integer('visit_number').notNull().default(1),
+  visitType: text('visit_type', {
+    enum: ['treatment', 'follow_up', 'emergency', 'review']
+  }).notNull().default('treatment'),
+
+  // Clinical data
+  proceduresDone: jsonb('procedures_done').default([]), // Array of procedure descriptions
+  materialsUsed: jsonb('materials_used').default({}), // Materials/instruments used
+  complications: text('complications'),
+  clinicalNotes: text('clinical_notes'),
+  nextVisitPlan: text('next_visit_plan'),
+
+  // AI tracking assessment
+  aiProgressAssessment: jsonb('ai_progress_assessment'), // Tracking pipeline output
+  dentistConfirmed: boolean('dentist_confirmed').notNull().default(false), // Human-in-the-loop
+
+  // Timing
+  visitDate: timestamp('visit_date').defaultNow().notNull(),
+
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Tooth Timeline - Chronological event log for each tooth
+export const toothTimeline = apiSchema.table('tooth_timeline', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  patientId: uuid('patient_id').notNull(), // References auth.users.id
+  toothNumber: text('tooth_number').notNull(), // FDI notation
+
+  // Event classification
+  eventType: text('event_type', {
+    enum: ['diagnosis', 'treatment_start', 'treatment_visit', 'treatment_complete', 'follow_up', 'new_finding', 'status_change']
+  }).notNull(),
+
+  // References
+  episodeId: uuid('episode_id'), // FK to treatment_episodes (SET NULL on delete)
+  consultationId: uuid('consultation_id'), // References api.consultations.id
+
+  // Event data
+  eventDate: timestamp('event_date').defaultNow().notNull(),
+  description: text('description').notNull(), // Human-readable summary
+  previousStatus: text('previous_status'), // Tooth status before this event
+  newStatus: text('new_status'), // Tooth status after this event
+  dataSnapshot: jsonb('data_snapshot'), // Relevant clinical data at this point
+
+  // Audit
+  createdBy: uuid('created_by'), // User who triggered the event
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Export longitudinal tracking types
+export type TreatmentEpisode = typeof treatmentEpisodes.$inferSelect;
+export type NewTreatmentEpisode = typeof treatmentEpisodes.$inferInsert;
+export type EpisodeVisit = typeof episodeVisits.$inferSelect;
+export type NewEpisodeVisit = typeof episodeVisits.$inferInsert;
+export type ToothTimelineEvent = typeof toothTimeline.$inferSelect;
+export type NewToothTimelineEvent = typeof toothTimeline.$inferInsert;
+
+// ===============================================
 // ASSISTANT TASKS MANAGEMENT SCHEMA
 // ===============================================
 
@@ -956,3 +1117,150 @@ export type TaskComment = typeof taskComments.$inferSelect;
 export type NewTaskComment = typeof taskComments.$inferInsert;
 export type TaskActivityLog = typeof taskActivityLog.$inferSelect;
 export type NewTaskActivityLog = typeof taskActivityLog.$inferInsert;
+
+// ===============================================
+// AI PERSISTENCE LAYER SCHEMA
+// Session 14: Full AI output persistence
+// ===============================================
+
+// EndoFlow Sessions — Master AI session memory (replaces in-memory Map)
+export const endoflowSessions = apiSchema.table('endoflow_sessions', {
+  dentistId: uuid('dentist_id').primaryKey(), // References auth.users.id — one session per dentist
+  messages: jsonb('messages').notNull().default([]),
+  activePatient: jsonb('active_patient'),
+  activeConsultation: jsonb('active_consultation'),
+  currentMode: text('current_mode').default('home'),
+  pronounsMap: jsonb('pronouns_map').notNull().default({}),
+  intentLog: jsonb('intent_log').notNull().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// AI Synthesis Results — Full AI diagnosis/treatment output per tooth per consultation
+export const aiSynthesisResults = apiSchema.table('ai_synthesis_results', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  consultationId: uuid('consultation_id').notNull(),
+  patientId: uuid('patient_id').notNull(),
+  dentistId: uuid('dentist_id').notNull(),
+  toothNumber: text('tooth_number').notNull(),
+  toothDiagnosisId: uuid('tooth_diagnosis_id'),
+
+  // Diagnosis output
+  primaryDiagnosis: text('primary_diagnosis').notNull(),
+  diagnosisConfidence: integer('diagnosis_confidence').notNull().default(0),
+  aaeClassification: text('aae_classification'),
+  differentialDiagnoses: jsonb('differential_diagnoses').notNull().default([]),
+
+  // Treatment output
+  recommendedTreatment: text('recommended_treatment').notNull(),
+  treatmentConfidence: integer('treatment_confidence').notNull().default(0),
+  treatmentOptions: jsonb('treatment_options').notNull().default([]),
+  combinedTreatmentSequence: text('combined_treatment_sequence'),
+
+  // Prognosis
+  prognosis: text('prognosis'),
+  prognosisFactors: jsonb('prognosis_factors').default([]),
+
+  // Subspecialty classification
+  subspecialtyClassification: jsonb('subspecialty_classification'),
+
+  // Restorative diagnosis (dual diagnosis)
+  restorativeDiagnosis: jsonb('restorative_diagnosis'),
+
+  // Conductor output (multi-track)
+  conductorOutput: jsonb('conductor_output'),
+
+  // Literature evidence
+  literatureCitations: jsonb('literature_citations').notNull().default([]),
+  clinicOutcomesSummary: text('clinic_outcomes_summary'),
+
+  // Pipeline metadata
+  pipelineVersion: text('pipeline_version').default('v1'),
+  aiModel: text('ai_model'),
+  processingTimeMs: integer('processing_time_ms'),
+  gapQuestionsAsked: integer('gap_questions_asked').default(0),
+  gapQuestionsAnswered: integer('gap_questions_answered').default(0),
+
+  // Status
+  status: text('status', {
+    enum: ['draft', 'accepted', 'rejected', 'superseded']
+  }).notNull().default('draft'),
+  acceptedAt: timestamp('accepted_at'),
+  acceptedBy: uuid('accepted_by'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Gap Analysis Answers — Dentist Q&A during gap-filling
+export const gapAnalysisAnswers = apiSchema.table('gap_analysis_answers', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  synthesisId: uuid('synthesis_id').notNull(),
+  consultationId: uuid('consultation_id').notNull(),
+  patientId: uuid('patient_id').notNull(),
+  toothNumber: text('tooth_number').notNull(),
+
+  // Question details
+  questionId: text('question_id').notNull(),
+  questionnaireSource: text('questionnaire_source'),
+  questionText: text('question_text').notNull(),
+  questionCategory: text('question_category'),
+
+  // Answer details
+  rawAnswer: text('raw_answer').notNull(),
+  parsedValue: text('parsed_value'),
+  answerSource: text('answer_source').default('manual'),
+
+  // Diagnostic impact
+  diagnosticWeight: text('diagnostic_weight'),
+  confidenceDelta: text('confidence_delta'), // numeric as text for Drizzle compat
+  isPositiveFinding: boolean('is_positive_finding').default(false),
+
+  // Ordering
+  sequenceNumber: integer('sequence_number').notNull().default(0),
+
+  answeredAt: timestamp('answered_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Consultation Evidence — RAG retrieval log linking consultations to literature
+export const consultationEvidence = apiSchema.table('consultation_evidence', {
+  id: uuid('id').primaryKey().default('gen_random_uuid()'),
+  synthesisId: uuid('synthesis_id'),
+  consultationId: uuid('consultation_id').notNull(),
+  patientId: uuid('patient_id').notNull(),
+  toothNumber: text('tooth_number'),
+
+  // Source document reference
+  medicalKnowledgeId: uuid('medical_knowledge_id'),
+
+  // Citation details (denormalized for fast PDF generation)
+  citationTitle: text('citation_title').notNull(),
+  citationAuthors: text('citation_authors'),
+  citationJournal: text('citation_journal'),
+  citationYear: integer('citation_year'),
+  citationDoi: text('citation_doi'),
+  citationUrl: text('citation_url'),
+
+  // Retrieval metadata
+  similarityScore: text('similarity_score'), // numeric as text
+  searchMode: text('search_mode'),
+  relevanceNote: text('relevance_note'),
+  retrievalRank: integer('retrieval_rank'),
+
+  // Usage context
+  usedFor: text('used_for').default('diagnosis'),
+
+  retrievedAt: timestamp('retrieved_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Export AI persistence types
+export type EndoflowSession = typeof endoflowSessions.$inferSelect;
+export type NewEndoflowSession = typeof endoflowSessions.$inferInsert;
+export type AISynthesisResult = typeof aiSynthesisResults.$inferSelect;
+export type NewAISynthesisResult = typeof aiSynthesisResults.$inferInsert;
+export type GapAnalysisAnswer = typeof gapAnalysisAnswers.$inferSelect;
+export type NewGapAnalysisAnswer = typeof gapAnalysisAnswers.$inferInsert;
+export type ConsultationEvidenceRecord = typeof consultationEvidence.$inferSelect;
+export type NewConsultationEvidenceRecord = typeof consultationEvidence.$inferInsert;

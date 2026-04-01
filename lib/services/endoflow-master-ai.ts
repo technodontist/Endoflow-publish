@@ -12,30 +12,52 @@
  * - Workers: Specialized AI agents (research, scheduler, treatment, patient)
  */
 
-import { generateChatCompletion, GeminiChatMessage } from './gemini-ai'
+import { GeminiChatMessage } from './gemini-ai'
+import { aiChatCompletion } from './ai-provider'
 import { analyzePatientCohort } from './gemini-ai'
 import { scheduleAppointmentWithAI } from '@/lib/actions/ai-appointment-scheduler'
 import { getAITreatmentSuggestionAction } from '@/lib/actions/ai-treatment-suggestions'
 import { createServiceClient } from '@/lib/supabase/server'
-import { 
-  parseTemporalExpression, 
-  extractPatientName, 
-  isCountQuery, 
-  determineQueryDirection 
+import {
+  parseTemporalExpression,
+  extractPatientName,
+  isCountQuery,
+  determineQueryDirection
 } from '@/lib/utils/temporal-parser'
+import { refineVoiceQuery, type RefinedQuery } from './prompt-refinement-agent'
 
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
 
 export type IntentType =
-  | 'clinical_research'      // "Find patients with RCT on tooth 36"
-  | 'appointment_scheduling' // "What's my schedule today", "Book appointment"
-  | 'treatment_planning'     // "Suggest treatment for pulpitis", "Follow-up protocol"
-  | 'patient_inquiry'        // "Tell me about John Doe", "Patient history"
-  | 'task_management'        // "Create task to verify patient", "Show pending tasks"
-  | 'general_question'       // "How do I...", "What is..."
-  | 'clarification_needed'   // Ambiguous query requiring more info
+  | 'navigation'             // "Go to clinical mode", "Open patients", "Go home"
+  | 'consultation_start'     // "Start consultation with X", "Open consultation", "Let's begin"
+  | 'consultation_stop'      // "Stop recording", "Done", "Process it", "We're done"
+  | 'recording_control'      // "Pause", "Resume", "Read back findings"
+  | 'patient_lookup'         // "Tell me about X", "What's X's status", "Show patient X"
+  | 'appointment_view'       // "Show schedule", "How many patients today"
+  | 'appointment_book'       // "Book appointment for X tomorrow", "Schedule RCT"
+  | 'clinical_question'      // "What's the protocol for X", "How to treat Y", clinical research
+  | 'task_command'           // "Create task", "Tell assistant to X", "Show pending tasks"
+  | 'report_command'         // "Generate report", "Create PDF", "Download report"
+  | 'tooth_command'          // "Select tooth 46", "Accept diagnosis", "Reject"
+  | 'general_question'       // Anything else
+  // Legacy aliases (kept for backward compatibility with existing delegate functions)
+  | 'clinical_research'
+  | 'appointment_scheduling'
+  | 'appointment_inquiry'
+  | 'appointment_booking'
+  | 'treatment_planning'
+  | 'patient_inquiry'
+  | 'task_management'
+  | 'patient_status'
+  | 'generate_report'
+  | 'clarification_needed'
+  | 'tooth_selection'
+  | 'diagnosis_action'
+  | 'gap_interaction'
+  | 'task_creation'
 
 export interface ClassifiedIntent {
   type: IntentType
@@ -48,6 +70,10 @@ export interface ClassifiedIntent {
     diagnosis?: string
     appointmentDate?: string
     appointmentTime?: string
+    // Session 10: Navigation & consultation entities
+    targetMode?: 'home' | 'clinical' | 'pms' | 'research' | 'management'
+    targetTab?: string
+    consultationAction?: 'start_recording' | 'stop_recording' | 'open' | 'close'
   }
   requiresClarification: boolean
   clarificationQuestion?: string
@@ -71,6 +97,54 @@ export interface OrchestratedResponse {
 }
 
 // ============================================================================
+// INTENT NORMALIZATION (Session 14)
+// ============================================================================
+
+/**
+ * Map legacy intent names to the canonical 12 intents.
+ * The classifier prompt examples still produce old names (appointment_inquiry,
+ * patient_inquiry, etc.) which fall through the switch/case to general_question.
+ * This normalizer ensures every response maps to a canonical case.
+ */
+const INTENT_ALIAS_MAP: Record<string, IntentType> = {
+  // Canonical 12 (pass through)
+  'navigation': 'navigation',
+  'consultation_start': 'consultation_start',
+  'consultation_stop': 'consultation_stop',
+  'recording_control': 'recording_control',
+  'patient_lookup': 'patient_lookup',
+  'appointment_view': 'appointment_view',
+  'appointment_book': 'appointment_book',
+  'clinical_question': 'clinical_question',
+  'task_command': 'task_command',
+  'report_command': 'report_command',
+  'tooth_command': 'tooth_command',
+  'general_question': 'general_question',
+  // Legacy aliases → canonical
+  'clinical_research': 'clinical_question',
+  'appointment_inquiry': 'appointment_view',
+  'appointment_scheduling': 'appointment_book',
+  'appointment_booking': 'appointment_book',
+  'treatment_planning': 'clinical_question',
+  'patient_inquiry': 'patient_lookup',
+  'patient_status': 'patient_lookup',
+  'task_management': 'task_command',
+  'task_creation': 'task_command',
+  'generate_report': 'report_command',
+  'tooth_selection': 'tooth_command',
+  'diagnosis_action': 'tooth_command',
+  'gap_interaction': 'clinical_question',
+  'clarification_needed': 'general_question',
+}
+
+function normalizeIntentType(raw: string): IntentType {
+  const normalized = INTENT_ALIAS_MAP[raw]
+  if (normalized) return normalized
+  console.warn(`⚠️ [INTENT NORM] Unknown intent type "${raw}", falling back to general_question`)
+  return 'general_question'
+}
+
+// ============================================================================
 // INTENT CLASSIFICATION
 // ============================================================================
 
@@ -83,28 +157,83 @@ export async function classifyIntent(
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Promise<ClassifiedIntent> {
 
-  const systemInstruction = `You are an intent classification system for EndoFlow, a dental clinic AI assistant.
+  const systemInstruction = `You are the intent classification system for EndoFlow, a dental clinic AI assistant used by dentists during clinical practice.
+
+CRITICAL CONTEXT:
+- You serve DENTISTS in a clinical setting. They speak quickly, use shorthand, and may use voice input that garbles words.
+- The user is ALWAYS a dentist. Every query relates to their clinical practice, patients, schedule, or clinic management.
+- VOICE INPUT WARNING: Input may come from speech-to-text which often mishears dental terms:
+  * "pull py this" → "pulpitis", "root can all" → "root canal", "end oh" → "endo"
+  * "did headline" → "details", "pear e oh" → "perio", "crown and bridge" may appear garbled
+  * Always try to interpret the INTENDED meaning, not the literal garbled text
+  * When in doubt, assume a dental/clinical context
 
 LANGUAGE SUPPORT:
-- The system supports English (US), English (India), and Hindi (हिंदी)
-- User queries may be in English, Hindi, or a mix of both (code-switching)
-- Understand the intent and extract entities from any language
-- For mixed Hindi-English queries: Process both languages and unify the intent
-- Common Hindi medical terms: दांत (tooth), दर्द (pain), इलाज (treatment), मरीज़/रोगी (patient), अपॉइंटमेंट (appointment)
-- The response language will be determined separately based on user preference
+- English (US), English (India), Hindi (हिंदी), and mixed Hindi-English (code-switching)
+- Common Hindi: दांत (tooth), दर्द (pain), इलाज (treatment), मरीज़/रोगी (patient), अपॉइंटमेंट (appointment)
 
-TASK: Classify the user's query into ONE of these categories:
-1. clinical_research - Questions about patients, cohorts, statistics, diagnoses, treatments
-2. appointment_inquiry - Viewing schedule, listing appointments, checking availability
-   - Examples: "How many patients today?", "What's my schedule?", "Show appointments", "How many appointments tomorrow?", "Tell me about my upcoming patients"
-3. appointment_booking - Creating/scheduling NEW appointments
-   - Examples: "Schedule appointment for John", "Book RCT tomorrow", "Create appointment"
-4. treatment_planning - Treatment suggestions, protocols, clinical recommendations
-5. patient_inquiry - Specific patient information, history, records
-6. task_management - Creating, assigning, viewing, or managing assistant tasks
-   - Examples: "Create task to verify patient", "Show pending tasks", "Assign task to assistant", "How many tasks?", "Task statistics"
-7. general_question - General dental questions, how-to queries
-8. clarification_needed - Ambiguous query that needs more information
+DENTAL SHORTHAND (common abbreviations dentists use):
+- RCT = Root Canal Treatment, endo = endodontics, perio = periodontics
+- FDI numbers: 11-48 are tooth numbers (e.g., "36" = lower left first molar)
+- VPT = Vital Pulp Therapy, MTA = Mineral Trioxide Aggregate
+- OPG = Orthopantomogram, IOPA = Intraoral Periapical (x-ray)
+- Tx = Treatment, Dx = Diagnosis, Rx = Prescription, Hx = History
+- F/U = Follow-up, N/S = No-show, WI = Walk-in
+
+TASK: Classify the query into ONE of these 12 categories:
+
+1. navigation - Navigate to a dashboard mode or section. NO patient data involved.
+   - Examples: "Go to home", "Open clinical", "Go to patients", "Open research", "Manage clinic"
+   - Hindi: "Patients dikhao", "Research kholo"
+   - targetMode: home/clinical/pms/research/management
+
+2. consultation_start - Start consultation with a patient. Implies clinical mode + recording.
+   - Examples: "Start consultation with Sharma", "Open consultation", "Let's see the patient", "Begin my case", "Shuru karo"
+   - ALWAYS extract patientName when present
+   - Voice garbles: "start consolation" → "start consultation", "Pupatlal" → patient name (NOT dental term)
+
+3. consultation_stop - Stop/finish active consultation. Triggers AI pipeline.
+   - Examples: "Stop recording", "Done", "That's all", "Process it", "We're done", "Khatam", "Finish", "Bas"
+
+4. recording_control - Pause, resume, or read back during recording.
+   - Examples: "Pause", "Hold on", "Ruko", "Resume", "Continue", "Read back", "What do we have so far"
+
+5. patient_lookup - Any question about a specific patient (history, status, records, progress).
+   - Examples: "Tell me about Sharma", "What's Patel's status?", "Show patient records", "How is treatment going?"
+   - Combines old patient_inquiry + patient_status into one intent
+
+6. appointment_view - View schedule, list appointments, check availability.
+   - Examples: "Show today's schedule", "How many patients?", "Next patient", "Kitne patients hain?"
+
+7. appointment_book - Create/schedule a NEW appointment.
+   - Examples: "Book appointment for John tomorrow at 2pm", "Schedule RCT next week"
+
+8. clinical_question - Dental knowledge, treatment protocols, clinical research, "how to treat X".
+   - Examples: "What's the protocol for pulpitis?", "How to do pulpotomy?", "Best material for VPT?"
+   - Also covers: "Find patients with RCT on tooth 36" (data queries)
+
+9. task_command - Create, assign, or view tasks for assistants.
+   - Examples: "Create task prepare crown", "Tell Priya to ready the tray", "Show pending tasks"
+
+10. report_command - Generate or download a report/PDF.
+    - Examples: "Generate report", "Create PDF", "Download report"
+
+11. tooth_command - Select a tooth on the chart, or accept/reject AI diagnosis.
+    - Examples: "Select tooth 46", "Open tooth 36", "Accept diagnosis", "Reject", "That looks right"
+
+12. general_question - Anything that doesn't fit the above categories.
+
+IMPORTANT RULES:
+- PREFER a specific category over general_question. If it could be clinical_question OR general_question, choose clinical_question.
+- Set confidence HIGH (0.85+) when the intent is clear, even if voice has typos.
+- The dentist speaks quickly and may say things many ways. Be FLEXIBLE with phrasing.
+- "Start consultation with X" is ALWAYS consultation_start, never navigation.
+- "What's my schedule" is appointment_view, NOT navigation.
+- "Go to patients" is navigation. "Tell me about patient X" is patient_lookup.
+- Words after "with", "for", "patient" are likely NAMES — don't convert to dental terms.
+- "Process it", "Run diagnosis" mean consultation_stop (triggers AI pipeline).
+- "Hold", "Wait", "Ek minute" during recording mean recording_control (pause).
+- Never use clarification_needed — default to general_question if truly confused.
 
 IMPORTANT: Also extract relevant entities:
 - patientName: Full name of patient mentioned
@@ -114,6 +243,9 @@ IMPORTANT: Also extract relevant entities:
 - diagnosis: Clinical diagnosis mentioned
 - appointmentDate: Date for appointment
 - appointmentTime: Time for appointment
+- targetMode: Dashboard mode for navigation (home, clinical, pms, research, management)
+- targetTab: Specific tab within a mode (e.g., "consultation-v3", "patients", "tasks")
+- consultationAction: For consultation lifecycle (start_recording, stop_recording, open, close)
 
 RESPONSE FORMAT (JSON only):
 {
@@ -178,6 +310,45 @@ Output: {"type": "task_management", "confidence": 0.90, "entities": {}, "require
 
 Input: "Schedule appointment"
 Output: {"type": "appointment_booking", "confidence": 0.70, "entities": {}, "requiresClarification": true, "clarificationQuestion": "Sure! I can help schedule an appointment. Could you please tell me: 1) Patient name, 2) Date and time, and 3) Type of appointment (consultation, treatment, follow-up)?"}
+
+Input: "Let's see the patient"
+Output: {"type": "consultation_start", "confidence": 0.85, "entities": {}, "requiresClarification": true, "clarificationQuestion": "Which patient would you like to start a consultation with?"}
+
+Input: "Popatlal ka case shuru karo"
+Output: {"type": "consultation_start", "confidence": 0.90, "entities": {"patientName": "Popatlal"}, "requiresClarification": false}
+
+Input: "Open my next patient"
+Output: {"type": "consultation_start", "confidence": 0.85, "entities": {}, "requiresClarification": false}
+
+Input: "Pause"
+Output: {"type": "recording_control", "confidence": 0.88, "entities": {"consultationAction": "pause"}, "requiresClarification": false}
+
+Input: "Select tooth forty six"
+Output: {"type": "tooth_selection", "confidence": 0.95, "entities": {"toothNumber": "46"}, "requiresClarification": false}
+
+Input: "That looks right, accept it"
+Output: {"type": "diagnosis_action", "confidence": 0.90, "entities": {}, "requiresClarification": false}
+
+Input: "Yes the patient has pain on biting and cold sensitivity"
+Output: {"type": "gap_interaction", "confidence": 0.85, "entities": {}, "requiresClarification": false}
+
+Input: "Tell Priya to prepare the composite tray"
+Output: {"type": "task_creation", "confidence": 0.92, "entities": {"patientName": "Priya"}, "requiresClarification": false}
+
+Input: "Read back what we have"
+Output: {"type": "recording_control", "confidence": 0.90, "entities": {"consultationAction": "read_back"}, "requiresClarification": false}
+
+Input: "Process it"
+Output: {"type": "consultation_stop", "confidence": 0.88, "entities": {"consultationAction": "stop_recording"}, "requiresClarification": false}
+
+Input: "We're done"
+Output: {"type": "consultation_stop", "confidence": 0.85, "entities": {"consultationAction": "stop_recording"}, "requiresClarification": false}
+
+Input: "Take me home"
+Output: {"type": "navigation", "confidence": 0.90, "entities": {"targetMode": "home"}, "requiresClarification": false}
+
+Input: "Skip this question"
+Output: {"type": "gap_interaction", "confidence": 0.92, "entities": {}, "requiresClarification": false}
 `
 
   // Build context from conversation history
@@ -199,19 +370,29 @@ Output: {"type": "appointment_booking", "confidence": 0.70, "entities": {}, "req
   ]
 
   try {
-    const response = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
-      temperature: 0.1, // Low temperature for consistent classification
+    const response = await aiChatCompletion(messages, {
+      task: 'intent_classification',
+      temperature: 0.1,
       systemInstruction,
       responseFormat: 'json'
     })
 
     const classified = JSON.parse(response) as ClassifiedIntent
+
+    // Session 14: Normalize legacy intent names to canonical 12
+    // The classifier prompt examples still use old names that the switch/case doesn't match
+    classified.type = normalizeIntentType(classified.type)
+
     console.log('🎯 [ENDOFLOW MASTER] Intent classified:', classified.type, `(${(classified.confidence * 100).toFixed(0)}%)`)
 
     return classified
-  } catch (error) {
-    console.error('❌ [ENDOFLOW MASTER] Intent classification failed:', error)
+  } catch (error: any) {
+    console.error('❌ [ENDOFLOW MASTER] Intent classification failed:', error?.message || error)
+    console.error('❌ [ENDOFLOW MASTER] Error details:', JSON.stringify({
+      name: error?.name,
+      status: error?.status,
+      stack: error?.stack?.slice(0, 300)
+    }))
 
     // Fallback: treat as general question
     return {
@@ -378,9 +559,9 @@ If the query is already complete and doesn't need context, return it unchanged.`
   ]
 
   try {
-    const enhanced = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
-      temperature: 0.2, // Low temperature for consistent enhancement
+    const enhanced = await aiChatCompletion(messages, {
+      task: 'conversation_context',
+      temperature: 0.2,
       systemInstruction
     })
 
@@ -921,23 +1102,66 @@ async function delegateToTreatmentPlanning(
     }
 
     if (!entities.diagnosis && !entities.toothNumber) {
-      // Need more info for treatment planning
-      return {
-        agentName: 'Treatment Planning AI',
-        success: false,
-        error: 'Please specify diagnosis and/or tooth number for treatment recommendations',
-        processingTime: Date.now() - startTime
+      // Even without entities, try to proceed using the full query as diagnosis context
+      console.log('⚠️ [TREATMENT PLANNING AGENT] No entities extracted, using full query as context')
+    }
+
+    // Detect query complexity
+    const queryComplexity = detectQueryComplexity(enhancedQuery)
+
+    // Resolve patient context if a patient name was mentioned
+    let patientContext: { age?: number; medicalHistory?: string; previousTreatments?: string } | undefined
+    if (entities.patientName) {
+      try {
+        const { createServiceClient } = await import('@/lib/supabase/server')
+        const supabase = await createServiceClient()
+
+        // Search for patient by name
+        const { data: patients } = await supabase
+          .schema('api')
+          .from('patients')
+          .select('id, first_name, last_name, date_of_birth, medical_history_summary')
+          .or(`first_name.ilike.%${entities.patientName}%,last_name.ilike.%${entities.patientName}%`)
+          .limit(1)
+
+        if (patients && patients.length > 0) {
+          const patient = patients[0]
+          const age = patient.date_of_birth
+            ? Math.floor((Date.now() - new Date(patient.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+            : undefined
+
+          // Get recent consultations for this patient
+          const { data: recentConsultations } = await supabase
+            .schema('api')
+            .from('consultations')
+            .select('diagnosis, treatment_plan, medical_history, chief_complaint')
+            .eq('patient_id', patient.id)
+            .order('consultation_date', { ascending: false })
+            .limit(3)
+
+          const prevTreatments = recentConsultations?.map((c: any) =>
+            `${c.chief_complaint || ''} → ${c.diagnosis || ''} → ${c.treatment_plan || ''}`
+          ).join('; ') || ''
+
+          patientContext = {
+            age,
+            medicalHistory: patient.medical_history_summary || 'No medical history recorded',
+            previousTreatments: prevTreatments || 'No previous treatments recorded'
+          }
+
+          console.log(`👤 [TREATMENT PLANNING] Resolved patient: ${patient.first_name} ${patient.last_name}, age: ${age}`)
+        }
+      } catch (patientError) {
+        console.warn('⚠️ [TREATMENT PLANNING] Patient lookup failed:', patientError)
       }
     }
 
-    // NEW: Detect query complexity to determine RAG document count
-    const queryComplexity = detectQueryComplexity(enhancedQuery)
-
     const result = await getAITreatmentSuggestionAction({
-      diagnosis: entities.diagnosis || 'General consultation',
+      diagnosis: entities.diagnosis || enhancedQuery.substring(0, 200), // Use full query if no diagnosis extracted
       toothNumber: entities.toothNumber || 'Not specified',
-      patientContext: undefined,
-      queryComplexity  // NEW: Pass complexity to treatment agent
+      dentistId,
+      patientContext,
+      queryComplexity
     })
 
     return {
@@ -998,38 +1222,61 @@ async function delegateToPatientInquiry(
 
     const supabase = await createServiceClient()
 
-    // Search for patient - separate queries
-    const nameParts = entities.patientName.split(' ')
-    let patientQuery = supabase
-      .schema('api')
-      .from('patients')
-      .select('*')
+    // Session 15: Fuzzy search replaces rigid ilike for voice-friendly matching
+    let patient: any
+    try {
+      const { fuzzySearchPatients } = await import('@/lib/utils/fuzzy-patient-search')
+      const fuzzyResult = await fuzzySearchPatients(supabase, entities.patientName, { schema: 'api' })
 
-    if (nameParts.length >= 2) {
-      const firstName = nameParts[0]
-      const lastName = nameParts.slice(1).join(' ')
-      patientQuery = patientQuery
-        .ilike('first_name', `%${firstName}%`)
-        .ilike('last_name', `%${lastName}%`)
-    } else {
-      patientQuery = patientQuery
-        .or(`first_name.ilike.%${entities.patientName}%,last_name.ilike.%${entities.patientName}%`)
-    }
-
-    const { data: patients, error } = await patientQuery.limit(1)
-
-    if (error) throw error
-
-    if (!patients || patients.length === 0) {
-      return {
-        agentName: 'Patient Inquiry AI',
-        success: false,
-        error: `Patient "${entities.patientName}" not found in the system`,
-        processingTime: Date.now() - startTime
+      if (!fuzzyResult.bestMatch) {
+        // If fuzzy found candidates but none above threshold, include them in error
+        const nearMatches = fuzzyResult.patients.slice(0, 3)
+          .map(p => `${p.first_name} ${p.last_name} (${(p.score * 100).toFixed(0)}%)`)
+        const hint = nearMatches.length > 0
+          ? ` Similar names found: ${nearMatches.join(', ')}`
+          : ''
+        return {
+          agentName: 'Patient Inquiry AI',
+          success: false,
+          error: `Patient "${entities.patientName}" not found in the system.${hint}`,
+          // Pass candidates for potential confirmation UI (Phase D)
+          data: fuzzyResult.patients.length > 0 ? {
+            action: 'patient_selection_confirm',
+            candidates: fuzzyResult.patients.slice(0, 3),
+            searchedName: entities.patientName,
+          } : undefined,
+          processingTime: Date.now() - startTime
+        }
       }
-    }
 
-    const patient = patients[0]
+      // Fetch full patient record using the matched ID
+      const { data: fullPatient, error: fetchErr } = await supabase
+        .schema('api')
+        .from('patients')
+        .select('*')
+        .eq('id', fuzzyResult.bestMatch.id)
+        .single()
+
+      if (fetchErr || !fullPatient) throw fetchErr || new Error('Patient record not found')
+      patient = fullPatient
+      console.log(`✅ [PATIENT INQUIRY] Fuzzy matched "${entities.patientName}" → ${fuzzyResult.bestMatch.first_name} ${fuzzyResult.bestMatch.last_name} (${(fuzzyResult.bestMatch.score * 100).toFixed(1)}%)`)
+    } catch (fuzzyError: any) {
+      // Fallback: original ilike search if fuzzy utility fails
+      console.warn('⚠️ [PATIENT INQUIRY] Fuzzy search failed, falling back to ilike:', fuzzyError.message)
+      const nameParts = entities.patientName.split(' ')
+      let patientQuery = supabase.schema('api').from('patients').select('*')
+      if (nameParts.length >= 2) {
+        patientQuery = patientQuery.ilike('first_name', `%${nameParts[0]}%`).ilike('last_name', `%${nameParts.slice(1).join(' ')}%`)
+      } else {
+        patientQuery = patientQuery.or(`first_name.ilike.%${entities.patientName}%,last_name.ilike.%${entities.patientName}%`)
+      }
+      const { data: patients, error } = await patientQuery.limit(1)
+      if (error) throw error
+      if (!patients || patients.length === 0) {
+        return { agentName: 'Patient Inquiry AI', success: false, error: `Patient "${entities.patientName}" not found in the system`, processingTime: Date.now() - startTime }
+      }
+      patient = patients[0]
+    }
 
     // Fetch related data separately
     const [consultations, treatments, appointments] = await Promise.all([
@@ -1272,15 +1519,24 @@ async function delegateToGeneralAI(
   try {
     console.log('🤖 [GENERAL AI] Processing query...')
 
-    const systemInstruction = `You are EndoFlow AI, a helpful assistant for dental professionals specializing in endodontics.
+    const systemInstruction = `You are EndoFlow AI, an expert dental assistant built for practicing dentists. You specialize in endodontics but have comprehensive knowledge of all dental specialties.
 
-Provide clear, concise answers to general questions about:
-- Dental procedures and protocols
-- Endodontic terminology
-- System usage and features
-- Clinical best practices
+You can help with:
+- Dental procedures, protocols, and step-by-step clinical guidance
+- Treatment planning, material selection, and evidence-based recommendations
+- Endodontic terminology, FDI notation, clinical abbreviations
+- Differential diagnosis and clinical decision support
+- Drug dosages, prescriptions, and contraindications for dental use
+- Patient management, consent, and communication strategies
+- Clinic operations, scheduling workflow, and practice management
+- Research summaries and evidence-based dentistry
 
-Keep responses conversational and under 200 words unless more detail is requested.`
+IMPORTANT:
+- The user is a DENTIST speaking via voice. Input may have speech-to-text errors.
+- Always interpret in a dental context. "Pull py this" = pulpitis, "root can all" = root canal.
+- Give practical, actionable advice. Be specific with dosages, materials, and techniques.
+- Use bullet points for steps and lists. Keep responses under 300 words unless the question requires detailed clinical guidance.
+- If the query seems garbled from voice input, do your BEST to interpret what the dentist meant and answer helpfully.`
 
     const messages: GeminiChatMessage[] = []
 
@@ -1300,8 +1556,8 @@ Keep responses conversational and under 200 words unless more detail is requeste
       parts: [{ text: userQuery }]
     })
 
-    const response = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
+    const response = await aiChatCompletion(messages, {
+      task: 'conversation_context',
       temperature: 0.7,
       systemInstruction
     })
@@ -1461,9 +1717,10 @@ Is this a follow-up to the previous topic or a new topic?`
       { role: 'user', parts: [{ text: prompt }] }
     ]
 
-    const response = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
-      temperature: 0.1, // Low temperature for consistent detection
+    const response = await aiChatCompletion(messages, {
+      task: 'classification',
+      provider: 'gemini', // Simple classification, keep fast
+      temperature: 0.1,
       systemInstruction
     })
 
@@ -1500,27 +1757,86 @@ export async function orchestrateQuery(params: {
   dentistId: string
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   language?: 'en-US' | 'en-IN' | 'hi-IN'
+  isVoiceInput?: boolean
 }): Promise<OrchestratedResponse> {
-  const { userQuery, dentistId, conversationHistory, language = 'en-US' } = params
+  const { userQuery, dentistId, language = 'en-US', isVoiceInput = true } = params
+
+  // Session 12→14: Use Supabase-persisted session memory if caller provides no history
+  const { addToSession, updatePatientContext, getSessionHistory, logIntent } = await import('@/lib/services/master-ai-session')
+  const sessionHistory = await getSessionHistory(dentistId)
+  const conversationHistory = params.conversationHistory && params.conversationHistory.length > 0
+    ? params.conversationHistory
+    : sessionHistory
 
   console.log('🎭 [ENDOFLOW MASTER] Orchestrating query:', userQuery)
+  console.log(`🧠 [SESSION] Using ${conversationHistory.length} messages from ${params.conversationHistory?.length ? 'caller' : 'server session'}`)
 
   try {
-    // Step 0: Detect topic changes
-    const isNewTopic = await detectTopicChange(userQuery, conversationHistory)
-    
+    // Step 0: Prompt Refinement Agent — clean voice transcript before anything else
+    const refinement: RefinedQuery = await refineVoiceQuery(userQuery, {
+      conversationHistory,
+      isVoiceInput
+    })
+    const refinedQuery = refinement.refinedQuery
+
+    if (refinement.corrections.length > 0) {
+      console.log(`🔧 [ENDOFLOW MASTER] Refined: "${userQuery}" → "${refinedQuery}"`)
+    }
+
+    // Step 0.5: Detect topic changes (using refined query)
+    const isNewTopic = await detectTopicChange(refinedQuery, conversationHistory)
+
     // If new topic detected, clear conversation context for fresh start
     const effectiveHistory = isNewTopic ? [] : conversationHistory
-    
+
     if (isNewTopic && conversationHistory && conversationHistory.length > 0) {
       console.log('🆕 [ENDOFLOW MASTER] Topic change detected - starting fresh context')
     }
 
-    // Step 1: Classify Intent (with effective history)
-    const intent = await classifyIntent(userQuery, effectiveHistory)
+    // Session 15: Voice number selection — resolve "1", "number 1", "first one" to a candidate
+    // Check if previous assistant response had patient_selection_confirm/prompt
+    const numberMatch = refinedQuery.match(/^(?:number\s+)?(\d)$|^(one|two|three|first|second|third|the\s+first|the\s+second|the\s+third)$/i)
+    if (numberMatch && effectiveHistory.length >= 2) {
+      const lastAssistantMsg = effectiveHistory[effectiveHistory.length - 1]
+      if (lastAssistantMsg?.role === 'assistant') {
+        // Check if the last response mentioned candidates (by looking for numbered names)
+        const candidatePattern = /(?:Did you mean|Today's patients).*?(\d+)\.\s+(\w[\w\s]+?)(?:,|\?|$)/g
+        const candidates: string[] = []
+        let candidateMatch
+        while ((candidateMatch = candidatePattern.exec(lastAssistantMsg.content))) {
+          candidates.push(candidateMatch[2].trim())
+        }
 
-    // Step 2: Handle clarification requests
-    if (intent.requiresClarification) {
+        if (candidates.length > 0) {
+          const numStr = numberMatch[1] || numberMatch[2]
+          const numMap: Record<string, number> = {
+            '1': 0, '2': 1, '3': 2,
+            'one': 0, 'two': 1, 'three': 2,
+            'first': 0, 'second': 1, 'third': 2,
+            'the first': 0, 'the second': 1, 'the third': 2,
+          }
+          const idx = numMap[numStr.toLowerCase()] ?? -1
+          if (idx >= 0 && idx < candidates.length) {
+            const selectedName = candidates[idx]
+            console.log(`✅ [VOICE SELECT] User chose #${idx + 1}: "${selectedName}"`)
+            // Re-run with the actual patient name
+            return orchestrateQuery({
+              ...params,
+              userQuery: `Start consultation with ${selectedName}`,
+              conversationHistory: effectiveHistory,
+            })
+          }
+        }
+      }
+    }
+
+    // Step 1: Classify Intent (using refined query with effective history)
+    const intent = await classifyIntent(refinedQuery, effectiveHistory)
+
+    // Step 2: Handle clarification requests - but still try to be helpful
+    // Session 13: Lowered threshold from 0.4 to 0.25 — dentists with hands in mouth won't repeat
+    if (intent.requiresClarification && intent.confidence < 0.25) {
+      // Only ask for clarification if confidence is very low
       return {
         success: true,
         response: intent.clarificationQuestion || 'Could you please provide more details?',
@@ -1530,59 +1846,273 @@ export async function orchestrateQuery(params: {
       }
     }
 
-    // Step 3: Delegate to appropriate agent(s)
+    // If confidence is moderate (0.4-0.7) with clarification flag, proceed anyway
+    // The AI will do its best with what it has
+    if (intent.requiresClarification) {
+      console.log(`⚠️ [ENDOFLOW MASTER] Low confidence (${intent.confidence}) but proceeding with best-effort interpretation`)
+      intent.requiresClarification = false // Override - let it try
+    }
+
+    // Step 2.5 (Session 14): Check if this is a multi-step command → route to conductor
+    const { isMultiStepIntent, executeConductorPipeline } = await import('@/lib/agents/mcp-conductor')
+    if (isMultiStepIntent(intent.type, intent.entities)) {
+      console.log(`🎯 [ENDOFLOW MASTER] Multi-step intent detected: ${intent.type} — routing to MCP Conductor`)
+
+      const conductorResult = await executeConductorPipeline(
+        intent.type,
+        intent.entities,
+        dentistId,
+        {
+          onStepStart: (step) => console.log(`  ▶ ${step.label}`),
+          onStepComplete: (step) => console.log(`  ✅ ${step.id} done (${step.durationMs}ms)`),
+          onStepFailed: (step) => console.log(`  ❌ ${step.id} failed: ${step.error}`),
+        }
+      )
+
+      // Convert conductor result to OrchestratedResponse
+      const agentResponse: AgentResponse = {
+        agentName: 'MCPConductor',
+        success: conductorResult.success,
+        data: {
+          steps: conductorResult.steps,
+          actionCommands: conductorResult.actionCommands,
+        },
+        processingTime: conductorResult.totalDurationMs,
+      }
+
+      // Persist to Supabase session
+      await addToSession(dentistId, 'user', userQuery, intent.type)
+      await addToSession(dentistId, 'assistant', conductorResult.finalMessage)
+      await logIntent(dentistId, intent.type, intent.confidence, userQuery)
+
+      // Update patient context if consultation was started
+      const patientStep = conductorResult.steps.find(s => s.id === 'search_patient' && s.status === 'completed')
+      if (patientStep?.result?.patientId) {
+        await updatePatientContext(dentistId, patientStep.result.patientId, patientStep.result.patientName)
+      }
+
+      return {
+        success: conductorResult.success,
+        response: conductorResult.finalMessage,
+        agentResponses: [agentResponse],
+        intent,
+        suggestions: conductorResult.success
+          ? ['How is the treatment going?', 'Show patient history', 'Open dental chart']
+          : ['Try again', 'Search a different patient'],
+        // Pass the LAST action command for frontend execution
+        actionCommands: conductorResult.actionCommands,
+      } as OrchestratedResponse & { actionCommands?: any[] }
+    }
+
+    // Step 3: Delegate to appropriate agent(s) — use refinedQuery for all agents
     let agentResponses: AgentResponse[] = []
 
     switch (intent.type) {
       case 'clinical_research':
+      case 'clinical_question': // Session 13: consolidated alias
         agentResponses.push(
-          await delegateToClinicalResearch(userQuery, intent.entities, dentistId, effectiveHistory)
+          await delegateToClinicalResearch(refinedQuery, intent.entities, dentistId, effectiveHistory)
         )
         break
 
       case 'appointment_inquiry':
+      case 'appointment_view': // Session 13: consolidated alias
         // View schedule, list appointments
         agentResponses.push(
-          await delegateToAppointmentInquiry(userQuery, intent.entities, dentistId, effectiveHistory)
+          await delegateToAppointmentInquiry(refinedQuery, intent.entities, dentistId, effectiveHistory)
         )
         break
 
       case 'appointment_booking':
+      case 'appointment_book': // Session 13: consolidated alias
         // Create/schedule new appointment
         agentResponses.push(
-          await delegateToScheduler(userQuery, intent.entities, dentistId, effectiveHistory)
+          await delegateToScheduler(refinedQuery, intent.entities, dentistId, effectiveHistory)
         )
         break
 
       case 'treatment_planning':
         agentResponses.push(
-          await delegateToTreatmentPlanning(userQuery, intent.entities, dentistId, effectiveHistory)
+          await delegateToTreatmentPlanning(refinedQuery, intent.entities, dentistId, effectiveHistory)
         )
         break
 
       case 'patient_inquiry':
+      case 'patient_lookup': // Session 13: consolidated (merges patient_inquiry + patient_status)
         agentResponses.push(
-          await delegateToPatientInquiry(userQuery, intent.entities, dentistId, effectiveHistory)
+          await delegateToPatientInquiry(refinedQuery, intent.entities, dentistId, effectiveHistory)
         )
         break
 
       case 'task_management':
+      case 'task_command': // Session 13: consolidated alias
         agentResponses.push(
-          await delegateToTaskManagement(userQuery, intent.entities, dentistId, effectiveHistory)
+          await delegateToTaskManagement(refinedQuery, intent.entities, dentistId, effectiveHistory)
+        )
+        break
+
+      // Session 10: Navigation & consultation lifecycle intents
+      case 'navigation':
+        agentResponses.push(
+          await delegateToNavigation(refinedQuery, intent.entities)
+        )
+        break
+
+      case 'consultation_start':
+        agentResponses.push(
+          await delegateToConsultationStart(refinedQuery, intent.entities, dentistId)
+        )
+        break
+
+      case 'consultation_stop':
+        agentResponses.push(
+          await delegateToConsultationStop(refinedQuery, intent.entities)
+        )
+        break
+
+      case 'patient_status':
+        agentResponses.push(
+          await delegateToPatientStatus(refinedQuery, intent.entities, dentistId)
+        )
+        break
+
+      case 'generate_report':
+      case 'report_command': // Session 13: consolidated alias
+        agentResponses.push({
+          agentName: 'ReportAgent',
+          success: true,
+          data: {
+            action: 'generate_report',
+            message: 'Generating consultation report. The PDF will download shortly.',
+          },
+          processingTime: 0,
+        })
+        break
+
+      // Session 13: Hands-free voice control intents
+      case 'tooth_selection':
+      case 'tooth_command': { // Session 13: consolidated — handles tooth select + diagnosis accept/reject
+        // Determine if this is a tooth selection or diagnosis action
+        const toothQuery = refinedQuery.toLowerCase()
+        const isDiagnosisAccept = /accept|agree|right|correct|theek|sahi|confirm|apply|yes|haan/i.test(toothQuery)
+        const isDiagnosisReject = /reject|no|wrong|galat|try again|alternative/i.test(toothQuery)
+
+        if (isDiagnosisAccept) {
+          agentResponses.push({
+            agentName: 'DiagnosisActionAgent',
+            success: true,
+            data: { action: 'accept_diagnosis', message: 'Accepting the AI diagnosis.' },
+            processingTime: 0,
+          })
+        } else if (isDiagnosisReject) {
+          agentResponses.push({
+            agentName: 'DiagnosisActionAgent',
+            success: true,
+            data: { action: 'reject_diagnosis', message: 'Rejecting diagnosis. Let me suggest alternatives.' },
+            processingTime: 0,
+          })
+        } else {
+          agentResponses.push({
+            agentName: 'ToothSelectionAgent',
+            success: true,
+            data: {
+              action: 'select_tooth',
+              toothNumber: intent.entities.toothNumber || '',
+              message: intent.entities.toothNumber
+                ? `Opening tooth ${intent.entities.toothNumber} on the dental chart.`
+                : 'Which tooth would you like to select?',
+            },
+            processingTime: 0,
+          })
+        }
+        break
+      }
+
+      case 'recording_control': {
+        // Determine specific recording action from query
+        const queryLower = refinedQuery.toLowerCase()
+        let recordingAction: 'pause' | 'resume' | 'process' | 'read_back' = 'pause'
+        let message = 'Pausing recording.'
+
+        if (/resum|continu|aage|chalo|keep going|go on/i.test(queryLower)) {
+          recordingAction = 'resume'
+          message = 'Resuming recording.'
+        } else if (/read.?back|what.*(we|do we).*(have|got)|play.*back|sunao/i.test(queryLower)) {
+          recordingAction = 'read_back'
+          message = 'Reading back the current transcript.'
+        } else if (/process|analyze|run.*diagnos|final/i.test(queryLower)) {
+          recordingAction = 'process'
+          message = 'Processing all recorded segments through the AI pipeline.'
+        }
+
+        agentResponses.push({
+          agentName: 'RecordingControlAgent',
+          success: true,
+          data: {
+            action: 'recording_control',
+            recordingAction,
+            message,
+          },
+          processingTime: 0,
+        })
+        break
+      }
+
+      case 'diagnosis_action': // Legacy — handled by tooth_command above
+        break
+
+      case 'gap_interaction': {
+        const queryLower2 = refinedQuery.toLowerCase()
+        let gapAction = 'answer_gap'
+        let gapAnswer = refinedQuery
+
+        if (/skip|next|aage|agla/i.test(queryLower2)) {
+          gapAction = 'skip_gap'
+          gapAnswer = ''
+        } else if (/repeat|dobara|phir se|say.*again/i.test(queryLower2)) {
+          gapAction = 'repeat_gap'
+          gapAnswer = ''
+        } else if (/done|that'?s all|bas|khatam|no more/i.test(queryLower2)) {
+          gapAction = 'close_gap_dialog'
+          gapAnswer = ''
+        }
+
+        agentResponses.push({
+          agentName: 'GapInteractionAgent',
+          success: true,
+          data: {
+            action: gapAction,
+            gapAnswer,
+            message: gapAction === 'answer_gap'
+              ? 'Processing your answer.'
+              : gapAction === 'skip_gap'
+              ? 'Skipping to the next question.'
+              : gapAction === 'repeat_gap'
+              ? 'Repeating the current question.'
+              : 'Finishing gap-filling and processing diagnosis.',
+          },
+          processingTime: 0,
+        })
+        break
+      }
+
+      case 'task_creation': // Legacy — now handled by task_command/task_management above
+        agentResponses.push(
+          await delegateToTaskManagement(refinedQuery, intent.entities, dentistId, effectiveHistory)
         )
         break
 
       case 'general_question':
       default:
         agentResponses.push(
-          await delegateToGeneralAI(userQuery, effectiveHistory)
+          await delegateToGeneralAI(refinedQuery, effectiveHistory)
         )
         break
     }
 
-    // Step 4: Synthesize natural language response
+    // Step 4: Synthesize natural language response (use refined query for better synthesis)
     const synthesizedResponse = await synthesizeResponse(
-      userQuery,
+      refinedQuery,
       intent,
       agentResponses,
       language
@@ -1592,6 +2122,19 @@ export async function orchestrateQuery(params: {
     const suggestions = generateSuggestions(intent, agentResponses)
 
     console.log('✅ [ENDOFLOW MASTER] Orchestration complete')
+
+    // Session 14: Persist to Supabase session
+    await addToSession(dentistId, 'user', userQuery, intent.type)
+    await addToSession(dentistId, 'assistant', synthesizedResponse)
+    await logIntent(dentistId, intent.type, intent.confidence, userQuery)
+
+    // If a patient was found via consultation_start, update active context
+    const consultStartAgent = agentResponses.find(
+      r => r.agentName === 'ConsultationStartAgent' && r.success && r.data?.patientId
+    )
+    if (consultStartAgent?.data?.patientId) {
+      await updatePatientContext(dentistId, consultStartAgent.data.patientId, consultStartAgent.data.patientName || '')
+    }
 
     return {
       success: true,
@@ -1932,6 +2475,16 @@ async function synthesizeResponse(
       return await finalizeResponse('Task operation completed.')
     }
 
+    // Session 10: Navigation & consultation lifecycle response formatting
+    case 'navigation':
+    case 'consultation_start':
+    case 'consultation_stop':
+    case 'patient_status':
+    case 'generate_report': {
+      const data = successfulResponses[0]?.data
+      return await finalizeResponse(data?.message || 'Done.')
+    }
+
     case 'general_question':
     default: {
       const data = successfulResponses[0]?.data
@@ -1975,10 +2528,12 @@ Translate to Hindi:`
       }
     ]
 
-    const hindiTranslation = await generateChatCompletion(messages, {
+    const hindiTranslation = await aiChatCompletion(messages, {
+      task: 'summarization',
+      provider: 'gemini', // Translation is fast/simple
       systemInstruction,
-      temperature: 0.5,  // Faster generation, still accurate for translation
-      maxOutputTokens: 1024  // Sufficient for most responses
+      temperature: 0.5,
+      maxOutputTokens: 1024
     })
 
     return hindiTranslation.trim()
@@ -2035,6 +2590,35 @@ function generateSuggestions(
       suggestions.push('View task statistics')
       break
 
+    case 'navigation':
+      suggestions.push('Open clinical mode')
+      suggestions.push('Go to patients')
+      suggestions.push('View today\'s schedule')
+      break
+
+    case 'consultation_start':
+      suggestions.push('Stop recording')
+      suggestions.push('Show patient history')
+      break
+
+    case 'consultation_stop':
+      suggestions.push('View diagnosis')
+      suggestions.push('Generate report')
+      suggestions.push('Set follow-up appointment')
+      break
+
+    case 'patient_status':
+      suggestions.push('Start consultation')
+      suggestions.push('View treatment history')
+      suggestions.push('Schedule next appointment')
+      break
+
+    case 'generate_report':
+      suggestions.push('Send to patient')
+      suggestions.push('View patient profile')
+      suggestions.push('Set follow-up appointment')
+      break
+
     case 'general_question':
       suggestions.push('Search patient database')
       suggestions.push('View today\'s schedule')
@@ -2042,4 +2626,402 @@ function generateSuggestions(
   }
 
   return suggestions.slice(0, 3)
+}
+
+// ============================================================================
+// SESSION 10: NAVIGATION & CONSULTATION LIFECYCLE HANDLERS
+// ============================================================================
+
+/**
+ * Handle navigation commands.
+ * Returns an action object that the frontend interprets to navigate.
+ */
+async function delegateToNavigation(
+  query: string,
+  entities: ClassifiedIntent['entities']
+): Promise<AgentResponse> {
+  const start = Date.now()
+
+  // Resolve target mode from entities or infer from query
+  let targetMode = entities.targetMode
+  let targetTab = entities.targetTab
+
+  if (!targetMode) {
+    // Infer from common patterns
+    const q = query.toLowerCase()
+    if (q.includes('home') || q.includes('dashboard')) targetMode = 'home'
+    else if (q.includes('clinical') || q.includes('consultation') || q.includes('consult')) targetMode = 'clinical'
+    else if (q.includes('patient') || q.includes('pms') || q.includes('profile')) targetMode = 'pms'
+    else if (q.includes('research') || q.includes('study') || q.includes('analysis')) targetMode = 'research'
+    else if (q.includes('manage') || q.includes('task') || q.includes('organiz')) targetMode = 'management'
+  }
+
+  return {
+    agentName: 'NavigationAgent',
+    success: true,
+    data: {
+      action: 'navigate',
+      targetMode: targetMode || 'home',
+      targetTab,
+      message: `Navigating to ${targetMode || 'home'} mode${targetTab ? `, ${targetTab} tab` : ''}.`
+    },
+    processingTime: Date.now() - start
+  }
+}
+
+/**
+ * Handle consultation start commands.
+ * Looks up the patient, determines consultation mode, returns action for frontend.
+ */
+async function delegateToConsultationStart(
+  query: string,
+  entities: ClassifiedIntent['entities'],
+  dentistId: string
+): Promise<AgentResponse> {
+  const start = Date.now()
+
+  try {
+    const supabase = await createServiceClient()
+    let patientId: string | null = null
+    let patientName = entities.patientName || null
+    let consultationMode: string = 'new_consultation'
+    let appointmentId: string | null = null
+    let appointmentType: string | null = null
+    let appointmentMissing = false
+
+    // Session 15: If no patient name provided, prompt with today's patients
+    if (!patientName) {
+      const today = new Date().toISOString().split('T')[0]
+      const { data: todayPatients } = await supabase
+        .from('appointments')
+        .select('patient_id, patients!inner(id, first_name, last_name)')
+        .gte('scheduled_date', today + 'T00:00:00')
+        .lte('scheduled_date', today + 'T23:59:59')
+        .in('status', ['scheduled', 'confirmed', 'checked_in'])
+        .limit(10)
+
+      let patientList: { id: string; name: string }[] = []
+      if (todayPatients && todayPatients.length > 0) {
+        const seen = new Set<string>()
+        for (const appt of todayPatients) {
+          const p = (appt as any).patients
+          if (p && !seen.has(p.id)) {
+            seen.add(p.id)
+            patientList.push({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() })
+          }
+        }
+      }
+
+      const listText = patientList.length > 0
+        ? `Today's patients: ${patientList.map((p, i) => `${i + 1}. ${p.name}`).join(', ')}`
+        : 'No patients scheduled for today'
+
+      return {
+        agentName: 'ConsultationStartAgent',
+        success: true,
+        data: {
+          action: 'patient_selection_prompt',
+          patientList,
+          message: `Which patient would you like to start a consultation with? ${listText}`,
+        },
+        processingTime: Date.now() - start
+      }
+    }
+
+    // Search for patient if name provided
+    if (patientName) {
+      // Session 15: Fuzzy search for voice-friendly name matching
+      let matchFound = false
+      let fuzzyPatients: any[] = []
+      try {
+        const { fuzzySearchPatients } = await import('@/lib/utils/fuzzy-patient-search')
+        const fuzzyResult = await fuzzySearchPatients(supabase, patientName)
+        fuzzyPatients = fuzzyResult.patients
+
+        if (fuzzyResult.bestMatch) {
+          patientId = fuzzyResult.bestMatch.id
+          patientName = `${fuzzyResult.bestMatch.first_name} ${fuzzyResult.bestMatch.last_name}`
+          matchFound = true
+          console.log(`✅ [CONSULTATION START] Fuzzy matched "${entities.patientName}" → ${patientName} (${(fuzzyResult.bestMatch.score * 100).toFixed(1)}%)`)
+        }
+      } catch (fuzzyError: any) {
+        // Fallback: original ilike search
+        console.warn('⚠️ [CONSULTATION START] Fuzzy search failed, falling back to ilike:', fuzzyError.message)
+        const nameParts = patientName.trim().split(/\s+/)
+        let patientQuery = supabase.from('patients').select('id, first_name, last_name')
+        if (nameParts.length >= 2) {
+          patientQuery = patientQuery.ilike('first_name', `%${nameParts[0]}%`).ilike('last_name', `%${nameParts.slice(1).join(' ')}%`)
+        } else {
+          patientQuery = patientQuery.or(`first_name.ilike.%${nameParts[0]}%,last_name.ilike.%${nameParts[0]}%`)
+        }
+        const { data: patients } = await patientQuery.limit(5)
+        if (patients && patients.length > 0) {
+          patientId = patients[0].id
+          patientName = `${patients[0].first_name} ${patients[0].last_name}`
+          matchFound = true
+        }
+      }
+
+      if (matchFound) {
+
+        // Session 12: Check today's appointments first — appointment type drives mode
+        const today = new Date().toISOString().split('T')[0]
+        const { data: todayAppointments } = await supabase
+          .from('appointments')
+          .select('id, appointment_type, status, linked_episode_id')
+          .eq('patient_id', patientId)
+          .gte('scheduled_date', today + 'T00:00:00')
+          .lte('scheduled_date', today + 'T23:59:59')
+          .in('status', ['scheduled', 'confirmed', 'checked_in'])
+          .limit(1)
+
+        if (todayAppointments && todayAppointments.length > 0) {
+          const appt = todayAppointments[0]
+          appointmentId = appt.id
+          appointmentType = appt.appointment_type || null
+          // Use detectConsultationMode to drive mode from appointment type
+          const { detectConsultationMode } = await import('@/lib/types/consultation-modes')
+          consultationMode = detectConsultationMode({ appointmentType: appointmentType || undefined })
+          console.log(`📅 [CONSULTATION START] Today's appointment found: ${appointmentType} → mode: ${consultationMode}`)
+        } else {
+          appointmentMissing = true
+          // Fall back to episode/history-based detection
+          // Determine consultation mode: check for active episodes
+          const { data: activeEpisodes } = await supabase
+            .from('treatment_episodes')
+            .select('id, status, original_diagnosis, linked_teeth')
+            .eq('patient_id', patientId)
+            .in('status', ['planned', 'in_progress'])
+            .limit(3)
+
+          // Check for existing completed consultations (is this a first visit?)
+          const { count } = await supabase
+            .from('consultations')
+            .select('id', { count: 'exact', head: true })
+            .eq('patient_id', patientId)
+            .eq('status', 'completed')
+
+          const hasActiveEpisodes = activeEpisodes && activeEpisodes.length > 0
+          const hasCompletedConsultations = (count || 0) > 0
+
+          if (hasActiveEpisodes) {
+            consultationMode = 'treatment_visit'
+          } else if (hasCompletedConsultations) {
+            consultationMode = 'new_consultation'
+          } else {
+            consultationMode = 'new_consultation'
+          }
+          console.log(`⚠️ [CONSULTATION START] No today's appointment found — using episode-based detection: ${consultationMode}`)
+        }
+
+        console.log(`🏥 [CONSULTATION START] Patient: ${patientName} (${patientId}), mode: ${consultationMode}, appointment: ${appointmentId || 'none'}`)
+      } else {
+        // Session 15: Include fuzzy candidates if available for confirmation UI
+        const nearMatches = fuzzyPatients.slice(0, 3)
+        const candidateNames = nearMatches.map((p: any) => `${p.first_name} ${p.last_name}`).join(', ')
+        const hint = candidateNames ? ` Did you mean: ${candidateNames}?` : ''
+        return {
+          agentName: 'ConsultationStartAgent',
+          success: false,
+          data: {
+            action: nearMatches.length > 0 ? 'patient_selection_confirm' : 'consultation_start_failed',
+            reason: 'patient_not_found',
+            searchedName: patientName,
+            candidates: nearMatches,
+            message: `I couldn't find a patient named "${patientName}".${hint}`
+          },
+          processingTime: Date.now() - start
+        }
+      }
+    }
+
+    return {
+      agentName: 'ConsultationStartAgent',
+      success: true,
+      data: {
+        action: 'consultation_start',
+        patientId,
+        patientName,
+        consultationMode,
+        appointmentId,
+        appointmentType,
+        appointmentMissing,
+        startRecording: true,
+        message: patientName
+          ? `Starting ${consultationMode === 'treatment_visit' ? 'treatment visit' : consultationMode === 'follow_up' ? 'follow-up' : 'new consultation'} with ${patientName}. Recording will begin — you can start talking with the patient.`
+          : 'Please select a patient to start the consultation.'
+      },
+      processingTime: Date.now() - start
+    }
+  } catch (err: any) {
+    return {
+      agentName: 'ConsultationStartAgent',
+      success: false,
+      error: err.message,
+      processingTime: Date.now() - start
+    }
+  }
+}
+
+/**
+ * Handle consultation stop commands.
+ * Returns action for frontend to stop recording and trigger the AI pipeline.
+ */
+async function delegateToConsultationStop(
+  query: string,
+  entities: ClassifiedIntent['entities']
+): Promise<AgentResponse> {
+  return {
+    agentName: 'ConsultationStopAgent',
+    success: true,
+    data: {
+      action: 'consultation_stop',
+      consultationAction: 'stop_recording',
+      triggerAIPipeline: true,
+      message: 'Stopping recording. The transcript will be processed through the AI diagnostic pipeline.'
+    },
+    processingTime: 0
+  }
+}
+
+/**
+ * Handle patient status queries.
+ * Assembles the full longitudinal patient context and formats a summary.
+ */
+async function delegateToPatientStatus(
+  query: string,
+  entities: ClassifiedIntent['entities'],
+  dentistId: string
+): Promise<AgentResponse> {
+  const start = Date.now()
+
+  try {
+    const supabase = await createServiceClient()
+    const patientName = entities.patientName
+
+    if (!patientName) {
+      return {
+        agentName: 'PatientStatusAgent',
+        success: false,
+        data: {
+          action: 'patient_status_failed',
+          reason: 'no_patient_name',
+          message: 'Which patient would you like to know the status of?'
+        },
+        processingTime: Date.now() - start
+      }
+    }
+
+    // Search for patient
+    const nameParts = patientName.trim().split(/\s+/)
+    let patientQuery = supabase.from('patients').select('id, first_name, last_name')
+
+    if (nameParts.length >= 2) {
+      patientQuery = patientQuery
+        .ilike('first_name', `%${nameParts[0]}%`)
+        .ilike('last_name', `%${nameParts.slice(1).join(' ')}%`)
+    } else {
+      patientQuery = patientQuery.or(
+        `first_name.ilike.%${nameParts[0]}%,last_name.ilike.%${nameParts[0]}%`
+      )
+    }
+
+    const { data: patients } = await patientQuery.limit(3)
+
+    if (!patients || patients.length === 0) {
+      return {
+        agentName: 'PatientStatusAgent',
+        success: false,
+        data: {
+          action: 'patient_status_failed',
+          reason: 'patient_not_found',
+          message: `I couldn't find a patient named "${patientName}".`
+        },
+        processingTime: Date.now() - start
+      }
+    }
+
+    const patient = patients[0]
+    const patientId = patient.id
+    const fullName = `${patient.first_name} ${patient.last_name}`
+
+    // Use the patient context assembler for full longitudinal data
+    const { assemblePatientContext } = await import('@/lib/services/patient-context-assembler')
+    const context = await assemblePatientContext(
+      patientId,
+      entities.toothNumber || undefined
+    )
+
+    // Build a structured status summary
+    const statusParts: string[] = []
+    statusParts.push(`**Patient: ${fullName}**`)
+
+    if (context.demographics.age) {
+      statusParts.push(`Age: ${context.demographics.age}${context.demographics.gender ? `, ${context.demographics.gender}` : ''}`)
+    }
+
+    statusParts.push(`Total visits: ${context.visitCount}${context.lastVisitDate ? `, last: ${new Date(context.lastVisitDate).toLocaleDateString()}` : ''}`)
+
+    // Active episodes
+    if (context.activeEpisodes.length > 0) {
+      statusParts.push(`\n**Active Treatment Episodes (${context.activeEpisodes.length}):**`)
+      for (const ep of context.activeEpisodes) {
+        statusParts.push(`• Teeth ${ep.linkedTeeth.join(',')}: ${ep.diagnosis} — ${ep.status} (${ep.completedVisits}/${ep.plannedVisits} visits)`)
+        if (ep.nextSteps) {
+          statusParts.push(`  Next: ${ep.nextSteps}`)
+        }
+      }
+    } else {
+      statusParts.push('\nNo active treatment episodes.')
+    }
+
+    // Specific tooth context if requested
+    if (context.toothContext) {
+      const tc = context.toothContext
+      statusParts.push(`\n**Tooth ${tc.toothNumber}:**`)
+      statusParts.push(`Status: ${tc.currentStatus || 'no record'}`)
+      if (tc.previousDiagnoses.length) statusParts.push(`Diagnoses: ${tc.previousDiagnoses.join(', ')}`)
+      if (tc.previousTreatments.length) statusParts.push(`Treatments: ${tc.previousTreatments.join(', ')}`)
+      if (tc.activeEpisode) {
+        statusParts.push(`Episode: ${tc.activeEpisode.status}, ${tc.activeEpisode.completedVisits}/${tc.activeEpisode.plannedVisits} visits`)
+      }
+    }
+
+    // Recent consultations
+    if (context.previousConsultations.length > 0) {
+      const recent = context.previousConsultations.slice(0, 3)
+      statusParts.push(`\n**Recent Consultations:**`)
+      for (const pc of recent) {
+        const date = new Date(pc.date).toLocaleDateString()
+        statusParts.push(`• ${date}: ${pc.chiefComplaint || 'No chief complaint'}`)
+        if (pc.diagnoses.length) statusParts.push(`  Dx: ${pc.diagnoses.join('; ')}`)
+      }
+    }
+
+    // Teeth overview
+    const teethWithIssues = Object.entries(context.allTeethStatus).filter(([_, s]) => s !== 'healthy')
+    if (teethWithIssues.length > 0) {
+      statusParts.push(`\n**Dental Overview:** ${teethWithIssues.length} teeth with findings`)
+    }
+
+    return {
+      agentName: 'PatientStatusAgent',
+      success: true,
+      data: {
+        action: 'patient_status',
+        patientId,
+        patientName: fullName,
+        context,  // Full context for frontend if needed
+        message: statusParts.join('\n')
+      },
+      processingTime: Date.now() - start
+    }
+  } catch (err: any) {
+    return {
+      agentName: 'PatientStatusAgent',
+      success: false,
+      error: err.message,
+      processingTime: Date.now() - start
+    }
+  }
 }

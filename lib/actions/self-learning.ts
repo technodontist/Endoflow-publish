@@ -3,7 +3,8 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { getCurrentUser } from './auth'
 import { performRAGQuery, formatRAGContext, extractCitations } from '@/lib/services/rag-service'
-import { generateChatCompletion, type GeminiChatMessage } from '@/lib/services/gemini-ai'
+import { type GeminiChatMessage } from '@/lib/services/gemini-ai'
+import { aiChatCompletion } from '@/lib/services/ai-provider'
 import { getPatientFullContext, formatPatientMedicalContext, type PatientMedicalContext } from './patient-context'
 
 export interface TreatmentOption {
@@ -150,8 +151,8 @@ Guidelines:
       { role: 'user', parts: [{ text: userPrompt }] }
     ]
 
-    const responseText = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
+    const responseText = await aiChatCompletion(messages, {
+      task: 'evidence_synthesis',
       temperature: 0.2,
       systemInstruction,
       responseFormat: 'json'
@@ -314,8 +315,8 @@ Guidelines:
       { role: 'user', parts: [{ text: userPrompt }] }
     ]
 
-    const responseText = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
+    const responseText = await aiChatCompletion(messages, {
+      task: 'evidence_synthesis',
       temperature: 0.2,
       systemInstruction,
       responseFormat: 'json'
@@ -457,8 +458,8 @@ Guidelines:
       { role: 'user', parts: [{ text: userPrompt }] }
     ]
 
-    const answer = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
+    const answer = await aiChatCompletion(messages, {
+      task: 'evidence_synthesis',
       temperature: 0.3,
       systemInstruction
     })

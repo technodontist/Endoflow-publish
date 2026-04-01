@@ -105,9 +105,9 @@ export function ClinicChatHistorySidebar({
   }
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
+    <div className="w-64 bg-card border-r border-border flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-border">
         <Button
           onClick={onNewChat}
           className="w-full bg-teal-600 hover:bg-teal-700 text-white"
@@ -122,13 +122,13 @@ export function ClinicChatHistorySidebar({
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
           {isLoading && (
-            <div className="p-4 text-center text-gray-400 text-sm">
+            <div className="p-4 text-center text-muted-foreground/70 text-sm">
               Loading chat history...
             </div>
           )}
 
           {!isLoading && sessions.length === 0 && (
-            <div className="p-4 text-center text-gray-400 text-sm">
+            <div className="p-4 text-center text-muted-foreground/70 text-sm">
               <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p>No chat history yet</p>
               <p className="text-xs mt-1">Click "New Chat" to start</p>
@@ -144,8 +144,8 @@ export function ClinicChatHistorySidebar({
                 key={session.id}
                 className={`group relative rounded-lg transition-colors ${
                   isActive
-                    ? 'bg-teal-50 border border-teal-200'
-                    : 'hover:bg-gray-50 border border-transparent'
+                    ? 'bg-teal-500/10 border border-teal-200'
+                    : 'hover:bg-muted border border-transparent'
                 }`}
               >
                 {isEditing ? (
@@ -188,25 +188,25 @@ export function ClinicChatHistorySidebar({
                     <div className="flex-1 min-w-0 mr-2">
                       <div className="flex items-center space-x-2">
                         <MessageSquare className={`w-4 h-4 flex-shrink-0 ${
-                          isActive ? 'text-teal-600' : 'text-gray-400'
+                          isActive ? 'text-teal-400' : 'text-muted-foreground/70'
                         }`} />
                         <h4 className={`text-sm font-medium truncate ${
-                          isActive ? 'text-teal-900' : 'text-gray-900'
+                          isActive ? 'text-teal-400' : 'text-foreground'
                         }`}>
                           {session.title}
                         </h4>
                       </div>
                       {session.last_message_preview && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-1 ml-6">
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1 ml-6">
                           {session.last_message_preview}
                         </p>
                       )}
                       <div className="flex items-center space-x-2 mt-1 ml-6">
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-muted-foreground/70">
                           {session.message_count} {session.message_count === 1 ? 'message' : 'messages'}
                         </span>
-                        <span className="text-xs text-gray-400">•</span>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-muted-foreground/70">•</span>
+                        <span className="text-xs text-muted-foreground/70">
                           {formatTimeAgo(session.last_activity_at)}
                         </span>
                       </div>

@@ -1,7 +1,8 @@
 {
   "private": true,
   "scripts": {
-"dev": "next dev || exit 0",
+    "dev": "next dev || exit 0",
+    "dev:https": "next dev --experimental-https || exit 0",
     "build": "next build",
     "start": "next start",
     "db:setup": "npx tsx lib/db/setup.ts",
@@ -12,6 +13,8 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@deepgram/sdk": "^5.0.0",
     "@google/genai": "^1.22.0",
     "@google/generative-ai": "^0.24.1",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -47,10 +50,12 @@
     "jose": "^6.0.11",
     "lucide-react": "^0.511.0",
     "next": "^15.0.0",
+    "openai": "^6.33.0",
     "pdf-lib": "^1.17.1",
     "pdf2json": "^3.2.2",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
+    "radix-ui": "^1.4.3",
     "react": "^18.3.1",
     "react-day-picker": "^9.10.0",
     "react-dom": "^18.3.1",

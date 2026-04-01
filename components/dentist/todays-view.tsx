@@ -117,12 +117,12 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'scheduled': return 'bg-teal-100 text-teal-800 border-teal-200'
-      case 'in_progress': return 'bg-green-100 text-green-800 border-green-200'
-      case 'completed': return 'bg-gray-100 text-gray-800 border-gray-200'
-      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200'
-      case 'no_show': return 'bg-orange-100 text-orange-800 border-orange-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      case 'scheduled': return 'bg-teal-500/20 text-teal-300 border-teal-500/30'
+      case 'in_progress': return 'bg-green-500/20 text-green-300 border-green-500/30'
+      case 'completed': return 'bg-muted text-muted-foreground border-border'
+      case 'cancelled': return 'bg-red-500/20 text-red-300 border-red-500/30'
+      case 'no_show': return 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+      default: return 'bg-muted text-muted-foreground border-border'
     }
   }
 
@@ -182,10 +182,10 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
     return (
       <div className="space-y-6">
         <div className="animate-pulse">
-          <div className="h-32 bg-gray-200 rounded-lg mb-4"></div>
+          <div className="h-32 bg-muted rounded-lg mb-4"></div>
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-24 bg-gray-200 rounded-lg"></div>
+              <div key={i} className="h-24 bg-muted rounded-lg"></div>
             ))}
           </div>
         </div>
@@ -206,26 +206,29 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
   return (
     <div className="space-y-6">
       {/* Enhanced Current Status Card */}
-      <Card className="bg-gradient-to-r from-teal-50 to-cyan-50 border-teal-200">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
+      <Card className="bg-gradient-to-r from-teal-500/10 to-cyan-500/10 border-teal-500/30">
+        <CardContent className="p-3 md:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-lg font-semibold text-teal-900">
+              <h3 className="text-base md:text-lg font-semibold text-foreground">
                 {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </h3>
-              <p className="text-teal-600 flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                {format(currentTime, 'h:mm a')} • {todaysAppointments.length} appointments • {totalMinutes} min total
+              <p className="text-teal-400 flex items-center gap-1 md:gap-2 text-xs md:text-sm">
+                <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" />
+                <span>{format(currentTime, 'h:mm a')}</span>
+                <span>•</span>
+                <span>{todaysAppointments.length} appts</span>
+                <span className="hidden md:inline">• {totalMinutes} min total</span>
               </p>
             </div>
 
-            <div className="text-right">
-              <div className="text-sm text-teal-600 mb-1">Progress</div>
-              <div className="flex items-center gap-2">
-                <div className="text-2xl font-bold text-teal-900">
+            <div className="text-left sm:text-right flex sm:block items-center gap-2">
+              <div className="text-xs md:text-sm text-teal-400">Progress</div>
+              <div className="flex items-center gap-1 md:gap-2">
+                <div className="text-lg md:text-2xl font-bold text-foreground">
                   {completedCount}/{todaysAppointments.length}
                 </div>
-                <div className="text-sm text-teal-700">
+                <div className="text-xs md:text-sm text-teal-400">
                   ({todaysAppointments.length > 0 ? Math.round((completedCount / todaysAppointments.length) * 100) : 0}%)
                 </div>
               </div>
@@ -233,14 +236,14 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
           </div>
 
           {currentAppointment && (
-            <div className="mt-4 p-4 bg-white rounded-lg border border-teal-200 shadow-sm">
+            <div className="mt-4 p-4 bg-card rounded-lg border border-teal-500/30 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <div className="flex-1">
-                  <div className="font-medium text-gray-900">
+                  <div className="font-medium text-foreground">
                     🔴 Current Patient: {currentAppointment.patients?.first_name} {currentAppointment.patients?.last_name}
                   </div>
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-muted-foreground">
                     {currentAppointment.appointment_type} • Started {currentAppointment.scheduled_time?.slice(0, 5)}
                   </div>
                 </div>
@@ -249,14 +252,14 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
           )}
 
           {!currentAppointment && nextAppointment && (
-            <div className="mt-4 p-4 bg-white rounded-lg border border-blue-200 shadow-sm">
+            <div className="mt-4 p-4 bg-card rounded-lg border border-blue-500/30 shadow-sm">
               <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-blue-600" />
+                <Clock className="w-5 h-5 text-blue-400" />
                 <div className="flex-1">
-                  <div className="font-medium text-gray-900">
+                  <div className="font-medium text-foreground">
                     ⏰ Next: {nextAppointment.patients?.first_name} {nextAppointment.patients?.last_name}
                   </div>
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-muted-foreground">
                     {nextAppointment.appointment_type} • {nextAppointment.scheduled_time?.slice(0, 5)}
                   </div>
                 </div>
@@ -292,8 +295,8 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
             </CardHeader>
             <CardContent className="space-y-3">
               {todaysAppointments.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <div className="text-center py-12 text-muted-foreground">
+                  <Calendar className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
                   <p className="text-lg font-medium">No appointments scheduled for today</p>
                   <p className="text-sm mt-1">Enjoy your free day! 🌟</p>
                 </div>
@@ -306,10 +309,10 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
                     <div
                       key={appointment.id}
                       className={`p-4 border rounded-lg transition-all hover:shadow-md ${
-                        isCurrent ? 'border-green-400 bg-green-50 shadow-md ring-2 ring-green-200' :
-                        isNext ? 'border-blue-300 bg-blue-50' :
-                        appointment.status === 'completed' ? 'border-gray-300 bg-gray-50 opacity-75' :
-                        'border-gray-200 hover:border-teal-300'
+                        isCurrent ? 'border-green-500/50 bg-green-500/10 shadow-md ring-2 ring-green-500/20' :
+                        isNext ? 'border-blue-500/40 bg-blue-500/10' :
+                        appointment.status === 'completed' ? 'border-border bg-muted/30 opacity-75' :
+                        'border-border hover:border-teal-500/50'
                       }`}
                     >
                       <div className="flex items-start justify-between">
@@ -326,7 +329,7 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-semibold text-gray-900">
+                              <h4 className="font-semibold text-foreground">
                                 {appointment.patients?.first_name} {appointment.patients?.last_name}
                               </h4>
                               {isCurrent && (
@@ -341,7 +344,7 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
                               )}
                             </div>
 
-                            <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-600">
+                            <div className="flex items-center gap-3 mt-1.5 text-sm text-muted-foreground">
                               <span className="flex items-center gap-1 font-medium">
                                 <Clock className="w-3.5 h-3.5 text-teal-600" />
                                 {appointment.scheduled_time?.slice(0, 5)}
@@ -351,13 +354,13 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
                             </div>
 
                             <div className="mt-1.5">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/20 text-teal-300">
                                 {appointment.appointment_type ?? appointment.appointmentType}
                               </span>
                             </div>
 
                             {appointment.notes && (
-                              <div className="mt-2 text-xs text-gray-700 p-2.5 bg-amber-50 border border-amber-200 rounded-md">
+                              <div className="mt-2 text-xs text-foreground p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-md">
                                 <span className="font-medium">📝 Note: </span>{appointment.notes}
                               </div>
                             )}
@@ -417,7 +420,7 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
         {/* Smart Sidebar */}
         <div className="space-y-6">
           {/* Contextual Quick Actions */}
-          <Card className="border-teal-200">
+          <Card className="border-teal-500/30">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Activity className="w-5 h-5 text-teal-600" />
@@ -454,7 +457,7 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
           </Card>
 
           {/* Performance Metrics */}
-          <Card className="border-blue-200">
+          <Card className="border-blue-500/30">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Activity className="w-5 h-5 text-blue-600" />
@@ -474,7 +477,7 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
                         stroke="currentColor"
                         strokeWidth="8"
                         fill="transparent"
-                        className="text-gray-200"
+                        className="text-muted"
                       />
                       <circle
                         cx="64"
@@ -491,10 +494,10 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
-                        <div className="text-3xl font-bold text-gray-900">
+                        <div className="text-3xl font-bold text-foreground">
                           {todaysAppointments.length > 0 ? Math.round((completedCount / todaysAppointments.length) * 100) : 0}%
                         </div>
-                        <div className="text-xs text-gray-500">Complete</div>
+                        <div className="text-xs text-muted-foreground">Complete</div>
                       </div>
                     </div>
                   </div>
@@ -502,25 +505,25 @@ export function DentistTodaysView({ dentistId, onRefreshStats }: TodaysViewProps
 
                 <div className="space-y-2.5 pt-2 border-t">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-green-400" />
                       Completed
                     </span>
-                    <span className="font-semibold text-green-600">{completedCount}</span>
+                    <span className="font-semibold text-green-400">{completedCount}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center gap-1.5">
-                      <Play className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <Play className="w-4 h-4 text-blue-400" />
                       In Progress
                     </span>
-                    <span className="font-semibold text-blue-600">{inProgressCount}</span>
+                    <span className="font-semibold text-blue-400">{inProgressCount}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-gray-600" />
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
                       Remaining
                     </span>
-                    <span className="font-semibold text-gray-700">{scheduledCount}</span>
+                    <span className="font-semibold text-foreground">{scheduledCount}</span>
                   </div>
                 </div>
               </div>

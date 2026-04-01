@@ -1,13 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { GripVertical, Activity, FileText, Calendar, Stethoscope, Camera, Bluetooth as Tooth, Trash2, AlertTriangle } from "lucide-react"
+import { GripVertical, Calendar, Camera, Bluetooth as Tooth, Trash2, AlertTriangle, ArrowLeft, LayoutDashboard, Layers, Stethoscope } from "lucide-react"
 import { useResizable } from "@/hooks/use-resizable"
 import { PatientQueueList, type QueuePatient } from "@/components/dentist/patient-queue-list"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,8 +27,10 @@ import {
 import { InteractiveDentalChart } from "./interactive-dental-chart"
 import { PatientFilesViewer } from "@/components/patient-files-viewer"
 import { PatientTimeline } from "@/components/dentist/patient-timeline"
-import { DiagnosisOverviewTab } from "@/components/consultation/tabs/DiagnosisOverviewTab"
-import { FollowUpTab } from "@/components/consultation/tabs/FollowUpTab"
+import { PatientOverviewTab } from "@/components/dentist/patient-overview-tab"
+import { PatientJourneyTab } from "@/components/dentist/patient-journey-tab"
+import { PatientRxAppointmentsTab } from "@/components/dentist/patient-rx-appointments-tab"
+import { EnhancedDentalChartTab } from "@/components/dentist/enhanced-dental-chart-tab"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { getPatientToothDiagnoses } from "@/lib/actions/tooth-diagnoses"
@@ -63,13 +71,19 @@ interface Treatment {
   primary_diagnosis?: string
 }
 
-export function EnhancedPatientsInterface() {
+interface EnhancedPatientsInterfaceProps {
+  isMobileView?: boolean
+}
+
+export function EnhancedPatientsInterface({ isMobileView = false }: EnhancedPatientsInterfaceProps) {
   const [selectedPatient, setSelectedPatient] = useState<QueuePatient | null>(null)
-  const [activeTab, setActiveTab] = useState("treatment-done")
+  const [activeTab, setActiveTab] = useState("overview")
   const { width, isResizing, handleMouseDown } = useResizable({ initialWidth: 360, minWidth: 280, maxWidth: 520 })
 
   // Data states
   const [treatments, setTreatments] = useState<Treatment[]>([])
+  const [appointments, setAppointments] = useState<any[]>([])
+  const [prescriptions, setPrescriptions] = useState<any[]>([])
   const [toothDiagnoses, setToothDiagnoses] = useState<any>({})
   const [followUps, setFollowUps] = useState<any[]>([])
   const [consultations, setConsultations] = useState<any[]>([])
@@ -121,13 +135,31 @@ export function EnhancedPatientsInterface() {
         console.log("🔄 Real-time: Tooth diagnoses updated")
         setVersion(v => v + 1)
       })
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'api', 
-        table: 'appointments', 
-        filter: `patient_id=eq.${selectedPatient.id}` 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'api',
+        table: 'appointments',
+        filter: `patient_id=eq.${selectedPatient.id}`
       }, () => {
         console.log("🔄 Real-time: Appointments updated")
+        setVersion(v => v + 1)
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'api',
+        table: 'treatment_episodes',
+        filter: `patient_id=eq.${selectedPatient.id}`
+      }, () => {
+        console.log("🔄 Real-time: Treatment episodes updated")
+        setVersion(v => v + 1)
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'api',
+        table: 'tooth_timeline',
+        filter: `patient_id=eq.${selectedPatient.id}`
+      }, () => {
+        console.log("🔄 Real-time: Tooth timeline updated")
         setVersion(v => v + 1)
       })
       .subscribe()
@@ -216,6 +248,24 @@ export function EnhancedPatientsInterface() {
         setFollowUps(followUpResult.data || [])
       }
 
+      // Load appointments for Rx & Appointments tab
+      const { data: appointmentData } = await supabase
+        .schema('api')
+        .from('appointments')
+        .select('*')
+        .eq('patient_id', selectedPatient.id)
+        .order('scheduled_date', { ascending: false })
+      setAppointments(appointmentData || [])
+
+      // Load prescriptions for Rx & Appointments tab
+      const { data: prescriptionData } = await supabase
+        .schema('api')
+        .from('patient_prescriptions')
+        .select('*')
+        .eq('patient_id', selectedPatient.id)
+        .order('created_at', { ascending: false })
+      setPrescriptions(prescriptionData || [])
+
     } catch (error) {
       console.error('Error loading patient data:', error)
     } finally {
@@ -226,15 +276,15 @@ export function EnhancedPatientsInterface() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800"
+        return "bg-green-500/15 text-green-400"
       case "in_progress":
-        return "bg-blue-100 text-blue-800"
+        return "bg-blue-500/100/15 text-blue-400"
       case "pending":
-        return "bg-yellow-100 text-yellow-800"
+        return "bg-yellow-500/15 text-yellow-400"
       case "cancelled":
-        return "bg-red-100 text-red-800"
+        return "bg-red-500/100/15 text-red-400"
       default:
-        return "bg-gray-100 text-gray-800"
+        return "bg-muted text-foreground"
     }
   }
 
@@ -284,6 +334,263 @@ export function EnhancedPatientsInterface() {
     emergencyContactPhone: undefined,
   } : null
 
+  // Detail panel content — reused in both desktop (inline) and mobile (Sheet)
+  const detailPanelContent = (
+    <div className={isMobileView ? "h-full overflow-y-auto" : "flex-1 min-w-0 pl-4"}>
+        {!selectedPatient ? (
+          <div className="h-full flex items-center justify-center">
+            <Card className="w-full max-w-md mx-auto">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mb-4">
+                  <Stethoscope className="h-8 w-8 text-blue-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Enhanced Patient Interface</h3>
+                <p className="text-muted-foreground text-sm">Select a patient from the queue to view their comprehensive medical records</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col space-y-4">
+            {/* Patient Header */}
+            <Card className="border-l-4 border-l-blue-600">
+              <CardHeader className="pb-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h2 className="text-2xl font-bold text-foreground">
+                        {selectedPatient.firstName} {selectedPatient.lastName}
+                      </h2>
+                      <Badge className={getStatusColor(selectedPatient.status)}>
+                        {selectedPatient.status}
+                      </Badge>
+                      {isLoadingData && (
+                        <div className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                          <span className="text-sm text-blue-400">Syncing...</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">UHID: {selectedPatient.uhid}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">
+                          Age: {new Date().getFullYear() - new Date(selectedPatient.dateOfBirth || '1990-01-01').getFullYear()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">{selectedPatient.phone}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">
+                          Last Visit: {selectedPatient.lastVisit ? format(new Date(selectedPatient.lastVisit), 'MMM d, yyyy') : 'Never'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">
+                      Edit Patient
+                    </Button>
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                      New Appointment
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-400 hover:text-red-700 hover:bg-red-500/100/10"
+                      onClick={() => setShowDeleteDialog(true)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete Patient
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+
+            {/* Enhanced Tabs */}
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-0 h-full flex flex-col">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+                  <TabsList className="flex w-full rounded-none border-b bg-muted overflow-x-auto">
+                    <TabsTrigger value="overview" className="flex items-center gap-2 data-[state=active]:bg-card">
+                      <LayoutDashboard className="h-4 w-4" />
+                      Overview
+                    </TabsTrigger>
+                    <TabsTrigger value="dental-chart" className="flex items-center gap-2 data-[state=active]:bg-card">
+                      <Tooth className="h-4 w-4" />
+                      Dental Chart
+                    </TabsTrigger>
+                    <TabsTrigger value="journey" className="flex items-center gap-2 data-[state=active]:bg-card">
+                      <Layers className="h-4 w-4" />
+                      Journey
+                    </TabsTrigger>
+                    <TabsTrigger value="files" className="flex items-center gap-2 data-[state=active]:bg-card">
+                      <Camera className="h-4 w-4" />
+                      Files
+                    </TabsTrigger>
+                    <TabsTrigger value="rx-appointments" className="flex items-center gap-2 data-[state=active]:bg-card">
+                      <Calendar className="h-4 w-4" />
+                      Rx & Appt
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <div className="flex-1 overflow-auto">
+                    {/* Overview Tab */}
+                    <TabsContent value="overview" className="p-6 m-0">
+                      {selectedPatient && (
+                        <PatientOverviewTab
+                          patientId={selectedPatient.id}
+                          treatments={treatments}
+                          consultations={consultations}
+                          followUps={followUps}
+                        />
+                      )}
+                    </TabsContent>
+
+                    {/* Dental Chart Tab (Visual entry point — click tooth for history) */}
+                    <TabsContent value="dental-chart" className="p-6 m-0">
+                      {selectedPatient && (
+                        <EnhancedDentalChartTab patientId={selectedPatient.id} />
+                      )}
+                    </TabsContent>
+
+                    {/* Journey Tab (Unified longitudinal view — replaces Episodes + Timeline + Treatments + Diagnosis + Follow-ups) */}
+                    <TabsContent value="journey" className="p-6 m-0">
+                      {selectedPatient && (
+                        <PatientJourneyTab patientId={selectedPatient.id} />
+                      )}
+                    </TabsContent>
+
+                    {/* Files Tab (X-rays, Photos, Documents) */}
+                    <TabsContent value="files" className="p-0 m-0">
+                      {patientForComponents ? (
+                        <PatientFilesViewer
+                          patientId={patientForComponents.id}
+                          viewMode="dentist"
+                          showUploader={true}
+                          showPatientInfo={true}
+                          maxHeight="600px"
+                        />
+                      ) : (
+                        <div className="p-6">
+                          <div className="text-center py-12 text-muted-foreground">
+                            <Camera className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>No patient selected</p>
+                          </div>
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    {/* Rx & Appointments Tab */}
+                    <TabsContent value="rx-appointments" className="p-6 m-0">
+                      {selectedPatient && (
+                        <PatientRxAppointmentsTab
+                          appointments={appointments}
+                          prescriptions={prescriptions}
+                          followUps={followUps}
+                        />
+                      )}
+                    </TabsContent>
+                  </div>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+    </div>
+  )
+
+  // --- MOBILE LAYOUT ---
+  if (isMobileView) {
+    return (
+      <div className="min-h-[400px]">
+        {/* Full-width Patient Queue */}
+        <PatientQueueList
+          selectedPatientId={selectedPatient?.id}
+          onPatientSelect={(p) => setSelectedPatient(p)}
+        />
+
+        {/* Patient Detail Sheet (slides up from bottom) */}
+        <Sheet open={!!selectedPatient} onOpenChange={(open) => { if (!open) setSelectedPatient(null) }}>
+          <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl p-0 overflow-hidden">
+            <SheetHeader className="px-4 pt-4 pb-2 border-b sticky top-0 bg-card z-10">
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" onClick={() => setSelectedPatient(null)} className="h-8 w-8">
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <SheetTitle className="text-left">
+                  {selectedPatient?.firstName} {selectedPatient?.lastName}
+                </SheetTitle>
+              </div>
+            </SheetHeader>
+            <div className="overflow-y-auto h-full pb-8 px-1">
+              {detailPanelContent}
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+              Delete Patient Permanently?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p className="font-medium text-foreground">
+                Are you sure you want to delete{" "}
+                <span className="font-bold">
+                  {selectedPatient?.firstName} {selectedPatient?.lastName}
+                </span>
+                ?
+              </p>
+              <div className="bg-red-500/10 border border-red-300 rounded-md p-3 text-sm text-red-400">
+                <p className="font-semibold mb-2">⚠️ This action cannot be undone!</p>
+                <p className="text-xs">The following data will be permanently deleted:</p>
+                <ul className="list-disc list-inside text-xs mt-2 space-y-1">
+                  <li>All consultations and medical records</li>
+                  <li>All treatments and tooth diagnoses</li>
+                  <li>All appointments (past and future)</li>
+                  <li>All uploaded medical files and images</li>
+                  <li>All messages and notifications</li>
+                  <li>Patient profile and account</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeletePatient}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Permanently
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    )
+  }
+
+  // --- DESKTOP LAYOUT ---
   return (
     <div className="flex min-h-[600px] relative">
       {/* Left: Patient Queue */}
@@ -309,306 +616,25 @@ export function EnhancedPatientsInterface() {
       </div>
 
       {/* Right: Enhanced Patient Interface */}
-      <div className="flex-1 min-w-0 pl-4">
-        {!selectedPatient ? (
-          <div className="h-full flex items-center justify-center">
-            <Card className="w-full max-w-md mx-auto">
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-4">
-                  <Stethoscope className="h-8 w-8 text-blue-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Enhanced Patient Interface</h3>
-                <p className="text-gray-600 text-sm">Select a patient from the queue to view their comprehensive medical records</p>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <div className="h-full flex flex-col space-y-4">
-            {/* Patient Header */}
-            <Card className="border-l-4 border-l-blue-600">
-              <CardHeader className="pb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h2 className="text-2xl font-bold text-gray-900">
-                        {selectedPatient.firstName} {selectedPatient.lastName}
-                      </h2>
-                      <Badge className={getStatusColor(selectedPatient.status)}>
-                        {selectedPatient.status}
-                      </Badge>
-                      {isLoadingData && (
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                          <span className="text-sm text-blue-600">Syncing...</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">UHID: {selectedPatient.uhid}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">
-                          Age: {new Date().getFullYear() - new Date(selectedPatient.dateOfBirth || '1990-01-01').getFullYear()}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">{selectedPatient.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">
-                          Last Visit: {selectedPatient.lastVisit ? format(new Date(selectedPatient.lastVisit), 'MMM d, yyyy') : 'Never'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      Edit Patient
-                    </Button>
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                      New Appointment
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => setShowDeleteDialog(true)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete Patient
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-
-            {/* Enhanced Tabs */}
-            <Card className="flex-1 flex flex-col">
-              <CardContent className="p-0 h-full flex flex-col">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-                  <TabsList className="grid w-full grid-cols-6 rounded-none border-b bg-gray-50">
-                    <TabsTrigger value="treatment-done" className="flex items-center gap-2 data-[state=active]:bg-white">
-                      <Activity className="h-4 w-4" />
-                      Treatment Done
-                    </TabsTrigger>
-                    <TabsTrigger value="diagnosis" className="flex items-center gap-2 data-[state=active]:bg-white">
-                      <FileText className="h-4 w-4" />
-                      Diagnosis
-                    </TabsTrigger>
-                    <TabsTrigger value="timeline" className="flex items-center gap-2 data-[state=active]:bg-white">
-                      <Calendar className="h-4 w-4" />
-                      Timeline
-                    </TabsTrigger>
-                    <TabsTrigger value="followups" className="flex items-center gap-2 data-[state=active]:bg-white">
-                      <Stethoscope className="h-4 w-4" />
-                      Follow-ups
-                    </TabsTrigger>
-                    <TabsTrigger value="xrays-photos" className="flex items-center gap-2 data-[state=active]:bg-white">
-                      <Camera className="h-4 w-4" />
-                      X-rays & Photos
-                    </TabsTrigger>
-                    <TabsTrigger value="dental-chart" className="flex items-center gap-2 data-[state=active]:bg-white">
-                      <Tooth className="h-4 w-4" />
-                      Dental Chart
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <div className="flex-1 overflow-auto">
-                    {/* Treatment Done Tab */}
-                    <TabsContent value="treatment-done" className="p-6 m-0 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold">Treatment History</h3>
-                        <Badge variant="outline">{treatments.length} treatments</Badge>
-                      </div>
-                      
-                      {treatments.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500">
-                          <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>No treatments found for this patient</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {treatments.map((treatment) => (
-                            <Card key={treatment.id} className="border-l-4 border-l-blue-500">
-                              <CardContent className="pt-4">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                      <h4 className="font-medium text-gray-900">
-                                        {treatment.treatment_type}
-                                      </h4>
-                                      <Badge className={getStatusColor(treatment.status)}>
-                                        {treatment.status.charAt(0).toUpperCase() + treatment.status.slice(1)}
-                                      </Badge>
-                                      {treatment.tooth_number && (
-                                        <Badge variant="outline">Tooth #{treatment.tooth_number}</Badge>
-                                      )}
-                                    </div>
-                                    
-                                    {treatment.primary_diagnosis && (
-                                      <p className="text-sm text-gray-600 mb-2">
-                                        <span className="font-medium">Diagnosis:</span> {treatment.primary_diagnosis}
-                                      </p>
-                                    )}
-                                    
-                                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                                      <span>
-                                        Progress: {treatment.completed_visits}/{treatment.total_visits} visits
-                                      </span>
-                                      <span>
-                                        Started: {format(new Date(treatment.created_at), 'MMM d, yyyy')}
-                                      </span>
-                                      {treatment.completed_at && (
-                                        <span>
-                                          Completed: {format(new Date(treatment.completed_at), 'MMM d, yyyy')}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      )}
-                    </TabsContent>
-
-                    {/* Diagnosis Tab */}
-                    <TabsContent value="diagnosis" className="p-6 m-0">
-                      <DiagnosisOverviewTab 
-                        data={toothDiagnoses}
-                        consultationData={{
-                          clinicianName: "Current Dentist",
-                          patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-                          consultationDate: new Date().toISOString()
-                        }}
-                        isReadOnly={true}
-                        showHistory={true}
-                      />
-                    </TabsContent>
-
-                    {/* Timeline Tab */}
-                    <TabsContent value="timeline" className="p-6 m-0">
-                      <PatientTimeline patientId={selectedPatient.id} />
-                    </TabsContent>
-
-                    {/* Follow-ups Tab */}
-                    <TabsContent value="followups" className="p-6 m-0">
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-semibold">Follow-up Appointments</h3>
-                          <Badge variant="outline">{followUps.length} follow-ups</Badge>
-                        </div>
-                        
-                        {followUps.length === 0 ? (
-                          <div className="text-center py-12 text-gray-500">
-                            <Stethoscope className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No follow-up appointments scheduled</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-4">
-                            {followUps.map((followUp) => (
-                              <Card key={followUp.id}>
-                                <CardContent className="pt-4">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-3 mb-2">
-                                        <h4 className="font-medium text-gray-900">
-                                          {followUp.appointment_type}
-                                        </h4>
-                                        <Badge className={getStatusColor(followUp.status)}>
-                                          {followUp.status.charAt(0).toUpperCase() + followUp.status.slice(1)}
-                                        </Badge>
-                                      </div>
-                                      
-                                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                                        <span>
-                                          {format(new Date(followUp.scheduled_date), 'MMM d, yyyy')} at {followUp.scheduled_time}
-                                        </span>
-                                        {followUp.timeline_description && (
-                                          <span>{followUp.timeline_description}</span>
-                                        )}
-                                        {followUp.dentist_name && (
-                                          <span>Dr. {followUp.dentist_name}</span>
-                                        )}
-                                      </div>
-                                      
-                                      {followUp.linked_teeth && followUp.linked_teeth.length > 0 && (
-                                        <div className="mt-2">
-                                          {followUp.linked_teeth.map((tooth: any) => (
-                                            <Badge key={tooth.tooth_number} variant="outline" className="mr-1">
-                                              Tooth #{tooth.tooth_number}
-                                            </Badge>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </TabsContent>
-
-                    {/* X-rays & Photos Tab */}
-                    <TabsContent value="xrays-photos" className="p-0 m-0">
-                      {patientForComponents ? (
-                        <PatientFilesViewer
-                          patientId={patientForComponents.id}
-                          viewMode="dentist"
-                          showUploader={true}
-                          showPatientInfo={true}
-                          maxHeight="600px"
-                        />
-                      ) : (
-                        <div className="p-6">
-                          <div className="text-center py-12 text-gray-500">
-                            <Camera className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No patient selected</p>
-                          </div>
-                        </div>
-                      )}
-                    </TabsContent>
-
-                    {/* Dental Chart Tab */}
-                    <TabsContent value="dental-chart" className="p-6 m-0">
-                      <InteractiveDentalChart 
-                        patientId={selectedPatient.id}
-                        readOnly={true}
-                        showLabels={true}
-                        subscribeRealtime={true}
-                      />
-                    </TabsContent>
-                  </div>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </div>
+      {detailPanelContent}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <AlertTriangle className="h-5 w-5 text-red-400" />
               Delete Patient Permanently?
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              <p className="font-medium text-gray-900">
+              <p className="font-medium text-foreground">
                 Are you sure you want to delete{" "}
                 <span className="font-bold">
                   {selectedPatient?.firstName} {selectedPatient?.lastName}
                 </span>
                 ?
               </p>
-              <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-900">
+              <div className="bg-red-500/10 border border-red-300 rounded-md p-3 text-sm text-red-400">
                 <p className="font-semibold mb-2">⚠️ This action cannot be undone!</p>
                 <p className="text-xs">The following data will be permanently deleted:</p>
                 <ul className="list-disc list-inside text-xs mt-2 space-y-1">

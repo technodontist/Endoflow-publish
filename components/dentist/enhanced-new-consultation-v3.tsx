@@ -143,6 +143,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   const [showToothInterface, setShowToothInterface] = useState(false)
   const [toothData, setToothData] = useState<{[key: string]: any}>({})
   const [toothDataVersion, setToothDataVersion] = useState(0) // Force re-render counter
+  const [voiceConversationContext, setVoiceConversationContext] = useState<import('@/lib/services/medical-conversation-parser').ConversationContext | null>(null)
   const [diagnosisHistory, setDiagnosisHistory] = useState<any[]>([])
   const [voiceSession, setVoiceSession] = useState<VoiceSession>({
     isActive: false,
@@ -675,18 +676,18 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
   const getStatusColor = (status: 'empty' | 'partial' | 'complete') => {
     switch (status) {
       case 'empty':
-        return 'bg-gray-100 border-gray-300 text-gray-600'
+        return 'bg-muted border-border text-muted-foreground'
       case 'partial':
-        return 'bg-yellow-100 border-yellow-300 text-yellow-800'
+        return 'bg-yellow-500/15 border-yellow-300 text-yellow-400'
       case 'complete':
-        return 'bg-green-100 border-green-300 text-green-800'
+        return 'bg-green-500/15 border-green-300 text-green-400'
     }
   }
 
   const getStatusIcon = (status: 'empty' | 'partial' | 'complete') => {
     switch (status) {
       case 'empty':
-        return <AlertCircle className="w-4 h-4 text-gray-400" />
+        return <AlertCircle className="w-4 h-4 text-muted-foreground/70" />
       case 'partial':
         return <Clock className="w-4 h-4 text-yellow-500" />
       case 'complete':
@@ -2020,13 +2021,13 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">New Consultation (V3)</h1>
-          <p className="text-gray-600">Search and select a patient to begin consultation</p>
+          <h1 className="text-2xl font-bold text-foreground">New Consultation (V3)</h1>
+          <p className="text-muted-foreground">Search and select a patient to begin consultation</p>
         </div>
         <Card>
           <CardContent className="p-6">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground/70 w-5 h-5" />
               <Input
                 type="text"
                 placeholder="Search by patient name or UHID..."
@@ -2040,18 +2041,18 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 {patients.map((patient) => (
                   <div
                     key={patient.id}
-                    className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="p-4 border rounded-lg hover:bg-muted cursor-pointer transition-colors"
                     onClick={() => handlePatientSelect(patient)}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-semibold text-gray-900">
+                        <h3 className="font-semibold text-foreground">
                           {patient.first_name} {patient.last_name}
                         </h3>
-                        <p className="text-sm text-gray-600">UHID: UH{patient.id.slice(-6)}</p>
+                        <p className="text-sm text-muted-foreground">UHID: UH{patient.id.slice(-6)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-muted-foreground">
                           {getPatientAge(patient.date_of_birth) !== null ? `${getPatientAge(patient.date_of_birth)} years` : 'Age N/A'}
                         </p>
                         <Badge variant="outline" className="text-xs">Active</Badge>
@@ -2062,13 +2063,13 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
               </div>
             )}
             {searchTerm.length > 2 && patients.length === 0 && !isLoading && (
-              <div className="mt-4 text-center py-8 text-gray-500">
+              <div className="mt-4 text-center py-8 text-muted-foreground">
                 <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No patients found matching your search</p>
               </div>
             )}
             {searchTerm.length <= 2 && (
-              <div className="mt-4 text-center py-8 text-gray-500">
+              <div className="mt-4 text-center py-8 text-muted-foreground">
                 <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>Please search and select a patient to begin the consultation.</p>
               </div>
@@ -2089,10 +2090,10 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
               Back to Patient Search
             </Button>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mt-2">
+          <h1 className="text-2xl font-bold text-foreground mt-2">
             New Consultation: {selectedPatient.first_name} {selectedPatient.last_name}
           </h1>
-          <p className="text-gray-600">Complete consultation by clicking on each section below</p>
+          <p className="text-muted-foreground">Complete consultation by clicking on each section below</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -2119,7 +2120,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
               trigger={
                 <Button
                   variant="outline"
-                  className="border-teal-600 text-teal-600 hover:bg-teal-50"
+                  className="border-teal-600 text-teal-400 hover:bg-teal-500/10"
                 >
                   <Calendar className="w-4 h-4 mr-2" />
                   Request Appointment
@@ -2175,20 +2176,20 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
             <div className="flex items-center gap-4">
               <div>
                 <h3 className="font-semibold">{selectedPatient.first_name} {selectedPatient.last_name}</h3>
-                <p className="text-sm text-gray-600">UHID: UH{selectedPatient.id.slice(-6)}</p>
+                <p className="text-sm text-muted-foreground">UHID: UH{selectedPatient.id.slice(-6)}</p>
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-muted-foreground">
                 <p>Age: {(() => { const age = getPatientAge(selectedPatient.date_of_birth); return age !== null ? `${age} years` : '—' })()}</p>
                 <p>DOB: {formatDOB(selectedPatient.date_of_birth) ?? '—'}</p>
               </div>
               {isLoadingConsultation && (
-                <div className="flex items-center gap-2 text-blue-600">
+                <div className="flex items-center gap-2 text-blue-400">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                   <span className="text-sm">Loading previous data...</span>
                 </div>
               )}
               {loadingError && (
-                <div className="flex items-center gap-2 text-red-600">
+                <div className="flex items-center gap-2 text-red-400">
                   <AlertTriangle className="w-4 h-4" />
                   <span className="text-sm">{loadingError}</span>
                   <Button
@@ -2217,7 +2218,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
 
       <Card className="bg-gradient-to-r from-blue-50 to-teal-50 border-blue-200">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg text-blue-700 flex items-center gap-2">
+          <CardTitle className="text-lg text-blue-400 flex items-center gap-2">
             <BarChart3 className="w-5 h-5" />
             Consultation Progress
           </CardTitle>
@@ -2233,42 +2234,42 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-                    <span className="text-sm text-gray-500">{completedSections}/{sections.length} sections completed</span>
+                    <span className="text-sm font-medium text-foreground">Overall Progress</span>
+                    <span className="text-sm text-muted-foreground">{completedSections}/{sections.length} sections completed</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-muted rounded-full h-2">
                     <div
                       className="bg-gradient-to-r from-teal-500 to-blue-500 h-2 rounded-full transition-all duration-500"
                       style={{ width: `${progressPercentage}%` }}
                     ></div>
                   </div>
-                  <div className="text-right text-xs text-gray-500 mt-1">{progressPercentage}% complete</div>
+                  <div className="text-right text-xs text-muted-foreground mt-1">{progressPercentage}% complete</div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{completedSections}</div>
-                    <div className="text-xs text-gray-600">Completed</div>
-                    <div className="w-full bg-green-100 rounded-full h-1 mt-1">
+                    <div className="text-2xl font-bold text-green-400">{completedSections}</div>
+                    <div className="text-xs text-muted-foreground">Completed</div>
+                    <div className="w-full bg-green-500/15 rounded-full h-1 mt-1">
                       <div className="bg-green-500 h-1 rounded-full" style={{ width: '100%' }}></div>
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-600">{partialSections}</div>
-                    <div className="text-xs text-gray-600">In Progress</div>
-                    <div className="w-full bg-yellow-100 rounded-full h-1 mt-1">
+                    <div className="text-2xl font-bold text-yellow-400">{partialSections}</div>
+                    <div className="text-xs text-muted-foreground">In Progress</div>
+                    <div className="w-full bg-yellow-500/15 rounded-full h-1 mt-1">
                       <div className="bg-yellow-500 h-1 rounded-full" style={{ width: partialSections > 0 ? '100%' : '0%' }}></div>
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-600">{emptySections}</div>
-                    <div className="text-xs text-gray-600">Remaining</div>
-                    <div className="w-full bg-gray-100 rounded-full h-1 mt-1">
+                    <div className="text-2xl font-bold text-muted-foreground">{emptySections}</div>
+                    <div className="text-xs text-muted-foreground">Remaining</div>
+                    <div className="w-full bg-muted rounded-full h-1 mt-1">
                       <div className="bg-gray-400 h-1 rounded-full" style={{ width: emptySections > 0 ? '100%' : '0%' }}></div>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-blue-200">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="w-4 h-4" />
                     <span>
                       {progressPercentage < 25 ? 'Just getting started' :
@@ -2285,7 +2286,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                       </Badge>
                     )}
                     {progressPercentage === 100 && (
-                      <Badge className="bg-green-100 text-green-800 text-xs">
+                      <Badge className="bg-green-500/15 text-green-400 text-xs">
                         <CheckCircle className="w-3 h-3 mr-1" />
                         Ready to complete!
                       </Badge>
@@ -2302,11 +2303,11 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-lg text-blue-700">Interactive FDI Dental Chart</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">Click on any tooth to add diagnosis and treatment plan</p>
+              <CardTitle className="text-lg text-blue-400">Interactive FDI Dental Chart</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">Click on any tooth to add diagnosis and treatment plan</p>
             </div>
             {selectedTooth && (
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+              <Badge variant="secondary" className="bg-blue-500/100/15 text-blue-400">
                 Tooth #{selectedTooth} Selected
               </Badge>
             )}
@@ -2352,8 +2353,8 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
           />
           <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-teal-50 rounded-lg border border-blue-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-blue-700">🦷 Real-time Dental Chart Data (This Session Only)</h3>
-              <Badge className="bg-blue-100 text-blue-800 text-xs">
+              <h3 className="text-sm font-semibold text-blue-400">🦷 Real-time Dental Chart Data (This Session Only)</h3>
+              <Badge className="bg-blue-500/100/15 text-blue-400 text-xs">
                 {(() => {
                   // Count only teeth modified in this session
                   const sessionTeeth = Object.keys(toothData).filter(toothNum => 
@@ -2365,7 +2366,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
             </div>
             <div className="space-y-4">
               <div>
-                <Label className="text-xs font-medium text-gray-600 mb-2 block">Upper Jaw (Maxilla)</Label>
+                <Label className="text-xs font-medium text-muted-foreground mb-2 block">Upper Jaw (Maxilla)</Label>
                 <div className="grid grid-cols-8 gap-1">
                   {[18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28].map(toothNum => {
                     const toothInfo = (toothData as any)[toothNum.toString()]
@@ -2378,35 +2379,35 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                         key={toothNum}
                         className={`p-2 rounded text-center border transition-all cursor-pointer ${
                           isSelected
-                            ? 'border-purple-400 bg-purple-100 ring-2 ring-purple-300'
+                            ? 'border-purple-400 bg-purple-500/15 ring-2 ring-purple-300'
                             : hasData
-                            ? 'border-blue-300 bg-blue-100 hover:bg-blue-200'
-                            : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                            ? 'border-blue-300 bg-blue-500/100/15 hover:bg-muted'
+                            : 'border-border bg-muted hover:bg-muted'
                         }`}
                         onClick={() => {
                           setSelectedTooth(toothNum.toString())
                           setShowToothInterface(true)
                         }}
                       >
-                        <div className="text-xs font-bold text-gray-700">#{toothNum}</div>
+                        <div className="text-xs font-bold text-foreground">#{toothNum}</div>
                         {hasData && (
                           <div className="space-y-1 mt-1">
                             {toothInfo.selectedDiagnoses?.length > 0 && (
-                              <div className="text-xs bg-orange-100 text-orange-700 px-1 rounded">
+                              <div className="text-xs bg-orange-500/15 text-orange-400 px-1 rounded">
                                 {toothInfo.selectedDiagnoses.length}D
                               </div>
                             )}
                             {toothInfo.selectedTreatments?.length > 0 && (
-                              <div className="text-xs bg-green-100 text-green-700 px-1 rounded">
+                              <div className="text-xs bg-green-500/15 text-green-400 px-1 rounded">
                                 {toothInfo.selectedTreatments.length}T
                               </div>
                             )}
                             {toothInfo.currentStatus && toothInfo.currentStatus !== 'healthy' && (
                               <div className={`text-xs px-1 rounded ${
-                                toothInfo.currentStatus === 'caries' ? 'bg-red-100 text-red-700' :
-                                toothInfo.currentStatus === 'filled' ? 'bg-blue-100 text-blue-700' :
-                                toothInfo.currentStatus === 'missing' ? 'bg-gray-100 text-gray-700' :
-                                'bg-yellow-100 text-yellow-700'
+                                toothInfo.currentStatus === 'caries' ? 'bg-red-500/15 text-red-400' :
+                                toothInfo.currentStatus === 'filled' ? 'bg-blue-500/100/15 text-blue-400' :
+                                toothInfo.currentStatus === 'missing' ? 'bg-muted text-foreground' :
+                                'bg-yellow-500/15 text-yellow-400'
                               }`}>
                                 {toothInfo.currentStatus.charAt(0).toUpperCase()}
                               </div>
@@ -2419,7 +2420,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 </div>
               </div>
               <div>
-                <Label className="text-xs font-medium text-gray-600 mb-2 block">Lower Jaw (Mandible)</Label>
+                <Label className="text-xs font-medium text-muted-foreground mb-2 block">Lower Jaw (Mandible)</Label>
                 <div className="grid grid-cols-8 gap-1">
                   {[48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38].map(toothNum => {
                     const toothInfo = (toothData as any)[toothNum.toString()]
@@ -2432,35 +2433,35 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                         key={toothNum}
                         className={`p-2 rounded text-center border transition-all cursor-pointer ${
                           isSelected
-                            ? 'border-purple-400 bg-purple-100 ring-2 ring-purple-300'
+                            ? 'border-purple-400 bg-purple-500/15 ring-2 ring-purple-300'
                             : hasData
-                            ? 'border-blue-300 bg-blue-100 hover:bg-blue-200'
-                            : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                            ? 'border-blue-300 bg-blue-500/100/15 hover:bg-muted'
+                            : 'border-border bg-muted hover:bg-muted'
                         }`}
                         onClick={() => {
                           setSelectedTooth(toothNum.toString())
                           setShowToothInterface(true)
                         }}
                       >
-                        <div className="text-xs font-bold text-gray-700">#{toothNum}</div>
+                        <div className="text-xs font-bold text-foreground">#{toothNum}</div>
                         {hasData && (
                           <div className="space-y-1 mt-1">
                             {toothInfo.selectedDiagnoses?.length > 0 && (
-                              <div className="text-xs bg-orange-100 text-orange-700 px-1 rounded">
+                              <div className="text-xs bg-orange-500/15 text-orange-400 px-1 rounded">
                                 {toothInfo.selectedDiagnoses.length}D
                               </div>
                             )}
                             {toothInfo.selectedTreatments?.length > 0 && (
-                              <div className="text-xs bg-green-100 text-green-700 px-1 rounded">
+                              <div className="text-xs bg-green-500/15 text-green-400 px-1 rounded">
                                 {toothInfo.selectedTreatments.length}T
                               </div>
                             )}
                             {toothInfo.currentStatus && toothInfo.currentStatus !== 'healthy' && (
                               <div className={`text-xs px-1 rounded ${
-                                toothInfo.currentStatus === 'caries' ? 'bg-red-100 text-red-700' :
-                                toothInfo.currentStatus === 'filled' ? 'bg-blue-100 text-blue-700' :
-                                toothInfo.currentStatus === 'missing' ? 'bg-gray-100 text-gray-700' :
-                                'bg-yellow-100 text-yellow-700'
+                                toothInfo.currentStatus === 'caries' ? 'bg-red-500/15 text-red-400' :
+                                toothInfo.currentStatus === 'filled' ? 'bg-blue-500/100/15 text-blue-400' :
+                                toothInfo.currentStatus === 'missing' ? 'bg-muted text-foreground' :
+                                'bg-yellow-500/15 text-yellow-400'
                               }`}>
                                 {toothInfo.currentStatus.charAt(0).toUpperCase()}
                               </div>
@@ -2475,16 +2476,16 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
               <div className="pt-3 border-t border-blue-200">
                 <div className="flex items-center justify-center gap-4 text-xs">
                   <div className="flex items-center gap-1">
-                    <div className="w-4 h-4 bg-orange-100 border border-orange-200 rounded"></div>
-                    <span className="text-gray-600">D = Diagnoses</span>
+                    <div className="w-4 h-4 bg-orange-500/15 border border-orange-200 rounded"></div>
+                    <span className="text-muted-foreground">D = Diagnoses</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
-                    <span className="text-gray-600">T = Treatments</span>
+                    <div className="w-4 h-4 bg-green-500/15 border border-green-200 rounded"></div>
+                    <span className="text-muted-foreground">T = Treatments</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <div className="w-4 h-4 bg-purple-100 border border-purple-200 rounded"></div>
-                    <span className="text-gray-600">Selected</span>
+                    <div className="w-4 h-4 bg-purple-500/15 border border-purple-200 rounded"></div>
+                    <span className="text-muted-foreground">Selected</span>
                   </div>
                 </div>
               </div>
@@ -2498,6 +2499,14 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         onContentProcessed={(content) => {
           console.log('🎤 Processed voice content:', content)
           distributeContentToTabs(content)
+          // Store full conversation context for AI Diagnosis & Treatment copilots
+          setVoiceConversationContext({
+            chiefComplaint: content.chiefComplaint,
+            hopi: content.hopi,
+            medicalHistory: content.medicalHistory,
+            clinicalExamination: content.clinicalExamination,
+            confidence: content.confidence
+          })
         }}
         onToothDiagnosesExtracted={(toothDiagnoses) => {
           console.log('🦷 [VOICE] Received tooth diagnoses from voice:', toothDiagnoses)
@@ -2614,7 +2623,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                         {voiceSession.isActive && voiceSession.sectionId === section.id ? (
                           <MicOff className="w-4 h-4 text-red-500" />
                         ) : (
-                          <Mic className="w-4 h-4 text-gray-400 hover:text-blue-500" />
+                          <Mic className="w-4 h-4 text-muted-foreground/70 hover:text-blue-500" />
                         )}
                       </Button>
                     )}
@@ -2622,7 +2631,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <p className="text-xs text-gray-600 mb-3">{section.description}</p>
+                <p className="text-xs text-muted-foreground mb-3">{section.description}</p>
                 <div className="space-y-1">
                   <div className={`text-xs px-2 py-1 rounded ${getStatusColor(section.status)}`}>
                     {section.status === 'empty' && 'Click to start'}
@@ -2630,7 +2639,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                     {section.status === 'complete' && 'Completed'}
                   </div>
                   {hasValidationIssues && section.status === 'complete' && (
-                    <div className="text-xs text-yellow-600 mt-1">
+                    <div className="text-xs text-yellow-400 mt-1">
                       {!sectionValidation.isValid ? 'Has validation errors' : 'Has warnings'}
                     </div>
                   )}
@@ -2642,7 +2651,7 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
       </div>
 
       <Dialog open={!!activeSection} onOpenChange={() => setActiveSection(null)}>
-        <DialogContent className="max-w-4xl h-[90vh] overflow-hidden">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl h-[90vh] overflow-hidden">
           <DialogHeader className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -2655,9 +2664,9 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span>{getCurrentTabInfo().current} of {getCurrentTabInfo().total}</span>
-                  <div className="w-20 bg-gray-200 rounded-full h-1">
+                  <div className="w-20 bg-muted rounded-full h-1">
                     <div
                       className="bg-teal-600 h-1 rounded-full transition-all duration-300"
                       style={{ width: `${(getCurrentTabInfo().current / getCurrentTabInfo().total) * 100}%` }}
@@ -3039,8 +3048,8 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
                 <div className="space-y-6">
                   <div className="text-center py-8">
                     <h3 className="text-lg font-semibold mb-2">{section?.title}</h3>
-                    <p className="text-gray-500">This section is under development.</p>
-                    <p className="text-sm text-gray-400 mt-2">Section ID: {activeSection}</p>
+                    <p className="text-muted-foreground">This section is under development.</p>
+                    <p className="text-sm text-muted-foreground/70 mt-2">Section ID: {activeSection}</p>
                   </div>
                   <div className="space-y-4">
                     <div>
@@ -3077,6 +3086,8 @@ export function EnhancedNewConsultationV3({ selectedPatientId, appointmentId, de
         toothNumber={selectedTooth || ''}
         patientId={selectedPatient?.id}
         consultationId={savedConsultationId || undefined}
+        conversationContext={voiceConversationContext ?? undefined}
+        patientAge={selectedPatient ? getPatientAge(selectedPatient.date_of_birth) : null}
         existingData={(() => {
           const data = toothData[selectedTooth || ''];
           console.log(`🔍 [PARENT] Passing to dialog for tooth ${selectedTooth}:`, data);

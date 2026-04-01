@@ -97,7 +97,23 @@ interface AppointmentOrganizerProps {
 export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefreshStats }: AppointmentOrganizerProps) {
   const router = useRouter()
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [isMobile, setIsMobile] = useState(false)
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week')
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      // Force day view on mobile for week view
+      if (mobile && viewMode === 'week') {
+        setViewMode('day')
+      }
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [viewMode])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([])
   const [appointmentStats, setAppointmentStats] = useState<AppointmentStats>({
@@ -530,14 +546,14 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
 
         {/* Timeline View with Sticky Time Column */}
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-          <div className="grid grid-cols-[80px_1fr] gap-0">
+          <div className="grid grid-cols-[50px_1fr] md:grid-cols-[80px_1fr] gap-0">
             {/* Time Column (Sticky) */}
             <div className="sticky left-0 bg-gray-50 z-10">
               {timeSlots.map((timeSlot) => (
                 <div
                   key={`time-${timeSlot}`}
                   id={`time-slot-${parseInt(timeSlot)}`}
-                  className="h-16 border-b border-gray-200 px-3 py-2 text-sm font-medium text-gray-600"
+                  className="h-16 border-b border-gray-200 px-1 md:px-3 py-2 text-xs md:text-sm font-medium text-gray-600"
                 >
                   {timeSlot}
                 </div>
@@ -611,17 +627,19 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
 
     const weeks = eachWeekOfInterval({ start: startDate, end: endDate }, { weekStartsOn: 1 })
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    const dayNamesShort = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
     return (
       <div className="relative">
         {/* Day Headers */}
         <div className="grid grid-cols-7 gap-0 border-b-2 border-gray-300 mb-2">
-          {dayNames.map((dayName) => (
+          {dayNames.map((dayName, i) => (
             <div
               key={dayName}
-              className="text-center py-3 font-semibold text-sm text-gray-700 bg-gray-50"
+              className="text-center py-2 md:py-3 font-semibold text-xs md:text-sm text-gray-700 bg-gray-50"
             >
-              {dayName}
+              <span className="hidden md:inline">{dayName}</span>
+              <span className="md:hidden">{dayNamesShort[i]}</span>
             </div>
           ))}
         </div>
@@ -649,7 +667,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
                   return (
                     <div
                       key={day.toISOString()}
-                      className={`min-h-[120px] border border-gray-200 p-2 ${
+                      className={`min-h-[60px] md:min-h-[120px] border border-gray-200 p-1 md:p-2 ${
                         !isCurrentMonth ? 'bg-gray-50' : 'bg-white'
                       } ${isToday ? 'ring-2 ring-teal-500 ring-inset' : ''} hover:bg-gray-50 transition-colors cursor-pointer`}
                       onClick={() => {
@@ -706,8 +724,8 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
                         </div>
                       )}
 
-                      {/* Appointment Preview (first 2) */}
-                      <div className="space-y-1">
+                      {/* Appointment Preview (first 2) - hidden on mobile */}
+                      <div className="hidden md:block space-y-1">
                         {dayAppointments.slice(0, 2).map((apt) => (
                           <div
                             key={apt.id}
@@ -732,7 +750,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
         </div>
 
         {/* Legend */}
-        <div className="mt-4 flex items-center gap-4 text-xs text-gray-600 bg-gray-50 p-3 rounded">
+        <div className="mt-4 flex flex-wrap items-center gap-2 md:gap-4 text-xs text-gray-600 bg-gray-50 p-2 md:p-3 rounded">
           <span className="font-semibold">Status:</span>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-teal-500"></div>
@@ -746,7 +764,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
             <div className="w-2 h-2 rounded-full bg-green-500"></div>
             <span>Completed</span>
           </div>
-          <span className="ml-auto text-gray-500">Click any day to view details</span>
+          <span className="hidden md:inline ml-auto text-gray-500">Click any day to view details</span>
         </div>
       </div>
     )
@@ -875,7 +893,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
   return (
     <div className="space-y-6">
       {/* Header with Stats - Compact Version */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
         <Card className="bg-gradient-to-r from-teal-500 to-teal-600 text-white">
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
@@ -926,133 +944,148 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-teal-600" />
-              Appointment Organizer
+        <CardHeader className="px-3 md:px-6">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <Calendar className="w-4 h-4 md:w-5 md:h-5 text-teal-600" />
+              <span className="hidden md:inline">Appointment Organizer</span>
+              <span className="md:hidden">Appointments</span>
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleRefresh}
                 disabled={isRefreshing}
+                className="h-8 px-2 md:px-3"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Refresh
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden md:inline ml-2">Refresh</span>
               </Button>
-              <div className="flex gap-2">
-                <Button 
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700" 
-                  onClick={() => setShowAIScheduler(true)}
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  AI Schedule
-                </Button>
-                <Button 
-                  className="bg-teal-600 hover:bg-teal-700"
-                  onClick={() => {
-                    setSelectedPatientId('')
-                    setShowContextualForm(true)
-                  }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Appointment
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                className="h-8 px-2 md:px-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                onClick={() => setShowAIScheduler(true)}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span className="hidden md:inline ml-2">AI Schedule</span>
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 px-2 md:px-3 bg-teal-600 hover:bg-teal-700"
+                onClick={() => {
+                  setSelectedPatientId('')
+                  setShowContextualForm(true)
+                }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden md:inline ml-2">New Appointment</span>
+              </Button>
             </div>
           </div>
-          <p className="text-sm text-gray-600">Manage and schedule patient appointments for Dr. {dentistName}</p>
+          <p className="text-xs md:text-sm text-gray-600 hidden md:block">Manage and schedule patient appointments for Dr. {dentistName}</p>
         </CardHeader>
-        <CardContent>
-          <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as any)} className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <TabsList className="grid w-full max-w-md grid-cols-3">
-                <TabsTrigger value="day" className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
+        <CardContent className="px-3 md:px-6">
+          <Tabs value={viewMode} onValueChange={(value) => {
+            // On mobile, prevent week view — redirect to day
+            if (isMobile && value === 'week') {
+              setViewMode('day')
+              return
+            }
+            setViewMode(value as any)
+          }} className="mb-4 md:mb-6">
+            <div className="space-y-3 md:space-y-0 md:flex md:items-center md:justify-between mb-4">
+              <TabsList className={`grid w-full ${isMobile ? 'grid-cols-2' : 'max-w-md grid-cols-3'}`}>
+                <TabsTrigger value="day" className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
+                  <Calendar className="w-3 h-3 md:w-4 md:h-4" />
                   Day
                 </TabsTrigger>
-                <TabsTrigger value="week" className="flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4" />
-                  Week
-                </TabsTrigger>
-                <TabsTrigger value="month" className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
+                {!isMobile && (
+                  <TabsTrigger value="week" className="flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4" />
+                    Week
+                  </TabsTrigger>
+                )}
+                <TabsTrigger value="month" className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
+                  <Users className="w-3 h-3 md:w-4 md:h-4" />
                   Month
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex items-center gap-3">
+              {/* Search and Filters — stacked on mobile */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     placeholder="Search patients..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-64"
+                    className="pl-10 w-full md:w-64 h-9"
                   />
                 </div>
 
-                {/* Status Filter */}
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40">
-                    <Filter className="w-4 h-4 mr-2" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                    <SelectItem value="no_show">No Show</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  {/* Status Filter */}
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="flex-1 md:w-40 h-9">
+                      <Filter className="w-3 h-3 md:w-4 md:h-4 mr-1" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="scheduled">Scheduled</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="no_show">No Show</SelectItem>
+                    </SelectContent>
+                  </Select>
 
-                {/* Type Filter */}
-                <Select value={typeFilter} onValueChange={(v:any)=>setTypeFilter(v)}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue placeholder="All Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="first_visit">First Visit</SelectItem>
-                    <SelectItem value="consultation">Consultation</SelectItem>
-                    <SelectItem value="follow_up">Follow-up</SelectItem>
-                    <SelectItem value="treatment">Treatment</SelectItem>
-                  </SelectContent>
-                </Select>
+                  {/* Type Filter */}
+                  <Select value={typeFilter} onValueChange={(v:any)=>setTypeFilter(v)}>
+                    <SelectTrigger className="flex-1 md:w-44 h-9">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="first_visit">First Visit</SelectItem>
+                      <SelectItem value="consultation">Consultation</SelectItem>
+                      <SelectItem value="follow_up">Follow-up</SelectItem>
+                      <SelectItem value="treatment">Treatment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </Tabs>
 
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm" onClick={() => navigateDate('prev')}>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3 mb-4 md:mb-6">
+            <div className="flex items-center gap-2 md:gap-3">
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 md:h-9 md:w-auto md:px-3" onClick={() => navigateDate('prev')}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentDate(new Date())}
-                className="bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200"
+                className="h-8 md:h-9 bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200 text-xs md:text-sm"
               >
                 Today
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigateDate('next')}>
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 md:h-9 md:w-auto md:px-3" onClick={() => navigateDate('next')}>
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
 
             <div className="text-center">
-              <h3 className="text-xl font-bold text-gray-900">{formatViewTitle()}</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                {appointmentStats.total} appointments • {appointmentStats.scheduled} scheduled
+              <h3 className="text-base md:text-xl font-bold text-gray-900">{formatViewTitle()}</h3>
+              <p className="text-xs md:text-sm text-gray-600">
+                {appointmentStats.total} appts • {appointmentStats.scheduled} scheduled
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Doctor info — hidden on mobile to save space */}
+            <div className="hidden md:flex items-center gap-3">
               <div className="text-right">
                 <div className="text-sm font-medium text-gray-900">Dr. {dentistName}</div>
                 <div className="text-xs text-gray-500">Primary Dentist</div>
@@ -1073,7 +1106,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
             <Badge className="px-2 py-1 border bg-emerald-100 text-emerald-800 border-emerald-200">Treatment</Badge>
           </div>
 
-          <div className="border rounded-lg p-4" style={{ minHeight: 'calc(100vh - 380px)' }}>
+          <div className="border rounded-lg p-2 md:p-4" style={{ minHeight: 'calc(100vh - 380px)' }}>
             {isLoading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
@@ -1676,7 +1709,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
 
       {/* Follow-up Appointment Form Dialog */}
       <Dialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-teal-700 flex items-center gap-2">
               <Activity className="w-5 h-5" />
@@ -1707,7 +1740,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
 
       {/* Contextual Appointment Form Dialog */}
       <Dialog open={showContextualForm} onOpenChange={setShowContextualForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-teal-600" />
@@ -1746,7 +1779,7 @@ export function EnhancedAppointmentOrganizer({ dentistId, dentistName, onRefresh
 
       {/* AI Appointment Scheduler Dialog */}
       <Dialog open={showAIScheduler} onOpenChange={setShowAIScheduler}>
-        <DialogContent className="max-w-2xl h-[85vh] flex flex-col p-0">
+        <DialogContent className="max-w-[95vw] md:max-w-2xl h-[85vh] flex flex-col p-0">
           <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-purple-600" />

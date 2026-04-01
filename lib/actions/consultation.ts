@@ -88,7 +88,14 @@ async function syncPatientSideFromConsultationInternal(payload: { patientId: str
   }
 
   // 2) Schedule follow-up appointments directly for the patient
-  const createAppointment = async (dateTime: string, type: string, duration: number, tooth?: string) => {
+  // Session 10 Phase 3: enriched with diagnosis chain context
+  const createAppointment = async (
+    dateTime: string,
+    type: string,
+    duration: number,
+    tooth?: string,
+    diagnosisContext?: { diagnosis?: string; treatmentPlan?: string; episodeId?: string }
+  ) => {
     try {
       if (!dateTime) return
       const dt = new Date(dateTime)
@@ -106,6 +113,11 @@ async function syncPatientSideFromConsultationInternal(payload: { patientId: str
           duration_minutes: duration || 30,
           status: 'scheduled',
           notes: null,
+          // Session 10: Diagnosis chain linkage
+          linked_tooth_numbers: tooth ? JSON.stringify([tooth]) : null,
+          linked_diagnosis: diagnosisContext?.diagnosis || null,
+          linked_treatment_plan: diagnosisContext?.treatmentPlan || null,
+          linked_episode_id: diagnosisContext?.episodeId || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -120,8 +132,15 @@ async function syncPatientSideFromConsultationInternal(payload: { patientId: str
     }
     const buckets = fu.tooth_specific_follow_ups || {}
     for (const tooth of Object.keys(buckets)) {
-      for (const a of buckets[tooth]?.appointments || []) {
-        await createAppointment(a.scheduled_date, a.type, parseInt(a.duration || '30'), tooth)
+      // Session 10: Pass diagnosis context from tooth-specific follow-up data
+      const toothData = buckets[tooth]
+      const diagContext = {
+        diagnosis: toothData?.diagnosis || undefined,
+        treatmentPlan: toothData?.treatment_plan || toothData?.treatmentPlan || undefined,
+        episodeId: toothData?.episode_id || toothData?.episodeId || undefined,
+      }
+      for (const a of toothData?.appointments || []) {
+        await createAppointment(a.scheduled_date, a.type, parseInt(a.duration || '30'), tooth, diagContext)
       }
     }
   } catch (e) {
@@ -1098,6 +1117,7 @@ export async function finalizeConsultationFromDraftAction(payload: {
   toothData: { [toothNumber: string]: any }
   status: 'draft' | 'completed' | 'archived'
   appointmentId?: string
+  imageReferences?: string[]  // Session 12: file IDs from patient_files
 }): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
     const supabase = await createServiceClient()
@@ -1211,6 +1231,10 @@ export async function finalizeConsultationFromDraftAction(payload: {
       additional_notes: payload.consultationData.additionalNotes,
       voice_session_active: false,
       clinical_data: clinicalData,
+      // Session 12: Store image file IDs for AI vision and PDF reports
+      ...(payload.imageReferences && payload.imageReferences.length > 0
+        ? { image_references: payload.imageReferences }
+        : {}),
       updated_at: new Date().toISOString()
     }
 
@@ -1310,6 +1334,56 @@ export async function finalizeConsultationFromDraftAction(payload: {
       }
     } catch (e) {
       console.warn('[CONSULTATION] Failed to auto-complete appointment:', e)
+    }
+
+    // Longitudinal tracking sync engine (Phase 3: auto-create timeline events + episodes)
+    try {
+      const { syncConsultationToPatientProfile } = await import('@/lib/services/consultation-sync-engine')
+      await syncConsultationToPatientProfile({
+        consultationId: consultationId!,
+        patientId: payload.patientId,
+        dentistId: dentistId!,
+        consultationMode: payload.consultationData.consultationMode || 'new_consultation',
+        episodeId: payload.consultationData.episodeId || undefined,
+        toothData: payload.toothData || {},
+        status: payload.status,
+        appointmentId: payload.appointmentId,
+      })
+    } catch (e) {
+      console.warn('⚠️ [FINALIZE] Longitudinal sync warning (non-blocking):', e)
+    }
+
+    // Bidirectional consultation-appointment linking (Phase 2: Longitudinal Tracking)
+    try {
+      if (payload.appointmentId && consultationId) {
+        // Link appointment → consultation
+        await supabase
+          .schema('api')
+          .from('appointments')
+          .update({ consultation_id: consultationId })
+          .eq('id', payload.appointmentId)
+
+        // Link consultation → appointment + set mode/episode if provided
+        const consultationLinkUpdate: Record<string, unknown> = {
+          appointment_id: payload.appointmentId,
+        }
+        if (payload.consultationData.consultationMode) {
+          consultationLinkUpdate.consultation_mode = payload.consultationData.consultationMode
+        }
+        if (payload.consultationData.episodeId) {
+          consultationLinkUpdate.episode_id = payload.consultationData.episodeId
+        }
+
+        await supabase
+          .schema('api')
+          .from('consultations')
+          .update(consultationLinkUpdate)
+          .eq('id', consultationId)
+
+        console.log('🔗 [FINALIZE] Linked consultation', consultationId, '↔ appointment', payload.appointmentId)
+      }
+    } catch (e) {
+      console.warn('⚠️ [FINALIZE] Consultation-appointment linking warning (non-blocking):', e)
     }
 
     // Revalidate

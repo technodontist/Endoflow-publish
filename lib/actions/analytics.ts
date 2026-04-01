@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getUserContext } from './user-context';
 import {
   getClinicStatistics,
   getTreatmentDistribution,
@@ -19,7 +20,8 @@ export async function getClinicStatisticsAction() {
   try {
     console.log('🔍 [ACTION] Fetching clinic statistics...');
 
-    const statistics = await getClinicStatistics();
+    const ctx = await getUserContext();
+    const statistics = await getClinicStatistics(ctx?.dentistId, ctx?.clinicId);
 
     if (!statistics) {
       return {
@@ -46,7 +48,8 @@ export async function getTreatmentDistributionAction() {
   try {
     console.log('🔍 [ACTION] Fetching treatment distribution...');
 
-    const distribution = await getTreatmentDistribution();
+    const ctx = await getUserContext();
+    const distribution = await getTreatmentDistribution(ctx?.dentistId);
 
     console.log('✅ [ACTION] Successfully fetched treatment distribution');
     return {
@@ -67,7 +70,8 @@ export async function getPatientDemographicsAction() {
   try {
     console.log('🔍 [ACTION] Fetching patient demographics...');
 
-    const demographics = await getPatientDemographics();
+    const ctx = await getUserContext();
+    const demographics = await getPatientDemographics(ctx?.clinicId);
 
     console.log('✅ [ACTION] Successfully fetched patient demographics');
     return {
@@ -116,30 +120,40 @@ export async function getAllAnalyticsDataAction() {
 
 export async function getClinicalDataSummaryAction() {
   const supabase = await createServiceClient();
-  
+  const ctx = await getUserContext();
+
   try {
     console.log('🔍 [ACTION] Fetching clinical data summary...');
-    
-    // Get consultations with diagnoses
-    const { data: consultations, error: consultError } = await supabase
+
+    // Get consultations with diagnoses - scoped by dentist
+    let consultQuery = supabase
       .schema('api')
       .from('consultations')
       .select('diagnosis, treatment_plan, prognosis, status')
-      .limit(100); // Limit for performance
-    
-    // Get treatments  
-    const { data: treatments, error: treatError } = await supabase
+      .limit(100);
+    if (ctx?.dentistId) consultQuery = consultQuery.eq('dentist_id', ctx.dentistId);
+
+    const { data: consultations, error: consultError } = await consultQuery;
+
+    // Get treatments - scoped by dentist
+    let treatQuery = supabase
       .schema('api')
       .from('treatments')
       .select('treatment_type, status, outcome, completion_date')
       .limit(100);
-    
-    // Get appointments with outcomes
-    const { data: appointments, error: apptError } = await supabase
+    if (ctx?.dentistId) treatQuery = treatQuery.eq('dentist_id', ctx.dentistId);
+
+    const { data: treatments, error: treatError } = await treatQuery;
+
+    // Get appointments with outcomes - scoped by dentist
+    let apptQuery = supabase
       .schema('api')
       .from('appointments')
       .select('status, appointment_type')
       .limit(100);
+    if (ctx?.dentistId) apptQuery = apptQuery.eq('dentist_id', ctx.dentistId);
+
+    const { data: appointments, error: apptError } = await apptQuery;
     
     // Process diagnoses
     const diagnosisMap: Record<string, number> = {};
@@ -197,16 +211,34 @@ export async function getClinicalDataSummaryAction() {
  */
 export async function getCompletePatientRecordsAction() {
   const supabase = await createServiceClient();
-  
+  const ctx = await getUserContext();
+
   try {
     console.log('🔍 [ACTION] Fetching complete patient records with clinical data...');
-    
-    // Get all patients
-    const { data: patients, error: patientsError } = await supabase
+
+    // Get patients scoped to clinic
+    let patientIds: string[] | undefined;
+    if (ctx?.clinicId) {
+      const { data: clinicPatients } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'patient')
+        .eq('status', 'active')
+        .eq('clinic_id', ctx.clinicId);
+      patientIds = clinicPatients?.map(p => p.id);
+    }
+
+    let patientsQuery = supabase
       .schema('api')
       .from('patients')
-      .select('*')
-      .limit(50); // Limit to prevent token overflow, adjust as needed
+      .select('*');
+
+    if (patientIds && patientIds.length > 0) {
+      patientsQuery = patientsQuery.in('id', patientIds);
+    }
+
+    const { data: patients, error: patientsError } = await patientsQuery
+      .limit(50); // Limit to prevent token overflow
     
     if (patientsError) {
       console.error('❌ [ACTION] Error fetching patients:', patientsError);
@@ -219,21 +251,21 @@ export async function getCompletePatientRecordsAction() {
     }
     
     // Fetch related data for each patient
-    const patientIds = patients.map(p => p.id);
+    const fetchPatientIds = patients.map(p => p.id);
     
     // Get consultations
     const { data: consultations } = await supabase
       .schema('api')
       .from('consultations')
       .select('*')
-      .in('patient_id', patientIds);
+      .in('patient_id', fetchPatientIds);
 
     // Get tooth-level diagnoses (CRITICAL for dental chart data)
     const { data: toothDiagnoses, error: diagnosesError } = await supabase
       .schema('api')
       .from('tooth_diagnoses')
       .select('*')
-      .in('patient_id', patientIds);
+      .in('patient_id', fetchPatientIds);
 
     if (diagnosesError) {
       console.error('❌ [ACTION] Error fetching tooth diagnoses:', diagnosesError);
@@ -246,7 +278,7 @@ export async function getCompletePatientRecordsAction() {
       .schema('api')
       .from('treatments')
       .select('*')
-      .in('patient_id', patientIds);
+      .in('patient_id', fetchPatientIds);
 
     if (treatmentsError) {
       console.error('❌ [ACTION] Error fetching treatments:', treatmentsError);
@@ -274,7 +306,7 @@ export async function getCompletePatientRecordsAction() {
       .schema('api')
       .from('appointments')
       .select('*')
-      .in('patient_id', patientIds);
+      .in('patient_id', fetchPatientIds);
     
     // Combine data
     const completeRecords = patients.map(patient => {
@@ -305,7 +337,7 @@ export async function getCompletePatientRecordsAction() {
       appointmentsCount: completeRecords[0]?.appointments?.length || 0,
       firstConsultation: completeRecords[0]?.consultations?.[0] ? {
         id: completeRecords[0].consultations[0].id,
-        diagnosis: completeRecords[0].consultations[0].diagnosis?.substring(0, 100)
+        diagnosis: typeof completeRecords[0].consultations[0].diagnosis === 'string' ? completeRecords[0].consultations[0].diagnosis.substring(0, 100) : JSON.stringify(completeRecords[0].consultations[0].diagnosis)?.substring(0, 100)
       } : null,
       firstTreatment: completeRecords[0]?.treatments?.[0] || null
     }, null, 2));

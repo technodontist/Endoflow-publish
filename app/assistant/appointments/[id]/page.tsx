@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getAppointmentRequestDetails, getAvailableDentists } from "@/lib/db/queries"
+import { getUserContext } from "@/lib/actions/user-context"
 import { Calendar, Clock, User, AlertCircle, FileText, Phone, Mail } from "lucide-react"
 import Link from "next/link"
 import { AppointmentBookingForm } from "@/components/appointment-booking-form"
@@ -16,10 +17,11 @@ interface AppointmentRequestDetailsProps {
 
 export default async function AppointmentRequestDetails({ params }: AppointmentRequestDetailsProps) {
   const { id } = await params
+  const ctx = await getUserContext()
 
   const [request, availableDentists] = await Promise.all([
     getAppointmentRequestDetails(id),
-    getAvailableDentists()
+    getAvailableDentists(ctx?.clinicId)
   ])
 
   if (!request) {

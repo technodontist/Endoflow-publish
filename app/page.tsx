@@ -1,15 +1,15 @@
 "use client"
 
 import { LoginForm } from "@/components/login-form"
-import { login } from "@/lib/actions/auth"
 import { useState, useEffect, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 
 function LoginContent() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
   const searchParams = useSearchParams()
+  const router = useRouter()
 
   useEffect(() => {
     const status = searchParams.get('status')
@@ -32,13 +32,22 @@ function LoginContent() {
             setError("")
             setStatusMessage("")
             try {
-              const result = await login(email, password)
+              const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+              })
+              const result = await res.json()
               if (result?.error) {
                 setError(result.error)
+                setIsLoading(false)
+              } else if (result?.redirect) {
+                // Full page navigation — router.push uses RSC which can stall
+                // on large pages like /dentist. window.location ensures clean load.
+                window.location.href = result.redirect
               }
-            } catch (err) {
+            } catch (err: any) {
               setError("An unexpected error occurred")
-            } finally {
               setIsLoading(false)
             }
           }}

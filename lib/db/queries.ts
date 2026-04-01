@@ -3,6 +3,31 @@ import { eq } from 'drizzle-orm';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { profiles, patients, assistants, dentists, pendingRegistrations, appointmentRequests, appointments, notifications, type Profile, type Patient, type Assistant, type Dentist, type PendingRegistration, type AppointmentRequest, type Appointment, type Notification, type NewAppointmentRequest, type NewAppointment, type NewNotification } from './schema';
 
+// Auto-detect current user's clinic context for multi-tenant scoping
+async function autoDetectClinicContext(): Promise<{ clinicId?: string; dentistId?: string; role?: string } | null> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const serviceSupabase = await createServiceClient();
+    const { data: profile } = await serviceSupabase
+      .from('profiles')
+      .select('role, clinic_id')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile) return null;
+    return {
+      clinicId: profile.clinic_id || undefined,
+      dentistId: profile.role === 'dentist' ? user.id : undefined,
+      role: profile.role,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getUserByRole(id: string, role: 'patient' | 'assistant' | 'dentist'): Promise<any | null> {
   const supabase = await createClient();
 
@@ -25,22 +50,32 @@ export async function getUserByRole(id: string, role: 'patient' | 'assistant' | 
   }
 }
 
-export async function getPendingPatients(): Promise<any[]> {
+export async function getPendingPatients(clinicId?: string): Promise<any[]> {
   // FIXED: Only get patients who self-registered and are truly pending approval
   // Manually registered patients (created by staff) should NEVER appear here
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching self-registered pending patients only...');
+    // Auto-detect clinic if not provided
+    if (!clinicId) {
+      const ctx = await autoDetectClinicContext();
+      clinicId = ctx?.clinicId;
+    }
+
+    console.log('🔍 [DB] Fetching self-registered pending patients only...', clinicId ? `clinic: ${clinicId}` : '(all)');
 
     // STEP 1: Get patients who self-registered and are pending
-    // These are patients who have profiles with status='pending' but also have
-    // corresponding entries in pending_registrations table (self-registration)
-    const { data: pendingProfiles, error: profilesError } = await supabase
+    let profileQuery = supabase
       .from('profiles')
       .select('id, full_name, created_at')
       .eq('role', 'patient')
-      .eq('status', 'pending')
+      .eq('status', 'pending');
+
+    if (clinicId) {
+      profileQuery = profileQuery.eq('clinic_id', clinicId);
+    }
+
+    const { data: pendingProfiles, error: profilesError } = await profileQuery
       .order('created_at', { ascending: true });
 
     if (profilesError) {
@@ -128,16 +163,40 @@ export async function getPendingRegistrations(): Promise<PendingRegistration[]> 
   }
 }
 
-export async function getActivePatients(): Promise<Patient[]> {
-  // TEMPORARY: Use service role to bypass RLS until database fix is applied
+export async function getActivePatients(clinicId?: string): Promise<Patient[]> {
   const supabase = await createServiceClient();
 
   try {
-    const { data, error } = await supabase
+    // Auto-detect clinic if not provided
+    if (!clinicId) {
+      const ctx = await autoDetectClinicContext();
+      clinicId = ctx?.clinicId;
+    }
+
+    let query = supabase
       .schema('api')
       .from('patients')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*');
+
+    // If clinicId available, only return patients belonging to this clinic
+    if (clinicId) {
+      // Get patient IDs that belong to this clinic via profiles
+      const { data: clinicPatientProfiles } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'patient')
+        .eq('status', 'active')
+        .eq('clinic_id', clinicId);
+
+      if (clinicPatientProfiles && clinicPatientProfiles.length > 0) {
+        const patientIds = clinicPatientProfiles.map(p => p.id);
+        query = query.in('id', patientIds);
+      } else {
+        return [];
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching active patients:', error);
@@ -562,17 +621,30 @@ export async function sendPatientMessage(patientId: string, message: string) {
 // APPOINTMENT BOOKING WORKFLOW FUNCTIONS
 // ======================================
 
-export async function getPendingAppointmentRequests(): Promise<AppointmentRequest[]> {
+export async function getPendingAppointmentRequests(dentistId?: string): Promise<AppointmentRequest[]> {
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching pending appointment requests...');
+    // Auto-detect dentist context if not provided
+    if (!dentistId) {
+      const ctx = await autoDetectClinicContext();
+      dentistId = ctx?.dentistId;
+    }
 
-    const { data: requests, error } = await supabase
+    console.log('🔍 [DB] Fetching pending appointment requests...', dentistId ? `for dentist: ${dentistId}` : '(all)');
+
+    let query = supabase
       .schema('api')
       .from('appointment_requests')
       .select('*')
-      .eq('status', 'pending')
+      .eq('status', 'pending');
+
+    // Filter by assigned dentist if provided
+    if (dentistId) {
+      query = query.eq('assigned_to', dentistId);
+    }
+
+    const { data: requests, error } = await query
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -840,13 +912,19 @@ export async function markNotificationRead(notificationId: string): Promise<{ su
   }
 }
 
-export async function getAppointmentsByDate(date: string): Promise<Appointment[]> {
+export async function getAppointmentsByDate(date: string, dentistId?: string): Promise<Appointment[]> {
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching appointments for date:', date);
+    // Auto-detect dentist context if not provided
+    if (!dentistId) {
+      const ctx = await autoDetectClinicContext();
+      dentistId = ctx?.dentistId;
+    }
 
-    const { data, error } = await supabase
+    console.log('🔍 [DB] Fetching appointments for date:', date, dentistId ? `dentist: ${dentistId}` : '(all)');
+
+    let query = supabase
       .schema('api')
       .from('appointments')
       .select(`
@@ -863,7 +941,14 @@ export async function getAppointmentsByDate(date: string): Promise<Appointment[]
           full_name
         )
       `)
-      .eq('scheduled_date', date)
+      .eq('scheduled_date', date);
+
+    // Filter by dentist if provided
+    if (dentistId) {
+      query = query.eq('dentist_id', dentistId);
+    }
+
+    const { data, error } = await query
       .order('scheduled_time', { ascending: true });
 
     if (error) {
@@ -914,17 +999,40 @@ export async function getDentistAppointments(dentistId: string, startDate?: stri
   }
 }
 
-export async function getAvailableDentists(): Promise<Dentist[]> {
+export async function getAvailableDentists(clinicId?: string): Promise<Dentist[]> {
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching available dentists...');
+    // Auto-detect clinic if not provided
+    if (!clinicId) {
+      const ctx = await autoDetectClinicContext();
+      clinicId = ctx?.clinicId;
+    }
 
-    const { data, error } = await supabase
+    console.log('🔍 [DB] Fetching available dentists...', clinicId ? `clinic: ${clinicId}` : '(all)');
+
+    let query = supabase
       .schema('api')
       .from('dentists')
-      .select('*')
-      .order('full_name', { ascending: true });
+      .select('*');
+
+    // Filter by clinic if available
+    if (clinicId) {
+      const { data: clinicDentists } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'dentist')
+        .eq('status', 'active')
+        .eq('clinic_id', clinicId);
+
+      if (clinicDentists && clinicDentists.length > 0) {
+        query = query.in('id', clinicDentists.map(d => d.id));
+      } else {
+        return [];
+      }
+    }
+
+    const { data, error } = await query.order('full_name', { ascending: true });
 
     if (error) {
       console.error('❌ [DB] Error fetching available dentists:', error);
@@ -966,11 +1074,18 @@ export interface PatientDemographics {
   percentage: number;
 }
 
-export async function getClinicStatistics(): Promise<ClinicStatistics | null> {
+export async function getClinicStatistics(dentistId?: string, clinicId?: string): Promise<ClinicStatistics | null> {
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching clinic statistics...');
+    // Auto-detect context if not provided
+    if (!dentistId && !clinicId) {
+      const ctx = await autoDetectClinicContext();
+      dentistId = ctx?.dentistId;
+      clinicId = ctx?.clinicId;
+    }
+
+    console.log('🔍 [DB] Fetching clinic statistics...', dentistId ? `dentist: ${dentistId}` : '(all)');
 
     // Get current month and last month date ranges
     const now = new Date();
@@ -978,49 +1093,67 @@ export async function getClinicStatistics(): Promise<ClinicStatistics | null> {
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    // Total Patients
-    const { data: totalPatientsData, error: patientsError } = await supabase
+    // Total Patients - scoped by clinic if provided
+    let patientsQuery = supabase
       .from('profiles')
       .select('id', { count: 'exact' })
       .eq('role', 'patient')
       .eq('status', 'active');
+    if (clinicId) patientsQuery = patientsQuery.eq('clinic_id', clinicId);
 
-    const { data: lastMonthPatientsData } = await supabase
+    const { data: totalPatientsData, error: patientsError } = await patientsQuery;
+
+    let lastMonthPatientsQuery = supabase
       .from('profiles')
       .select('id', { count: 'exact' })
       .eq('role', 'patient')
       .eq('status', 'active')
       .lt('created_at', currentMonthStart.toISOString());
+    if (clinicId) lastMonthPatientsQuery = lastMonthPatientsQuery.eq('clinic_id', clinicId);
 
-    // Total Appointments this month
-    const { data: appointmentsData, error: appointmentsError } = await supabase
+    const { data: lastMonthPatientsData } = await lastMonthPatientsQuery;
+
+    // Total Appointments this month - scoped by dentist if provided
+    let appointmentsQuery = supabase
       .schema('api')
       .from('appointments')
       .select('id', { count: 'exact' })
       .gte('scheduled_date', currentMonthStart.toISOString().split('T')[0]);
+    if (dentistId) appointmentsQuery = appointmentsQuery.eq('dentist_id', dentistId);
 
-    const { data: lastMonthAppointmentsData } = await supabase
+    const { data: appointmentsData, error: appointmentsError } = await appointmentsQuery;
+
+    let lastMonthApptQuery = supabase
       .schema('api')
       .from('appointments')
       .select('id', { count: 'exact' })
       .gte('scheduled_date', lastMonthStart.toISOString().split('T')[0])
       .lt('scheduled_date', currentMonthStart.toISOString().split('T')[0]);
+    if (dentistId) lastMonthApptQuery = lastMonthApptQuery.eq('dentist_id', dentistId);
 
-    // Success Rate (completed appointments)
-    const { data: completedAppointmentsData } = await supabase
+    const { data: lastMonthAppointmentsData } = await lastMonthApptQuery;
+
+    // Success Rate (completed appointments) - scoped by dentist
+    let completedQuery = supabase
       .schema('api')
       .from('appointments')
       .select('id', { count: 'exact' })
       .eq('status', 'completed')
       .gte('scheduled_date', currentMonthStart.toISOString().split('T')[0]);
+    if (dentistId) completedQuery = completedQuery.eq('dentist_id', dentistId);
 
-    const { data: lastMonthCompletedData } = await supabase
+    const { data: completedAppointmentsData } = await completedQuery;
+
+    let lastMonthCompletedQuery = supabase
       .schema('api')
       .from('appointments')
       .select('id', { count: 'exact' })
       .eq('status', 'completed')
       .gte('scheduled_date', lastMonthStart.toISOString().split('T')[0])
       .lt('scheduled_date', currentMonthStart.toISOString().split('T')[0]);
+    if (dentistId) lastMonthCompletedQuery = lastMonthCompletedQuery.eq('dentist_id', dentistId);
+
+    const { data: lastMonthCompletedData } = await lastMonthCompletedQuery;
 
     // Calculate values
     const totalPatients = totalPatientsData?.length || 0;
@@ -1065,19 +1198,31 @@ export async function getClinicStatistics(): Promise<ClinicStatistics | null> {
   }
 }
 
-export async function getTreatmentDistribution(): Promise<TreatmentDistribution[]> {
+export async function getTreatmentDistribution(dentistId?: string): Promise<TreatmentDistribution[]> {
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching treatment distribution...');
+    // Auto-detect dentist context if not provided
+    if (!dentistId) {
+      const ctx = await autoDetectClinicContext();
+      dentistId = ctx?.dentistId;
+    }
+
+    console.log('🔍 [DB] Fetching treatment distribution...', dentistId ? `dentist: ${dentistId}` : '(all)');
 
     // Get treatment distribution from consultations
-    const { data: consultationsData, error } = await supabase
+    let query = supabase
       .schema('api')
       .from('consultations')
       .select('diagnosis, treatment_plan')
       .eq('status', 'completed')
       .not('diagnosis', 'is', null);
+
+    if (dentistId) {
+      query = query.eq('dentist_id', dentistId);
+    }
+
+    const { data: consultationsData, error } = await query;
 
     if (error) {
       console.error('❌ [DB] Error fetching consultations for treatment distribution:', error);
@@ -1133,17 +1278,40 @@ export async function getTreatmentDistribution(): Promise<TreatmentDistribution[
   }
 }
 
-export async function getPatientDemographics(): Promise<PatientDemographics[]> {
+export async function getPatientDemographics(clinicId?: string): Promise<PatientDemographics[]> {
   const supabase = await createServiceClient();
 
   try {
-    console.log('🔍 [DB] Fetching patient demographics...');
+    // Auto-detect clinic if not provided
+    if (!clinicId) {
+      const ctx = await autoDetectClinicContext();
+      clinicId = ctx?.clinicId;
+    }
 
-    const { data: patientsData, error } = await supabase
+    console.log('🔍 [DB] Fetching patient demographics...', clinicId ? `clinic: ${clinicId}` : '(all)');
+
+    let query = supabase
       .schema('api')
       .from('patients')
       .select('date_of_birth')
       .not('date_of_birth', 'is', null);
+
+    // If clinicId provided, filter patients by clinic membership
+    if (clinicId) {
+      const { data: clinicPatients } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'patient')
+        .eq('clinic_id', clinicId);
+
+      if (clinicPatients && clinicPatients.length > 0) {
+        query = query.in('id', clinicPatients.map(p => p.id));
+      } else {
+        return [];
+      }
+    }
+
+    const { data: patientsData, error } = await query;
 
     if (error) {
       console.error('❌ [DB] Error fetching patients for demographics:', error);

@@ -1,9 +1,40 @@
 /**
  * Google Gemini AI Service
  * Provides embedding generation and chat completion using Gemini API
- * Replaces OpenAI for cost optimization (99.8% cost reduction)
+ * Complex reasoning functions (diagnosis, treatment) route through Claude with Gemini fallback
  * Using direct REST API calls for better compatibility
  */
+
+import { generateClaudeChatCompletion, convertGeminiToClaudeMessages } from './claude-ai'
+
+/**
+ * Helper: Try Claude first for complex tasks, fall back to Gemini
+ */
+async function complexChatCompletion(
+  messages: GeminiChatMessage[],
+  options: GeminiChatOptions & { taskLabel: string }
+): Promise<string> {
+  const { taskLabel, ...geminiOpts } = options
+
+  // Try Claude first if API key is available
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      console.log(`🧠 [${taskLabel}] Routing to Claude for complex reasoning...`)
+      const claudeMessages = convertGeminiToClaudeMessages(messages)
+      return await generateClaudeChatCompletion(claudeMessages, {
+        temperature: geminiOpts.temperature,
+        maxTokens: geminiOpts.maxOutputTokens,
+        systemInstruction: geminiOpts.systemInstruction,
+        responseFormat: geminiOpts.responseFormat
+      })
+    } catch (error: any) {
+      console.warn(`⚠️ [${taskLabel}] Claude failed (${error.message}), falling back to Gemini`)
+    }
+  }
+
+  // Fallback to Gemini
+  return generateChatCompletion(messages, geminiOpts)
+}
 
 /**
  * Generate embedding for text using gemini-embedding-001
@@ -86,7 +117,7 @@ export interface GeminiChatMessage {
 }
 
 export interface GeminiChatOptions {
-  model?: 'gemini-2.0-flash' | 'gemini-1.5-pro' | 'gemini-2.0-flash'
+  model?: 'gemini-2.5-flash' | 'gemini-2.5-pro'
   temperature?: number
   maxOutputTokens?: number
   systemInstruction?: string
@@ -110,7 +141,7 @@ export async function generateChatCompletion(
     }
 
     const {
-      model = 'gemini-2.0-flash',
+      model = 'gemini-2.5-flash',
       temperature = 0.3,
       maxOutputTokens = 4096,
       systemInstruction,
@@ -242,6 +273,7 @@ export async function generateDiagnosisSuggestion(params: {
     age?: number
     medicalHistory?: string
   }
+  conversationContext?: import('./medical-conversation-parser').ConversationContext
 }): Promise<{
   diagnosis: string
   confidence: number
@@ -329,35 +361,49 @@ Duration: ${painCharacteristics.duration || 'Not specified'}`
     console.log('🌐 [AI DIAGNOSIS] Language note added to AI prompt for translation')
   }
 
+  // Build conversation context section from voice consultation data
+  const cc = params.conversationContext
+  const conversationSection = cc
+    ? `═══ FULL CONSULTATION CONTEXT (from voice conversation) ═══
+Chief Complaint: ${cc.chiefComplaint?.primary_complaint || 'Not provided'}
+${cc.chiefComplaint?.patient_description ? `Patient Description: ${cc.chiefComplaint.patient_description}` : ''}
+${cc.chiefComplaint?.onset_duration ? `Onset/Duration: ${cc.chiefComplaint.onset_duration}` : ''}
+${cc.chiefComplaint?.associated_symptoms?.length ? `Associated Symptoms (from history): ${cc.chiefComplaint.associated_symptoms.join(', ')}` : ''}
+${cc.chiefComplaint?.triggers?.length ? `Triggers: ${cc.chiefComplaint.triggers.join(', ')}` : ''}
+${cc.hopi?.aggravating_factors?.length ? `Aggravating Factors: ${cc.hopi.aggravating_factors.join(', ')}` : ''}
+${cc.hopi?.relieving_factors?.length ? `Relieving Factors: ${cc.hopi.relieving_factors.join(', ')}` : ''}
+${cc.hopi?.associated_symptoms?.length ? `HOPI Associated Symptoms: ${cc.hopi.associated_symptoms.join(', ')}` : ''}
+${cc.hopi?.previous_treatments?.length ? `Previous Treatments Tried: ${cc.hopi.previous_treatments.join(', ')}` : ''}
+${cc.medicalHistory?.medical_conditions?.length ? `Medical Conditions: ${cc.medicalHistory.medical_conditions.join(', ')}` : ''}
+${cc.medicalHistory?.current_medications?.length ? `Current Medications: ${cc.medicalHistory.current_medications.join(', ')}` : ''}
+${cc.medicalHistory?.allergies?.length ? `⚠️ ALLERGIES: ${cc.medicalHistory.allergies.join(', ')}` : ''}
+${cc.medicalHistory?.previous_dental_treatments?.length ? `Previous Dental History: ${cc.medicalHistory.previous_dental_treatments.join(', ')}` : ''}
+${cc.clinicalExamination?.intraoral_findings?.length ? `Intraoral Exam: ${cc.clinicalExamination.intraoral_findings.join(', ')}` : ''}
+${cc.clinicalExamination?.extraoral_findings?.length ? `Extraoral Exam: ${cc.clinicalExamination.extraoral_findings.join(', ')}` : ''}
+${cc.clinicalExamination?.oral_hygiene ? `Oral Hygiene: ${cc.clinicalExamination.oral_hygiene}` : ''}
+${cc.clinicalExamination?.gingival_condition ? `Gingival Condition: ${cc.clinicalExamination.gingival_condition}` : ''}
+═══════════════════════════════════════════════════════════
+
+`
+    : ''
+
   // Build user prompt differently based on whether we have medical context
+  const toothSection = `${conversationSection}TOOTH-SPECIFIC FINDINGS:
+Symptoms: ${symptoms.join(', ')}${languageNote}
+${painText}
+Clinical Findings: ${clinicalFindings || 'Not provided'}
+${toothNumber ? `Tooth Number: ${toothNumber}` : ''}
+${
+    patientContext
+      ? `Patient Age: ${patientContext.age}\nMedical History: ${patientContext.medicalHistory}`
+      : ''
+  }`
+
+  const categoryInstruction = `\nFocus on dental diagnoses from the predefined categories: Caries & Cavities, Pulpal Conditions, Periapical Conditions, Periodontal, Restorative, Developmental Anomalies, Traumatic Injuries, Wear & Erosion, Tooth Resorption, and Other Conditions.`
+
   const userPrompt = medicalContext.length > 0
-    ? `Based on this medical evidence:\n\n${context}\n\nProvide diagnostic recommendation for:
-Symptoms: ${symptoms.join(', ')}${languageNote}
-${painText}
-Clinical Findings: ${clinicalFindings || 'Not provided'}
-${toothNumber ? `Tooth Number: ${toothNumber}` : ''}
-${
-    patientContext
-      ? `Patient Age: ${patientContext.age}\nMedical History: ${patientContext.medicalHistory}`
-      : ''
-  }
-
-Focus on dental diagnoses from the predefined categories: Caries & Cavities, Pulpal Conditions, Periapical Conditions, Periodontal, Restorative, Developmental Anomalies, Traumatic Injuries, Wear & Erosion, Tooth Resorption, and Other Conditions.`
-    : `Using your extensive knowledge of dental medicine, provide diagnostic recommendation for:
-
-Symptoms: ${symptoms.join(', ')}${languageNote}
-${painText}
-Clinical Findings: ${clinicalFindings || 'Not provided'}
-${toothNumber ? `Tooth Number: ${toothNumber}` : ''}
-${
-    patientContext
-      ? `Patient Age: ${patientContext.age}\nMedical History: ${patientContext.medicalHistory}`
-      : ''
-  }
-
-Focus on dental diagnoses from the predefined categories: Caries & Cavities, Pulpal Conditions, Periapical Conditions, Periodontal, Restorative, Developmental Anomalies, Traumatic Injuries, Wear & Erosion, Tooth Resorption, and Other Conditions.
-
-Provide your best diagnostic recommendation based on dental medical knowledge and evidence-based guidelines.`
+    ? `Based on this medical evidence:\n\n${context}\n\nProvide diagnostic recommendation for:\n${toothSection}${categoryInstruction}`
+    : `Using your extensive knowledge of dental medicine, provide diagnostic recommendation for:\n\n${toothSection}${categoryInstruction}\n\nProvide your best diagnostic recommendation based on dental medical knowledge and evidence-based guidelines.`
 
   const messages: GeminiChatMessage[] = [
     {
@@ -366,8 +412,8 @@ Provide your best diagnostic recommendation based on dental medical knowledge an
     }
   ]
 
-  const responseText = await generateChatCompletion(messages, {
-    model: 'gemini-2.0-flash',
+  const responseText = await complexChatCompletion(messages, {
+    taskLabel: 'DIAGNOSIS',
     temperature: 0.3,
     systemInstruction,
     responseFormat: 'json'
@@ -392,6 +438,7 @@ export async function generateTreatmentSuggestion(params: {
     medicalHistory?: string
     previousTreatments?: string
   }
+  conversationContext?: import('./medical-conversation-parser').ConversationContext
 }): Promise<{
   treatment: string
   confidence: number
@@ -402,38 +449,71 @@ export async function generateTreatmentSuggestion(params: {
 }> {
   const { diagnosis, toothNumber, medicalContext, patientContext } = params
 
-  // Build context from retrieved medical knowledge
+  // Build context from retrieved medical knowledge — use more content
   const context = medicalContext
     .map(
       (doc, idx) =>
         `[Source ${idx + 1}]\n` +
         `Title: ${doc.title}\n` +
+        `Authors: ${(doc as any).authors || 'N/A'}\n` +
         `Journal: ${doc.journal || 'N/A'} (${doc.year || 'N/A'})\n` +
-        `Content: ${doc.content.substring(0, 1500)}...\n`
+        `DOI: ${doc.doi || 'N/A'}\n` +
+        `Content:\n${doc.content.substring(0, 2500)}\n`
     )
-    .join('\n---\n\n')
+    .join('\n' + '─'.repeat(50) + '\n\n')
 
-  const systemInstruction = `You are an expert endodontist AI assistant. Based on evidence from research papers and textbooks, provide treatment recommendations.
+  const systemInstruction = `You are an expert dental clinician AI assistant with deep knowledge across all dental specialties (endodontics, periodontics, prosthodontics, oral surgery, pediatric dentistry, restorative dentistry).
 
-IMPORTANT: Respond ONLY with valid JSON in this exact format:
+YOUR TASK: Analyze the provided medical literature and give a SPECIFIC, DETAILED, EVIDENCE-BASED treatment recommendation.
+
+CRITICAL RULES:
+1. BASE your answer PRIMARILY on the provided medical literature. Cite specific findings, success rates, and conclusions from the sources.
+2. Do NOT give generic textbook answers. Reference the specific studies provided and their findings.
+3. If the sources contain conflicting evidence, acknowledge it and explain which evidence is stronger and why.
+4. Include SPECIFIC details: materials (e.g., "MTA Angelus" not just "biocompatible material"), techniques (e.g., "Cvek partial pulpotomy" not just "pulpotomy"), dosages, and protocols.
+5. Differentiate between what the EVIDENCE supports vs. what is your general knowledge.
+6. For each source cited, explain WHAT it found specifically (e.g., "92% success rate at 24-month follow-up").
+
+RESPONSE FORMAT — Respond ONLY with valid JSON:
 {
-  "treatment": "Primary treatment name",
+  "treatment": "Specific treatment name with technique/material",
   "confidence": 85,
-  "reasoning": "Evidence-based explanation citing the research",
+  "reasoning": "Detailed evidence-based explanation referencing specific studies, their findings, success rates, and follow-up periods. Minimum 150 words.",
   "sources": [
-    {"title": "Paper title", "journal": "Journal name", "year": 2023, "doi": "optional"}
+    {"title": "Exact paper title from provided sources", "journal": "Journal name", "year": 2023, "doi": "if available"}
   ],
-  "alternativeTreatments": ["Alternative 1", "Alternative 2"],
-  "contraindications": ["Contraindication 1", "Contraindication 2"]
+  "alternativeTreatments": ["Alternative 1 with brief rationale", "Alternative 2 with brief rationale"],
+  "contraindications": ["Specific contraindication 1", "Specific contraindication 2"],
+  "clinicalSteps": ["Step 1: Detailed procedure step", "Step 2: Next step", "..."],
+  "materialRecommendations": ["Material 1: indication", "Material 2: indication"],
+  "followUpProtocol": "Specific follow-up schedule with radiographic and clinical evaluation timeline"
 }
 
-Confidence score should be 0-100 based on evidence strength.`
+CONFIDENCE SCORING:
+- 90-100: Strong evidence from multiple RCTs/systematic reviews
+- 75-89: Good evidence from at least one RCT or multiple cohort studies
+- 60-74: Moderate evidence from case series or expert consensus
+- Below 60: Limited evidence, based mainly on case reports or expert opinion`
 
-  const userPrompt = `Based on this medical evidence:\n\n${context}\n\nProvide treatment recommendation for:\nDiagnosis: ${diagnosis}\nTooth Number: ${toothNumber}\n${
+  // Build conversation context for treatment planning
+  const txCC = params.conversationContext
+  const txContextSection = txCC
+    ? `\n${'═'.repeat(50)}\nPATIENT CONSULTATION CONTEXT:\n` +
+      `${txCC.medicalHistory?.medical_conditions?.length ? `Medical Conditions: ${txCC.medicalHistory.medical_conditions.join(', ')}` : ''}\n` +
+      `${txCC.medicalHistory?.current_medications?.length ? `Current Medications: ${txCC.medicalHistory.current_medications.join(', ')}` : ''}\n` +
+      `${txCC.medicalHistory?.allergies?.length ? `⚠️ ALLERGIES (critical for treatment selection): ${txCC.medicalHistory.allergies.join(', ')}` : ''}\n` +
+      `${txCC.chiefComplaint?.primary_complaint ? `Chief Complaint: ${txCC.chiefComplaint.primary_complaint}` : ''}\n` +
+      `${txCC.hopi?.aggravating_factors?.length ? `Aggravating Factors: ${txCC.hopi.aggravating_factors.join(', ')}` : ''}\n` +
+      `${txCC.hopi?.relieving_factors?.length ? `Relieving Factors: ${txCC.hopi.relieving_factors.join(', ')}` : ''}\n` +
+      `${txCC.clinicalExamination?.intraoral_findings?.length ? `Intraoral Findings: ${txCC.clinicalExamination.intraoral_findings.join(', ')}` : ''}\n` +
+      `\nIMPORTANT: Consider the patient's medical conditions and allergies when recommending medications, materials, and procedures. Flag any contraindications.\n`
+    : ''
+
+  const userPrompt = `MEDICAL LITERATURE CONTEXT:\n\n${context}\n\n${'═'.repeat(50)}\n\nCLINICAL QUESTION:\nDiagnosis: ${diagnosis}\nTooth Number: ${toothNumber} (FDI notation)\n${
     patientContext
-      ? `Patient Age: ${patientContext.age}\nMedical History: ${patientContext.medicalHistory}`
-      : ''
-  }`
+      ? `Patient Age: ${patientContext.age || 'Not specified'}\nMedical History: ${patientContext.medicalHistory || 'None reported'}\nPrevious Treatments: ${patientContext.previousTreatments || 'None reported'}`
+      : 'No additional patient context provided.'
+  }${txContextSection}\n\nProvide a DETAILED, SPECIFIC treatment recommendation based primarily on the literature above. Cite specific findings from the sources.`
 
   const messages: GeminiChatMessage[] = [
     {
@@ -442,8 +522,8 @@ Confidence score should be 0-100 based on evidence strength.`
     }
   ]
 
-  const responseText = await generateChatCompletion(messages, {
-    model: 'gemini-2.0-flash',
+  const responseText = await complexChatCompletion(messages, {
+    taskLabel: 'TREATMENT',
     temperature: 0.3,
     systemInstruction,
     responseFormat: 'json'
@@ -823,7 +903,7 @@ Provide a comprehensive analysis with statistical insights, trends, and evidence
   ]
 
   const responseText = await generateChatCompletion(messages, {
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     temperature: 0.3,
     systemInstruction,
     responseFormat: 'json'
@@ -954,8 +1034,8 @@ ${Object.entries(cohortSummary.aggregatedStats.clinical.treatmentOutcomes || {})
     }
   ]
 
-  const responseText = await generateChatCompletion(messages, {
-    model: 'gemini-2.0-flash',
+  const responseText = await complexChatCompletion(messages, {
+    taskLabel: 'RAG ANALYSIS',
     temperature: 0.3,
     systemInstruction,
     responseFormat: 'json'
@@ -1063,7 +1143,7 @@ Be specific about which statistics support each insight and recommendation.`
   ]
 
   const responseText = await generateChatCompletion(messages, {
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     temperature: 0.3,
     systemInstruction,
     responseFormat: 'json'
@@ -1125,8 +1205,8 @@ Provide:
     }
   ]
 
-  const responseText = await generateChatCompletion(messages, {
-    model: 'gemini-2.0-flash',
+  const responseText = await complexChatCompletion(messages, {
+    taskLabel: 'CLINICAL INSIGHTS',
     temperature: 0.3,
     systemInstruction,
     responseFormat: 'json'

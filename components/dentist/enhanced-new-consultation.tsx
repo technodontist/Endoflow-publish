@@ -1528,7 +1528,7 @@ export function EnhancedNewConsultation({ selectedPatientId, onPatientSelect }: 
 
       {/* Section Detail Modal */}
       <Dialog open={!!activeSection} onOpenChange={() => setActiveSection(null)}>
-        <DialogContent className="max-w-4xl h-[90vh] overflow-hidden">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl h-[90vh] overflow-hidden">
           <DialogHeader className="space-y-4">
             {/* Tab Navigation Header */}
             <div className="flex items-center justify-between">

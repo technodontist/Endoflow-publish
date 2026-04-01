@@ -17,6 +17,7 @@ import { extractDentalFindings, mapFindingsToChartUpdate, type ToothFinding, typ
 import { getDentalRAGSuggestions, type DiagnosisSuggestion } from '@/lib/services/dental-rag-service'
 import { cn } from '@/lib/utils'
 import { useVoiceManager } from '@/lib/contexts/voice-manager-context'
+import { DeepgramSTTService, type DeepgramTranscriptEvent } from '@/lib/services/deepgram-stt'
 
 interface FDIVoiceControlProps {
   patientId: string
@@ -62,83 +63,85 @@ export function FDIVoiceControl({
   const [error, setError] = useState<string | null>(null)
   
   // Refs
-  const recognitionRef = useRef<any>(null)
+  const deepgramRef = useRef<DeepgramSTTService | null>(null)
   const finalTranscriptRef = useRef('')
-  
-  // Initialize speech recognition
+
+  // Cleanup on unmount
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition
-      const recognition = new SpeechRecognition()
-      
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.lang = 'en-US'
-      
-      recognition.onresult = (event: any) => {
-        let interim = ''
-        let final = ''
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            final += transcript + ' '
-          } else {
-            interim += transcript
-          }
-        }
-        
-        if (final) {
-          finalTranscriptRef.current += final
-          setTranscript(finalTranscriptRef.current)
-        }
-        setInterimTranscript(interim)
-      }
-      
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error)
-        setError(`Voice recognition error: ${event.error}`)
-        setIsRecording(false)
-      }
-      
-      recognition.onend = () => {
-        setIsRecording(false)
-        if (finalTranscriptRef.current) {
-          processTranscript(finalTranscriptRef.current)
-        }
-      }
-      
-      recognitionRef.current = recognition
-    } else {
-      setError('Speech recognition not supported in this browser')
-    }
-    
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
-      }
+      deepgramRef.current?.disconnect()
     }
   }, [])
-  
-  // Start/stop recording
-  const toggleRecording = () => {
+
+  // Start/stop recording using Deepgram
+  const toggleRecording = async () => {
     if (isRecording) {
       // Stopping recording
-      recognitionRef.current?.stop()
+      deepgramRef.current?.disconnect()
+      deepgramRef.current = null
       setIsRecording(false)
       voiceManager.unregisterMicUsage('fdi-voice-control')
-      console.log('🛑 [FDI VOICE] Unregistered from voice manager')
+      console.log('🛑 [FDI VOICE] Stopped Deepgram recording')
+
+      // Process what we have
+      if (finalTranscriptRef.current.trim()) {
+        processTranscript(finalTranscriptRef.current)
+      }
     } else {
-      // Starting recording
+      // Starting recording with Deepgram
       voiceManager.registerMicUsage('fdi-voice-control')
-      console.log('🎙️ [FDI VOICE] Registered with voice manager')
-      
+      console.log('🎙️ [FDI VOICE] Starting Deepgram recording')
+
       finalTranscriptRef.current = ''
       setTranscript('')
       setInterimTranscript('')
       setError(null)
-      recognitionRef.current?.start()
-      setIsRecording(true)
+
+      try {
+        const dgService = new DeepgramSTTService({
+          language: 'en',
+          model: 'nova-2-medical',
+          interimResults: true,
+          smartFormat: true,
+          utteranceEndMs: 2000,
+          vadEvents: true,
+        })
+
+        dgService.on('transcript', (event: DeepgramTranscriptEvent) => {
+          if (event.isFinal) {
+            finalTranscriptRef.current += event.text + ' '
+            setTranscript(finalTranscriptRef.current)
+          }
+          setInterimTranscript(event.isFinal ? '' : event.text)
+        })
+
+        dgService.on('utteranceEnd', () => {
+          // Auto-stop after silence with clinical dictation
+          if (finalTranscriptRef.current.trim().length > 20) {
+            console.log('🔇 [FDI VOICE] Utterance end - auto-processing...')
+            dgService.disconnect()
+            setIsRecording(false)
+            voiceManager.unregisterMicUsage('fdi-voice-control')
+            processTranscript(finalTranscriptRef.current)
+          }
+        })
+
+        dgService.on('error', (err: Error) => {
+          console.error('❌ [FDI VOICE] Deepgram error:', err.message)
+          setError(`Voice recognition error: ${err.message}`)
+          setIsRecording(false)
+          voiceManager.unregisterMicUsage('fdi-voice-control')
+        })
+
+        deepgramRef.current = dgService
+        await dgService.connect()
+        setIsRecording(true)
+      } catch (err) {
+        console.error('❌ [FDI VOICE] Failed to start Deepgram:', err)
+        setError('Microphone access denied or Deepgram unavailable')
+        setIsRecording(false)
+        voiceManager.unregisterMicUsage('fdi-voice-control')
+      }
     }
   }
   
@@ -248,16 +251,16 @@ export function FDIVoiceControl({
   // Get status color
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      healthy: 'bg-green-100 text-green-800',
-      caries: 'bg-red-100 text-red-800',
-      filled: 'bg-blue-100 text-blue-800',
-      crown: 'bg-yellow-100 text-yellow-800',
-      missing: 'bg-gray-100 text-gray-800',
-      attention: 'bg-orange-100 text-orange-800',
-      root_canal: 'bg-purple-100 text-purple-800',
-      extraction_needed: 'bg-red-200 text-red-900'
+      healthy: 'bg-green-500/100/15 text-green-400',
+      caries: 'bg-red-500/15 text-red-400',
+      filled: 'bg-blue-500/100/15 text-blue-400',
+      crown: 'bg-yellow-500/15 text-yellow-400',
+      missing: 'bg-muted text-foreground',
+      attention: 'bg-orange-500/15 text-orange-400',
+      root_canal: 'bg-purple-500/15 text-purple-400',
+      extraction_needed: 'bg-red-500/20 text-red-400'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-muted text-foreground'
   }
   
   // Get urgency color
@@ -265,10 +268,10 @@ export function FDIVoiceControl({
     const colors: Record<string, string> = {
       immediate: 'bg-red-500',
       urgent: 'bg-orange-500',
-      routine: 'bg-blue-500',
-      observation: 'bg-gray-500'
+      routine: 'bg-blue-500/100',
+      observation: 'bg-muted0'
     }
-    return colors[urgency] || 'bg-gray-500'
+    return colors[urgency] || 'bg-muted0'
   }
   
   return (
@@ -314,14 +317,14 @@ export function FDIVoiceControl({
               {isRecording && (
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-sm text-gray-600">Recording...</span>
+                  <span className="text-sm text-muted-foreground">Recording...</span>
                 </div>
               )}
               
               {isProcessing && (
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     {processingStep === 'extracting' && 'Extracting findings...'}
                     {processingStep === 'querying' && 'Searching evidence...'}
                     {processingStep === 'complete' && 'Complete!'}
@@ -337,12 +340,12 @@ export function FDIVoiceControl({
             
             {/* Transcript Display */}
             {(transcript || interimTranscript) && (
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm font-medium text-gray-700 mb-2">Transcript:</div>
-                <div className="text-sm text-gray-900">
+              <div className="bg-muted rounded-lg p-4">
+                <div className="text-sm font-medium text-foreground mb-2">Transcript:</div>
+                <div className="text-sm text-foreground">
                   {transcript}
                   {interimTranscript && (
-                    <span className="text-gray-500 italic">{interimTranscript}</span>
+                    <span className="text-muted-foreground italic">{interimTranscript}</span>
                   )}
                 </div>
               </div>
@@ -350,7 +353,7 @@ export function FDIVoiceControl({
             
             {/* Quick Findings Preview */}
             {dentalFindings && dentalFindings.tooth_findings.length > 0 && !showConfirmDialog && (
-              <Alert className="bg-green-50 border-green-200">
+              <Alert className="bg-green-500/10 border-green-200">
                 <CheckCircle className="h-4 w-4 text-green-600" />
                 <AlertTitle>Findings Extracted</AlertTitle>
                 <AlertDescription>
@@ -369,9 +372,9 @@ export function FDIVoiceControl({
             )}
             
             {/* Voice Command Examples */}
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="text-sm font-medium text-blue-900 mb-2">Example Commands:</div>
-              <div className="text-xs text-blue-700 space-y-1">
+            <div className="bg-blue-500/10 rounded-lg p-4">
+              <div className="text-sm font-medium text-blue-400 mb-2">Example Commands:</div>
+              <div className="text-xs text-blue-400 space-y-1">
                 <div>• "Tooth 16 has deep caries, needs root canal treatment"</div>
                 <div>• "Upper right first molar showing periapical lesion"</div>
                 <div>• "Teeth 24, 25, and 26 have composite fillings"</div>
@@ -384,7 +387,7 @@ export function FDIVoiceControl({
       
       {/* Confirmation Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Review Voice-Extracted Findings</span>
@@ -451,7 +454,7 @@ export function FDIVoiceControl({
                           {selectedFindings.has(finding.tooth_number) ? (
                             <CheckCircle className="h-6 w-6 text-blue-500" />
                           ) : (
-                            <div className="h-6 w-6 rounded-full border-2 border-gray-300" />
+                            <div className="h-6 w-6 rounded-full border-2 border-border" />
                           )}
                         </div>
                       </div>
@@ -460,7 +463,7 @@ export function FDIVoiceControl({
                 ))}
                 
                 {dentalFindings?.general_findings && (
-                  <Card className="bg-gray-50">
+                  <Card className="bg-muted">
                     <CardContent className="p-4">
                       <div className="font-medium mb-2">General Findings</div>
                       <div className="text-sm space-y-1">
@@ -507,7 +510,7 @@ export function FDIVoiceControl({
                         <div className="font-medium text-sm mb-2">Treatment Options:</div>
                         <div className="space-y-2">
                           {suggestion.treatment_suggestions.map((treatment, idx) => (
-                            <div key={idx} className="bg-gray-50 rounded p-3 text-sm">
+                            <div key={idx} className="bg-muted rounded p-3 text-sm">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="font-medium">{treatment.treatment_name}</span>
                                 {treatment.success_rate && (
@@ -516,11 +519,11 @@ export function FDIVoiceControl({
                                   </Badge>
                                 )}
                               </div>
-                              <div className="text-gray-600 text-xs">
+                              <div className="text-muted-foreground text-xs">
                                 {treatment.description}
                               </div>
                               {treatment.citations.length > 0 && (
-                                <div className="mt-1 text-xs text-blue-600">
+                                <div className="mt-1 text-xs text-blue-400">
                                   📚 {treatment.citations.length} supporting studies
                                 </div>
                               )}
@@ -529,7 +532,7 @@ export function FDIVoiceControl({
                         </div>
                       </div>
                       
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         {suggestion.evidence_summary}
                       </div>
                     </CardContent>

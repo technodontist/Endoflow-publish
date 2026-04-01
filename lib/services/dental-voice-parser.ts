@@ -4,8 +4,10 @@
  * Supports FDI notation and clinical terminology
  */
 
-import { generateChatCompletion, GeminiChatMessage } from './gemini-ai'
+import { GeminiChatMessage } from './gemini-ai'
+import { aiChatCompletion } from './ai-provider'
 import { ToothStatus, mapInitialStatusFromDiagnosis, getStatusColorCode } from '@/lib/utils/toothStatus'
+import { applyLocalCorrections } from './prompt-refinement-agent'
 
 export interface ToothFinding {
   tooth_number: string  // FDI notation: "11", "16", "36", etc.
@@ -43,6 +45,13 @@ export async function extractDentalFindings(
 ): Promise<DentalExaminationData> {
   console.log('🦷 [DENTAL PARSER] Starting dental finding extraction...')
   console.log('📝 [DENTAL PARSER] Transcript length:', transcript.length, 'characters')
+
+  // Apply fast local dental term corrections (zero latency, no LLM call)
+  const correctedTranscript = applyLocalCorrections(transcript)
+  if (correctedTranscript !== transcript) {
+    console.log('🔧 [DENTAL PARSER] Local corrections applied to transcript')
+    transcript = correctedTranscript
+  }
 
   const systemInstruction = `You are an expert dental AI assistant analyzing dentist examination voice transcripts.
 Your task is to extract structured tooth-specific findings and map them to FDI notation.
@@ -130,10 +139,10 @@ IMPORTANT:
       }]
     }]
 
-    console.log('🔄 [DENTAL PARSER] Calling Gemini API for dental extraction...')
-    const response = await generateChatCompletion(messages, {
-      model: 'gemini-2.0-flash',
-      temperature: 0.2, // Low temperature for accurate extraction
+    console.log('🔄 [DENTAL PARSER] Calling AI (Claude → Gemini fallback)...')
+    const response = await aiChatCompletion(messages, {
+      task: 'medical_parsing',
+      temperature: 0.2,
       maxOutputTokens: 2048,
       systemInstruction,
       responseFormat: 'json'

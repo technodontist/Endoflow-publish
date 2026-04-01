@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getPendingPatients, getActivePatients, getPendingRegistrations, getPendingAppointmentRequests } from "@/lib/db/queries"
+import { getUserContext } from "@/lib/actions/user-context"
 import { Users, Calendar, Clock, TrendingUp, UserCheck, AlertCircle, CheckCircle, XCircle, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
 import { RealtimeAssistantDashboard } from "@/components/assistant-dashboard-realtime"
@@ -19,11 +20,13 @@ interface AssistantDashboardProps {
 
 export default async function AssistantDashboard({ searchParams }: AssistantDashboardProps) {
   const params = await searchParams
+  const ctx = await getUserContext()
+  const clinicId = ctx?.clinicId
   const [pendingPatients, activePatients, pendingRegistrations, appointmentRequests] = await Promise.all([
-    getPendingPatients(),
-    getActivePatients(),
+    getPendingPatients(clinicId),
+    getActivePatients(clinicId),
     getPendingRegistrations(),
-    getPendingAppointmentRequests()
+    getPendingAppointmentRequests(ctx?.dentistId)
   ])
 
   // Transform pending registrations to match expected format

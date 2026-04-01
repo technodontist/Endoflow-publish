@@ -222,8 +222,21 @@ export async function getPatientConversationsAction() {
       return { error: 'Only dentists and assistants can view all conversations' }
     }
 
-    // Get unique patient conversations with latest message info
-    const { data: conversations, error: conversationsError } = await serviceSupabase
+    // Get clinic patient IDs for scoping
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
+    let clinicPatientIds: string[] | undefined
+    if (ctx?.clinicId) {
+      const { data: clinicPatients } = await serviceSupabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'patient')
+        .eq('clinic_id', ctx.clinicId)
+      clinicPatientIds = clinicPatients?.map(p => p.id)
+    }
+
+    // Get unique patient conversations with latest message info - scoped to clinic
+    let messagesQuery = serviceSupabase
       .schema('api')
       .from('messages')
       .select(`
@@ -234,6 +247,15 @@ export async function getPatientConversationsAction() {
         read,
         sender_type
       `)
+
+    if (clinicPatientIds && clinicPatientIds.length > 0) {
+      messagesQuery = messagesQuery.in('patient_id', clinicPatientIds)
+    } else if (ctx?.clinicId) {
+      // Clinic exists but has no patients - return empty
+      return { conversations: [] }
+    }
+
+    const { data: conversations, error: conversationsError } = await messagesQuery
       .order('created_at', { ascending: false })
 
     if (conversationsError) {

@@ -1,43 +1,32 @@
 @import "tailwindcss";
 
-@theme {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
+/* Session 18: Mobile touch optimization */
+@layer base {
+  /* Smooth momentum scrolling on iOS */
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
 
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
+  /* Prevent double-tap zoom on interactive elements */
+  button, a, [role="button"] {
+    touch-action: manipulation;
+  }
 
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
+  /* Safe area insets for notched iPhones */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-
-  --color-chart-1: hsl(var(--chart-1));
-  --color-chart-2: hsl(var(--chart-2));
-  --color-chart-3: hsl(var(--chart-3));
-  --color-chart-4: hsl(var(--chart-4));
-  --color-chart-5: hsl(var(--chart-5));
-
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  /* Hide scrollbar but keep scroll functionality (for pill rows) */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /*
@@ -66,58 +55,60 @@
 
 @layer base {
   :root {
+    /* EndoFlow Light Theme */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 170 58% 35%;           /* teal - same brand identity */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 170 58% 35%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 170 58% 35%;
+    --chart-1: 170 58% 35%;
+    --chart-2: 220 70% 50%;
+    --chart-3: 34 100% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 142 71% 45%;
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    /* EndoFlow Dark Navy Theme — v2 (research-backed) */
+    --background: 222 47% 11%;        /* #0f172a - slate-900, visible navy */
+    --foreground: 210 40% 96%;        /* #f1f5f9 - near white */
+    --card: 217 33% 17%;              /* #1e293b - slate-800, clear separation */
+    --card-foreground: 210 40% 96%;   /* #f1f5f9 */
+    --popover: 215 25% 27%;           /* #334155 - elevated surface */
+    --popover-foreground: 210 40% 96%;
+    --primary: 172 67% 50%;           /* #2dd4bf - brighter teal */
+    --primary-foreground: 222 47% 11%;
+    --secondary: 215 25% 20%;         /* raised muted surface */
+    --secondary-foreground: 210 40% 96%;
+    --muted: 215 25% 20%;
+    --muted-foreground: 215 16% 65%;  /* #94a3b8 - slightly brighter */
+    --accent: 172 67% 50%;            /* #2dd4bf - brighter teal */
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 91% 71%;         /* #f87171 - desaturated for dark */
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
+    --border: 217 33% 17%;            /* visible border */
+    --input: 215 25% 22%;             /* distinct from card bg */
+    --ring: 172 67% 50%;              /* teal focus ring */
+    --chart-1: 172 67% 50%;
+    --chart-2: 217 91% 68%;
+    --chart-3: 43 96% 56%;
     --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-5: 142 69% 58%;
   }
 }
 
@@ -130,86 +121,33 @@
   }
 }
 
-:root {
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(240 10% 3.9%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(240 10% 3.9%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(240 10% 3.9%);
-  --primary: hsl(240 5.9% 10%);
-  --primary-foreground: hsl(0 0% 98%);
-  --secondary: hsl(240 4.8% 95.9%);
-  --secondary-foreground: hsl(240 5.9% 10%);
-  --muted: hsl(240 4.8% 95.9%);
-  --muted-foreground: hsl(240 3.8% 46.1%);
-  --accent: hsl(240 4.8% 95.9%);
-  --accent-foreground: hsl(240 5.9% 10%);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 98%);
-  --border: hsl(240 5.9% 90%);
-  --input: hsl(240 5.9% 90%);
-  --ring: hsl(240 10% 3.9%);
-  --chart-1: hsl(12 76% 61%);
-  --chart-2: hsl(173 58% 39%);
-  --chart-3: hsl(197 37% 24%);
-  --chart-4: hsl(43 74% 66%);
-  --chart-5: hsl(27 87% 67%);
-  --radius: 0.6rem;
-}
-
-.dark {
-  --background: hsl(240 10% 3.9%);
-  --foreground: hsl(0 0% 98%);
-  --card: hsl(240 10% 3.9%);
-  --card-foreground: hsl(0 0% 98%);
-  --popover: hsl(240 10% 3.9%);
-  --popover-foreground: hsl(0 0% 98%);
-  --primary: hsl(0 0% 98%);
-  --primary-foreground: hsl(240 5.9% 10%);
-  --secondary: hsl(240 3.7% 15.9%);
-  --secondary-foreground: hsl(0 0% 98%);
-  --muted: hsl(240 3.7% 15.9%);
-  --muted-foreground: hsl(240 5% 64.9%);
-  --accent: hsl(240 3.7% 15.9%);
-  --accent-foreground: hsl(0 0% 98%);
-  --destructive: hsl(0 62.8% 30.6%);
-  --destructive-foreground: hsl(0 0% 98%);
-  --border: hsl(240 3.7% 15.9%);
-  --input: hsl(240 3.7% 15.9%);
-  --ring: hsl(240 4.9% 83.9%);
-  --chart-1: hsl(220 70% 50%);
-  --chart-2: hsl(160 60% 45%);
-  --chart-3: hsl(30 80% 55%);
-  --chart-4: hsl(280 65% 60%);
-  --chart-5: hsl(340 75% 55%);
-}
+/* Duplicate color blocks removed — canonical values are in @layer base above */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -252,6 +190,17 @@
   animation: accordion-up 0.2s ease-out;
 }
 
+/* Batch processing progress animation (Session 12: gap-filling optimization) */
+@keyframes progress-indeterminate {
+  0% { width: 0%; margin-left: 0; }
+  50% { width: 60%; margin-left: 20%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
+.animate-progress {
+  animation: progress-indeterminate 2s ease-in-out infinite;
+}
+
 /* NUCLEAR FIX: Force tooth diagnosis dialog to be wide - Override all cached CSS */
 @layer components {
   /* Target Radix Dialog Content when used in tooth diagnosis */
@@ -265,15 +214,38 @@
     max-width: 95vw !important;
     height: 95vh !important;
   }
+
+  /* Session 19: Mobile — full screen dialogs, reduced padding, larger touch targets */
+  @media (max-width: 768px) {
+    .tooth-diagnosis-wide-dialog {
+      width: 100vw !important;
+      max-width: 100vw !important;
+      height: 100dvh !important;
+      border-radius: 0 !important;
+    }
+
+    /* Ensure buttons inside dialogs meet 44px touch target minimum */
+    .tooth-diagnosis-wide-dialog button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Gap question input — taller on mobile */
+    .tooth-diagnosis-wide-dialog input[type="text"],
+    .tooth-diagnosis-wide-dialog textarea {
+      min-height: 44px;
+      font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+  }
 }
 
 /* Markdown styling for AI responses in self-learning chat */
 .prose {
-  color: #374151;
+  color: hsl(var(--foreground));
 }
 
 .prose h1, .prose h2, .prose h3, .prose h4 {
-  color: #1f2937;
+  color: hsl(var(--foreground));
   font-weight: 600;
   margin-top: 1em;
   margin-bottom: 0.5em;
@@ -301,17 +273,17 @@
 }
 
 .prose code {
-  background: #f3f4f6;
+  background: hsl(var(--muted));
   padding: 0.125em 0.35em;
   border-radius: 0.25em;
   font-size: 0.875em;
   font-family: 'Courier New', monospace;
-  color: #be123c;
+  color: hsl(var(--primary));
 }
 
 .prose pre {
-  background: #1f2937;
-  color: #f9fafb;
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
   padding: 1em;
   border-radius: 0.5em;
   overflow-x: auto;
@@ -326,7 +298,7 @@
 
 .prose strong {
   font-weight: 600;
-  color: #111827;
+  color: hsl(var(--foreground));
 }
 
 .prose em {
@@ -334,20 +306,20 @@
 }
 
 .prose a {
-  color: #0d9488;
+  color: hsl(170 58% 40%);
   text-decoration: underline;
 }
 
 .prose a:hover {
-  color: #0f766e;
+  color: hsl(170 58% 35%);
 }
 
 .prose blockquote {
-  border-left: 3px solid #0d9488;
+  border-left: 3px solid hsl(170 58% 40%);
   padding-left: 1em;
   margin: 0.75em 0;
   font-style: italic;
-  color: #4b5563;
+  color: hsl(var(--muted-foreground));
 }
 
 .prose table {
@@ -357,12 +329,12 @@
 }
 
 .prose th, .prose td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid hsl(var(--border));
   padding: 0.5em;
   text-align: left;
 }
 
 .prose th {
-  background: #f3f4f6;
+  background: hsl(var(--muted));
   font-weight: 600;
 }

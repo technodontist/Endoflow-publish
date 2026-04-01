@@ -38,15 +38,20 @@ export async function scheduleTaskWithAI(
     console.log('📝 [AI TASK SCHEDULER] Input:', naturalLanguageInput)
     console.log('👨‍⚕️ [AI TASK SCHEDULER] Created by:', createdById)
 
-    // Step 0: Get available assistants and patients for context
+    // Step 0: Get available assistants and patients for context (clinic-scoped)
     const supabase = await createServiceClient()
+    const { getUserContext } = await import('./user-context')
+    const ctx = await getUserContext()
 
-    // Get all active assistants
-    const { data: assistants, error: assistantsError } = await supabase
+    // Get active assistants in this clinic
+    let assistantsQuery = supabase
       .from('profiles')
       .select('id, full_name')
       .eq('role', 'assistant')
       .eq('status', 'active')
+    if (ctx?.clinicId) assistantsQuery = assistantsQuery.eq('clinic_id', ctx.clinicId)
+
+    const { data: assistants, error: assistantsError } = await assistantsQuery
       .order('full_name', { ascending: true })
 
     if (assistantsError) {
@@ -55,11 +60,15 @@ export async function scheduleTaskWithAI(
 
     console.log('👥 [AI TASK SCHEDULER] Loaded', assistants?.length || 0, 'active assistants')
 
-    // Get recent patients for context
-    const { data: recentPatients, error: patientsError } = await supabase
-      .schema('api')
-      .from('patients')
-      .select('id, first_name, last_name')
+    // Get recent patients for context (clinic-scoped)
+    let patientsQuery = supabase.schema('api').from('patients').select('id, first_name, last_name')
+    if (ctx?.clinicId) {
+      const { data: clinicPatientIds } = await supabase.from('profiles').select('id').eq('role', 'patient').eq('clinic_id', ctx.clinicId)
+      if (clinicPatientIds && clinicPatientIds.length > 0) {
+        patientsQuery = patientsQuery.in('id', clinicPatientIds.map(p => p.id))
+      }
+    }
+    const { data: recentPatients, error: patientsError } = await patientsQuery
       .order('created_at', { ascending: false })
       .limit(100)
 

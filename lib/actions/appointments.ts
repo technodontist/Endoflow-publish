@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getUserContext } from './user-context';
 import {
   getPendingAppointmentRequests,
   getAppointmentRequestDetails,
@@ -24,9 +25,9 @@ import {
   AppointmentScheduleData
 } from '@/lib/services/appointments';
 
-export async function getAppointmentRequestsAction() {
+export async function getAppointmentRequestsAction(dentistId?: string) {
   try {
-    const requests = await getPendingAppointmentRequests();
+    const requests = await getPendingAppointmentRequests(dentistId);
     return { success: true, data: requests };
   } catch (error) {
     console.error('Error fetching appointment requests:', error);
@@ -75,9 +76,9 @@ export async function confirmAppointmentAction(
   }
 }
 
-export async function getAppointmentsByDateAction(date: string) {
+export async function getAppointmentsByDateAction(date: string, dentistId?: string) {
   try {
-    const appointments = await getAppointmentsByDate(date);
+    const appointments = await getAppointmentsByDate(date, dentistId);
     return { success: true, data: appointments };
   } catch (error) {
     console.error('Error fetching appointments by date:', error);
@@ -97,7 +98,8 @@ export async function getDentistAppointmentsAction(dentistId: string, startDate?
 
 export async function getAvailableDentistsAction() {
   try {
-    const dentists = await getAvailableDentists();
+    const ctx = await getUserContext();
+    const dentists = await getAvailableDentists(ctx?.clinicId);
     return { success: true, data: dentists };
   } catch (error) {
     console.error('Error fetching available dentists:', error);
@@ -107,11 +109,55 @@ export async function getAvailableDentistsAction() {
 
 export async function getActivePatientsAction() {
   try {
-    const patients = await getActivePatients();
+    const ctx = await getUserContext();
+    const patients = await getActivePatients(ctx?.clinicId);
     return { success: true, data: patients };
   } catch (error) {
     console.error('Error fetching active patients:', error);
     return { success: false, error: 'Failed to fetch active patients' };
+  }
+}
+
+// Search patients - clinic-scoped
+export async function searchPatientsAction(searchTerm: string) {
+  try {
+    const ctx = await getUserContext();
+    const supabase = await createServiceClient();
+
+    // Get clinic patient IDs for scoping
+    let patientIds: string[] | undefined;
+    if (ctx?.clinicId) {
+      const { data: clinicPatients } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'patient')
+        .eq('clinic_id', ctx.clinicId);
+      patientIds = clinicPatients?.map(p => p.id);
+      if (!patientIds || patientIds.length === 0) return { success: true, data: [] };
+    }
+
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(searchTerm.trim());
+
+    let query = supabase
+      .schema('api')
+      .from('patients')
+      .select('id, first_name, last_name, date_of_birth, phone');
+
+    if (patientIds) {
+      query = query.in('id', patientIds);
+    }
+
+    if (isUUID) {
+      query = query.eq('id', searchTerm.trim());
+    } else {
+      query = query.or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`);
+    }
+
+    const { data, error } = await query.order('first_name').limit(10);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  } catch (error) {
+    return { success: false, error: 'Search failed' };
   }
 }
 
