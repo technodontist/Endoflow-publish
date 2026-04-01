@@ -8,7 +8,7 @@ console.log('API Key:', GEMINI_API_KEY.substring(0, 20) + '...')
 try {
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash-exp',
+    model: 'gemini-2.5-flash',
     generationConfig: {
       temperature: 0.1,
       topP: 0.8,

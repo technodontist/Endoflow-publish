@@ -1,0 +1,2431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EndoFlow UI Mockups - 4 Mode Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-primary: #0a0f1a;
+    --bg-secondary: #111827;
+    --bg-card: #1a2235;
+    --bg-card-hover: #1e2a40;
+    --bg-surface: rgba(255,255,255,0.03);
+    --teal: #14b8a6;
+    --teal-dark: #0d9488;
+    --teal-glow: rgba(20,184,166,0.15);
+    --teal-glow-strong: rgba(20,184,166,0.3);
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --border: rgba(255,255,255,0.06);
+    --border-active: rgba(20,184,166,0.3);
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --glass: rgba(255,255,255,0.04);
+    --glass-border: rgba(255,255,255,0.08);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  /* ========== MODE SELECTOR (Landing Page) ========== */
+  .mode-selector-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: radial-gradient(ellipse at 50% 0%, rgba(20,184,166,0.08) 0%, transparent 60%),
+                var(--bg-primary);
+  }
+
+  .brand-header {
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+
+  .brand-logo {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--teal), #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+
+  .brand-subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 400;
+  }
+
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    max-width: 720px;
+    width: 100%;
+  }
+
+  .mode-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+
+  .mode-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--teal);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .mode-card:hover {
+    border-color: var(--border-active);
+    background: var(--bg-card-hover);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 40px var(--teal-glow);
+  }
+
+  .mode-card:hover::before { opacity: 1; }
+
+  .mode-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .mode-icon.home { background: rgba(20,184,166,0.12); color: var(--teal); }
+  .mode-icon.clinical { background: rgba(239,68,68,0.12); color: var(--red); }
+  .mode-icon.research { background: rgba(168,85,247,0.12); color: var(--purple); }
+  .mode-icon.management { background: rgba(59,130,246,0.12); color: var(--blue); }
+
+  .mode-card h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .mode-card p {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .mode-card .mode-shortcut {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.05);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: monospace;
+  }
+
+  /* Voice prompt at bottom */
+  .voice-prompt {
+    margin-top: 3rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .mic-indicator {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 20px var(--teal-glow);
+    animation: pulse-glow 2s infinite;
+    font-size: 1.2rem;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 20px var(--teal-glow); }
+    50% { box-shadow: 0 0 40px var(--teal-glow-strong); }
+  }
+
+  /* ========== SHARED LAYOUT ========== */
+  .app-layout {
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: 64px 1fr;
+    background: var(--bg-primary);
+  }
+
+  /* Top Bar */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+    background: rgba(17,24,39,0.8);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .top-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+  }
+
+  .app-logo {
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--teal), #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Mode Pills */
+  .mode-pills {
+    display: flex;
+    gap: 4px;
+    background: rgba(255,255,255,0.04);
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .mode-pill {
+    padding: 6px 16px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    background: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mode-pill:hover { color: var(--text-secondary); background: rgba(255,255,255,0.04); }
+  .mode-pill.active {
+    background: var(--teal);
+    color: white;
+    font-weight: 600;
+  }
+
+  .top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1rem;
+  }
+
+  .icon-btn:hover { border-color: var(--border-active); color: var(--text-secondary); }
+
+  .user-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  /* ========== HOME MODE ========== */
+  .home-content {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+
+  /* Stats Row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    filter: blur(40px);
+    opacity: 0.15;
+  }
+
+  .stat-card:nth-child(1)::after { background: var(--teal); }
+  .stat-card:nth-child(2)::after { background: var(--amber); }
+  .stat-card:nth-child(3)::after { background: var(--green); }
+  .stat-card:nth-child(4)::after { background: var(--blue); }
+
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .stat-change {
+    font-size: 0.7rem;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .stat-change.up { color: var(--green); }
+  .stat-change.down { color: var(--red); }
+
+  /* Schedule */
+  .schedule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .schedule-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .schedule-item:hover {
+    border-color: var(--border-active);
+    background: var(--bg-card-hover);
+  }
+
+  .schedule-item.active {
+    border-color: var(--teal);
+    background: rgba(20,184,166,0.06);
+  }
+
+  .schedule-time {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--teal);
+    min-width: 55px;
+  }
+
+  .schedule-info { flex: 1; }
+
+  .schedule-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .schedule-procedure {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .status-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .status-badge.confirmed { background: rgba(34,197,94,0.12); color: var(--green); }
+  .status-badge.waiting { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .status-badge.in-progress { background: rgba(20,184,166,0.12); color: var(--teal); }
+  .status-badge.completed { background: rgba(100,116,139,0.12); color: var(--text-muted); }
+
+  /* Sidebar */
+  .home-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .sidebar-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+  }
+
+  .sidebar-card h4 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Mini Calendar */
+  .mini-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    text-align: center;
+  }
+
+  .cal-header {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 4px 0;
+  }
+
+  .cal-day {
+    font-size: 0.72rem;
+    padding: 6px 0;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .cal-day:hover { background: rgba(255,255,255,0.05); }
+  .cal-day.today {
+    background: var(--teal);
+    color: white;
+    font-weight: 700;
+  }
+  .cal-day.has-appt { position: relative; }
+  .cal-day.has-appt::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--teal);
+  }
+  .cal-day.empty { color: transparent; pointer-events: none; }
+
+  /* Quick Actions */
+  .quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .quick-action {
+    padding: 0.75rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+  }
+
+  .quick-action:hover {
+    border-color: var(--border-active);
+    background: var(--teal-glow);
+    color: var(--teal);
+  }
+
+  /* Notifications */
+  .notification-item {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .notification-item:last-child { border-bottom: none; }
+
+  .notification-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+
+  .notification-dot.urgent { background: var(--red); }
+  .notification-dot.info { background: var(--blue); }
+  .notification-dot.success { background: var(--green); }
+
+  .notification-text {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .notification-time {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ========== CLINICAL MODE ========== */
+  .clinical-content {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+
+  .clinical-top-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.5rem;
+    background: rgba(239,68,68,0.06);
+    border-bottom: 1px solid rgba(239,68,68,0.15);
+  }
+
+  .recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .rec-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: blink 1s infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .rec-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .patient-info-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .patient-avatar-lg {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .patient-name-lg {
+    font-weight: 700;
+    font-size: 1rem;
+  }
+
+  .patient-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .consultation-timer {
+    font-family: 'Inter', monospace;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.05);
+    padding: 6px 14px;
+    border-radius: 10px;
+  }
+
+  /* Main Clinical Area */
+  .clinical-main {
+    padding: 1.5rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  /* Dental Chart Mockup */
+  .dental-chart-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+  }
+
+  .dental-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .dental-chart-header h4 {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.65rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+  }
+
+  .tooth-grid {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    margin-bottom: 0.75rem;
+  }
+
+  .tooth {
+    width: 28px;
+    height: 36px;
+    border-radius: 4px 4px 6px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1.5px solid;
+  }
+
+  .tooth.healthy { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.3); color: var(--green); }
+  .tooth.caries { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.4); color: var(--red); }
+  .tooth.filled { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: var(--blue); }
+  .tooth.rct { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.4); color: var(--purple); }
+  .tooth.missing { background: rgba(100,116,139,0.08); border-color: rgba(100,116,139,0.2); color: var(--text-muted); }
+  .tooth.active-finding {
+    background: rgba(245,158,11,0.2);
+    border-color: var(--amber);
+    color: var(--amber);
+    box-shadow: 0 0 12px rgba(245,158,11,0.3);
+    animation: tooth-highlight 1.5s ease-in-out;
+  }
+
+  @keyframes tooth-highlight {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  .tooth:hover { transform: scale(1.1); }
+
+  .quadrant-label {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 2px 0;
+    font-weight: 600;
+  }
+
+  .chart-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  /* Live Findings */
+  .live-findings {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+  }
+
+  .finding-entry {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeSlideIn 0.4s ease-out;
+  }
+
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .finding-entry:last-child { border-bottom: none; }
+
+  .finding-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .finding-icon.charted { background: rgba(34,197,94,0.12); color: var(--green); }
+  .finding-icon.processing { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .finding-icon.ai { background: rgba(168,85,247,0.12); color: var(--purple); }
+
+  .finding-text {
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+
+  .finding-text strong { color: var(--teal); }
+
+  .finding-timestamp {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* AI Copilot Panel (Right Side) */
+  .ai-panel {
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: rgba(17,24,39,0.5);
+  }
+
+  .ai-panel-header {
+    padding: 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ai-panel-header h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ai-badge {
+    font-size: 0.55rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+    color: white;
+    text-transform: uppercase;
+  }
+
+  .ai-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .ai-message {
+    padding: 1rem;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+
+  .ai-message.assistant {
+    background: rgba(20,184,166,0.06);
+    border: 1px solid rgba(20,184,166,0.12);
+  }
+
+  .ai-message.system {
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.12);
+  }
+
+  .ai-suggestion {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem;
+  }
+
+  .ai-suggestion-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--teal);
+  }
+
+  .ai-suggestion-body {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
+  }
+
+  .evidence-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.65rem;
+    color: var(--purple);
+    background: rgba(168,85,247,0.08);
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+  }
+
+  .ai-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .ai-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+
+  .ai-btn.primary {
+    background: var(--teal);
+    color: white;
+  }
+
+  .ai-btn.primary:hover { background: var(--teal-dark); }
+
+  .ai-btn.secondary {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .ai-btn.secondary:hover { border-color: var(--border-active); }
+
+  /* Voice Bar */
+  .voice-bar {
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .voice-waveform {
+    flex: 1;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .wave-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--teal);
+    animation: wave 0.8s ease-in-out infinite;
+  }
+
+  @keyframes wave {
+    0%, 100% { height: 4px; opacity: 0.3; }
+    50% { height: 20px; opacity: 1; }
+  }
+
+  .voice-status {
+    font-size: 0.75rem;
+    color: var(--teal);
+    font-weight: 500;
+  }
+
+  .voice-commands-hint {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* ========== RESEARCH MODE ========== */
+  .research-content {
+    display: grid;
+    grid-template-columns: 300px 1fr 360px;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+
+  .research-sidebar {
+    border-right: 1px solid var(--border);
+    padding: 1.25rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .research-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+  }
+
+  .research-nav-item:hover { background: rgba(255,255,255,0.04); }
+  .research-nav-item.active {
+    background: var(--teal-glow);
+    color: var(--teal);
+    font-weight: 600;
+  }
+
+  .research-nav-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+  }
+
+  .research-main {
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+
+  .research-chart-area {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    height: 280px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chart-placeholder {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 1rem 0;
+  }
+
+  .chart-bar {
+    flex: 1;
+    border-radius: 6px 6px 0 0;
+    background: linear-gradient(to top, var(--teal), rgba(20,184,166,0.3));
+    transition: height 0.3s;
+    min-height: 20px;
+    position: relative;
+  }
+
+  .chart-bar:hover { opacity: 0.8; }
+
+  .research-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+
+  .research-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.25rem;
+    text-align: center;
+  }
+
+  .research-stat-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--teal);
+  }
+
+  .research-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+  }
+
+  /* AI Chat Panel for Research */
+  .research-ai-panel {
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: rgba(17,24,39,0.5);
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .chat-input-area {
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .chat-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    outline: none;
+    font-family: inherit;
+    resize: none;
+  }
+
+  .chat-input:focus { border-color: var(--teal); }
+
+  .chat-input::placeholder { color: var(--text-muted); }
+
+  /* ========== MANAGEMENT MODE ========== */
+  .management-content {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+
+  .management-sidebar {
+    border-right: 1px solid var(--border);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .management-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    background: none;
+    font-family: inherit;
+    width: 100%;
+    text-align: left;
+  }
+
+  .management-nav-item:hover { background: rgba(255,255,255,0.04); }
+  .management-nav-item.active {
+    background: rgba(59,130,246,0.1);
+    color: var(--blue);
+    font-weight: 600;
+  }
+
+  .management-main {
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+
+  .management-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .management-header h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .add-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 12px;
+    background: var(--blue);
+    color: white;
+    border: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+
+  .add-btn:hover { background: #2563eb; }
+
+  /* Task Board */
+  .task-board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+  }
+
+  .task-column {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem;
+  }
+
+  .task-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .task-column-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .task-count {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-muted);
+  }
+
+  .task-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .task-card:hover {
+    border-color: var(--border-active);
+    background: var(--bg-card-hover);
+  }
+
+  .task-card-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .task-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .task-tag {
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .task-tag.urgent { background: rgba(239,68,68,0.12); color: var(--red); }
+  .task-tag.high { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .task-tag.medium { background: rgba(59,130,246,0.12); color: var(--blue); }
+  .task-tag.low { background: rgba(34,197,94,0.12); color: var(--green); }
+
+  .task-assignee {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  /* ========== FLOATING VOICE BUTTON (all modes except clinical) ========== */
+  .floating-voice {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 200;
+  }
+
+  .floating-voice-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    box-shadow: 0 4px 24px rgba(20,184,166,0.3);
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .floating-voice-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 0 8px 36px rgba(20,184,166,0.4);
+  }
+
+  .floating-voice-label {
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  /* ========== PAGE NAVIGATION (Mockup switcher) ========== */
+  .mockup-nav {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    background: var(--bg-card);
+    padding: 8px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    z-index: 300;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .mockup-nav-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    background: transparent;
+    color: var(--text-muted);
+  }
+
+  .mockup-nav-btn.active {
+    background: var(--teal);
+    color: white;
+  }
+
+  .mockup-nav-btn:hover:not(.active) {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-secondary);
+  }
+
+  /* Page visibility */
+  .page { display: none; }
+  .page.active { display: block; }
+  .page.grid-active { display: grid; }
+
+  /* ========== MOBILE CLINICAL MODE ========== */
+  .mobile-frame {
+    width: 390px;
+    height: 844px;
+    border: 2px solid var(--border);
+    border-radius: 40px;
+    overflow: hidden;
+    margin: 2rem auto;
+    position: relative;
+    background: var(--bg-primary);
+  }
+
+  .mobile-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 28px;
+    background: black;
+    border-radius: 0 0 16px 16px;
+    z-index: 10;
+  }
+
+  .mobile-content {
+    height: 100%;
+    overflow-y: auto;
+    padding-top: 48px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-status-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+    z-index: 5;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .mobile-recording-bar {
+    background: rgba(239,68,68,0.15);
+    border-bottom: 1px solid rgba(239,68,68,0.2);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .mobile-patient-card {
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mobile-chart-area {
+    padding: 1rem;
+    flex-shrink: 0;
+  }
+
+  .mobile-tooth-row {
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .mobile-tooth {
+    width: 20px;
+    height: 26px;
+    border-radius: 3px 3px 5px 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.45rem;
+    font-weight: 700;
+    border: 1px solid;
+  }
+
+  .mobile-transcript {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+  }
+
+  .mobile-transcript-line {
+    padding: 0.5rem 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mobile-transcript-line .speaker {
+    font-weight: 700;
+    color: var(--teal);
+    margin-right: 4px;
+  }
+
+  .mobile-transcript-line .ai-action {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: var(--purple);
+    padding-left: 1rem;
+  }
+
+  .mobile-voice-area {
+    padding: 1.5rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    background: rgba(17,24,39,0.8);
+    backdrop-filter: blur(10px);
+  }
+
+  .mobile-waveform {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 40px;
+    margin-bottom: 0.75rem;
+  }
+
+  .m-wave {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--teal);
+  }
+
+  .mobile-voice-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .mobile-voice-hint strong {
+    color: var(--teal);
+  }
+
+  /* Divider label */
+  .section-divider {
+    text-align: center;
+    padding: 3rem 0 1rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+</style>
+</head>
+<body>
+
+<!-- ==================== MOCKUP NAVIGATION ==================== -->
+<div class="mockup-nav">
+  <button class="mockup-nav-btn active" onclick="showPage('landing')">Mode Select</button>
+  <button class="mockup-nav-btn" onclick="showPage('home')">Home</button>
+  <button class="mockup-nav-btn" onclick="showPage('clinical')">Clinical</button>
+  <button class="mockup-nav-btn" onclick="showPage('research')">Research</button>
+  <button class="mockup-nav-btn" onclick="showPage('management')">Management</button>
+  <button class="mockup-nav-btn" onclick="showPage('mobile')">Mobile</button>
+</div>
+
+<!-- ==================== PAGE 0: MODE SELECTOR ==================== -->
+<div id="page-landing" class="page active">
+  <div class="mode-selector-page">
+    <div class="brand-header">
+      <div class="brand-logo">ENDOFLOW</div>
+      <div class="brand-subtitle">AI-Powered Dental Intelligence Platform</div>
+    </div>
+
+    <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 1.5rem; text-align: center;">
+      Good morning, Dr. Nisarg &nbsp;·&nbsp; Saturday, 29 March 2026 &nbsp;·&nbsp; 8 patients today
+    </div>
+
+    <div class="mode-grid">
+      <a href="#" class="mode-card" onclick="showPage('home'); return false;">
+        <div class="mode-icon home">🏠</div>
+        <h3>Home</h3>
+        <p>Today's overview, schedule, calendar, and quick stats at a glance</p>
+        <span class="mode-shortcut">"Endoflow, show overview"</span>
+      </a>
+
+      <a href="#" class="mode-card" onclick="showPage('clinical'); return false;">
+        <div class="mode-icon clinical">🦷</div>
+        <h3>Clinical</h3>
+        <p>Voice-first consultation, ambient AI scribe, dental charting, diagnosis & treatment</p>
+        <span class="mode-shortcut">"Endoflow, start consultation"</span>
+      </a>
+
+      <a href="#" class="mode-card" onclick="showPage('research'); return false;">
+        <div class="mode-icon research">🔬</div>
+        <h3>Research</h3>
+        <p>Clinic analysis, research projects, medical knowledge base, AI literature search</p>
+        <span class="mode-shortcut">"Endoflow, open research"</span>
+      </a>
+
+      <a href="#" class="mode-card" onclick="showPage('management'); return false;">
+        <div class="mode-icon management">⚙️</div>
+        <h3>Management</h3>
+        <p>Assistant tasks, templates, appointments, inventory & clinic operations</p>
+        <span class="mode-shortcut">"Endoflow, manage clinic"</span>
+      </a>
+    </div>
+
+    <div class="voice-prompt">
+      <div class="mic-indicator">🎤</div>
+      <div>
+        <div style="color: var(--text-secondary); font-weight: 500;">Say "Endoflow" to navigate by voice</div>
+        <div style="font-size: 0.75rem; margin-top: 2px;">Or click any mode to begin</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE 1: HOME MODE ==================== -->
+<div id="page-home" class="page">
+  <div class="app-layout">
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <div class="app-logo">ENDOFLOW</div>
+        <div class="mode-pills">
+          <button class="mode-pill active" onclick="showPage('home')">🏠 Home</button>
+          <button class="mode-pill" onclick="showPage('clinical')">🦷 Clinical</button>
+          <button class="mode-pill" onclick="showPage('research')">🔬 Research</button>
+          <button class="mode-pill" onclick="showPage('management')">⚙️ Management</button>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <button class="icon-btn">🔔</button>
+        <button class="icon-btn">⚡</button>
+        <div class="user-avatar">NS</div>
+      </div>
+    </div>
+
+    <div class="home-content">
+      <div class="home-main">
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--teal);">8</div>
+            <div class="stat-label">Patients Today</div>
+            <div class="stat-change up">↑ 2 from yesterday</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--amber);">3</div>
+            <div class="stat-label">Waiting</div>
+            <div class="stat-change" style="color: var(--text-muted);">Next: 10:30 AM</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--green);">2</div>
+            <div class="stat-label">Completed</div>
+            <div class="stat-change up">On schedule</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--blue);">₹24.5k</div>
+            <div class="stat-label">Revenue Today</div>
+            <div class="stat-change up">↑ 12% vs avg</div>
+          </div>
+        </div>
+
+        <!-- Today's Schedule -->
+        <div class="section-label">Today's Schedule</div>
+        <div class="schedule-list">
+          <div class="schedule-item completed">
+            <div class="schedule-time">09:00</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Rahul Sharma</div>
+              <div class="schedule-procedure">Root Canal Treatment - #46</div>
+            </div>
+            <span class="status-badge completed">Done</span>
+          </div>
+          <div class="schedule-item completed">
+            <div class="schedule-time">09:45</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Priya Patel</div>
+              <div class="schedule-procedure">Composite Filling - #15</div>
+            </div>
+            <span class="status-badge completed">Done</span>
+          </div>
+          <div class="schedule-item active">
+            <div class="schedule-time">10:30</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Amit Desai</div>
+              <div class="schedule-procedure">Crown Preparation - #21</div>
+            </div>
+            <span class="status-badge in-progress">In Chair</span>
+          </div>
+          <div class="schedule-item">
+            <div class="schedule-time">11:15</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Meera Joshi</div>
+              <div class="schedule-procedure">Periodontal Scaling</div>
+            </div>
+            <span class="status-badge waiting">Waiting</span>
+          </div>
+          <div class="schedule-item">
+            <div class="schedule-time">12:00</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Vikram Singh</div>
+              <div class="schedule-procedure">Consultation - New Patient</div>
+            </div>
+            <span class="status-badge confirmed">Confirmed</span>
+          </div>
+          <div class="schedule-item">
+            <div class="schedule-time">14:00</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Ananya Reddy</div>
+              <div class="schedule-procedure">Wisdom Tooth Extraction - #38</div>
+            </div>
+            <span class="status-badge confirmed">Confirmed</span>
+          </div>
+          <div class="schedule-item">
+            <div class="schedule-time">15:00</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Karthik Nair</div>
+              <div class="schedule-procedure">Veneer Placement - #11, #21</div>
+            </div>
+            <span class="status-badge confirmed">Confirmed</span>
+          </div>
+          <div class="schedule-item">
+            <div class="schedule-time">16:00</div>
+            <div class="schedule-info">
+              <div class="schedule-name">Sneha Kulkarni</div>
+              <div class="schedule-procedure">Follow-up - Post RCT #36</div>
+            </div>
+            <span class="status-badge confirmed">Confirmed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="home-sidebar">
+        <!-- Calendar -->
+        <div class="sidebar-card">
+          <h4>📅 March 2026</h4>
+          <div class="mini-calendar">
+            <div class="cal-header">S</div>
+            <div class="cal-header">M</div>
+            <div class="cal-header">T</div>
+            <div class="cal-header">W</div>
+            <div class="cal-header">T</div>
+            <div class="cal-header">F</div>
+            <div class="cal-header">S</div>
+            <div class="cal-day empty">.</div>
+            <div class="cal-day empty">.</div>
+            <div class="cal-day empty">.</div>
+            <div class="cal-day empty">.</div>
+            <div class="cal-day empty">.</div>
+            <div class="cal-day empty">.</div>
+            <div class="cal-day">1</div>
+            <div class="cal-day has-appt">2</div>
+            <div class="cal-day has-appt">3</div>
+            <div class="cal-day has-appt">4</div>
+            <div class="cal-day has-appt">5</div>
+            <div class="cal-day has-appt">6</div>
+            <div class="cal-day has-appt">7</div>
+            <div class="cal-day">8</div>
+            <div class="cal-day has-appt">9</div>
+            <div class="cal-day has-appt">10</div>
+            <div class="cal-day has-appt">11</div>
+            <div class="cal-day has-appt">12</div>
+            <div class="cal-day has-appt">13</div>
+            <div class="cal-day has-appt">14</div>
+            <div class="cal-day">15</div>
+            <div class="cal-day has-appt">16</div>
+            <div class="cal-day has-appt">17</div>
+            <div class="cal-day has-appt">18</div>
+            <div class="cal-day has-appt">19</div>
+            <div class="cal-day has-appt">20</div>
+            <div class="cal-day has-appt">21</div>
+            <div class="cal-day">22</div>
+            <div class="cal-day has-appt">23</div>
+            <div class="cal-day has-appt">24</div>
+            <div class="cal-day has-appt">25</div>
+            <div class="cal-day has-appt">26</div>
+            <div class="cal-day has-appt">27</div>
+            <div class="cal-day has-appt">28</div>
+            <div class="cal-day today">29</div>
+            <div class="cal-day has-appt">30</div>
+            <div class="cal-day has-appt">31</div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="sidebar-card">
+          <h4>⚡ Quick Actions</h4>
+          <div class="quick-actions">
+            <button class="quick-action" onclick="showPage('clinical')">🦷 New Consultation</button>
+            <button class="quick-action">📋 Add Walk-in</button>
+            <button class="quick-action">📨 Send Recall</button>
+            <button class="quick-action">📊 View Reports</button>
+          </div>
+        </div>
+
+        <!-- Notifications -->
+        <div class="sidebar-card">
+          <h4>🔔 Notifications</h4>
+          <div class="notification-item">
+            <div class="notification-dot urgent"></div>
+            <div>
+              <div class="notification-text">Meera Joshi checked in at reception — waiting for consultation</div>
+              <div class="notification-time">2 min ago</div>
+            </div>
+          </div>
+          <div class="notification-item">
+            <div class="notification-dot info"></div>
+            <div>
+              <div class="notification-text">Lab results for Rahul Sharma are ready for review</div>
+              <div class="notification-time">15 min ago</div>
+            </div>
+          </div>
+          <div class="notification-item">
+            <div class="notification-dot success"></div>
+            <div>
+              <div class="notification-text">New patient registration: Vikram Singh verified by assistant</div>
+              <div class="notification-time">1 hour ago</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="floating-voice">
+    <button class="floating-voice-btn">🎤</button>
+    <div class="floating-voice-label">Say "Endoflow"</div>
+  </div>
+</div>
+
+<!-- ==================== PAGE 2: CLINICAL MODE ==================== -->
+<div id="page-clinical" class="page">
+  <div class="app-layout">
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <div class="app-logo">ENDOFLOW</div>
+        <div class="mode-pills">
+          <button class="mode-pill" onclick="showPage('home')">🏠 Home</button>
+          <button class="mode-pill active" onclick="showPage('clinical')">🦷 Clinical</button>
+          <button class="mode-pill" onclick="showPage('research')">🔬 Research</button>
+          <button class="mode-pill" onclick="showPage('management')">⚙️ Management</button>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <button class="icon-btn">🔔</button>
+        <div class="user-avatar">NS</div>
+      </div>
+    </div>
+
+    <div class="clinical-content">
+      <!-- Recording Bar -->
+      <div class="clinical-top-bar">
+        <div class="recording-indicator">
+          <div class="rec-dot"></div>
+          <div class="rec-label">Recording · Ambient Mode</div>
+        </div>
+        <div class="patient-info-bar">
+          <div class="patient-avatar-lg">AD</div>
+          <div>
+            <div class="patient-name-lg">Amit Desai</div>
+            <div class="patient-meta">Male · 34 yrs · UHID: EF-2024-0847 · Last visit: 15 Mar 2026</div>
+          </div>
+        </div>
+        <div class="consultation-timer">⏱ 12:34</div>
+      </div>
+
+      <!-- Main Clinical Area -->
+      <div class="clinical-main">
+        <!-- Dental Chart -->
+        <div class="dental-chart-container">
+          <div class="dental-chart-header">
+            <h4>🦷 FDI Dental Chart</h4>
+            <div class="chart-legend">
+              <div class="legend-item"><div class="legend-dot" style="background: var(--green);"></div> Healthy</div>
+              <div class="legend-item"><div class="legend-dot" style="background: var(--red);"></div> Caries</div>
+              <div class="legend-item"><div class="legend-dot" style="background: var(--blue);"></div> Filled</div>
+              <div class="legend-item"><div class="legend-dot" style="background: var(--purple);"></div> RCT</div>
+              <div class="legend-item"><div class="legend-dot" style="background: var(--text-muted);"></div> Missing</div>
+              <div class="legend-item"><div class="legend-dot" style="background: var(--amber);"></div> Current</div>
+            </div>
+          </div>
+          <div class="quadrant-label">Upper Right (Q1) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Upper Left (Q2)</div>
+          <div class="tooth-grid">
+            <div class="tooth healthy">18</div>
+            <div class="tooth healthy">17</div>
+            <div class="tooth filled">16</div>
+            <div class="tooth healthy">15</div>
+            <div class="tooth healthy">14</div>
+            <div class="tooth healthy">13</div>
+            <div class="tooth healthy">12</div>
+            <div class="tooth healthy">11</div>
+            <div class="tooth active-finding">21</div>
+            <div class="tooth healthy">22</div>
+            <div class="tooth healthy">23</div>
+            <div class="tooth caries">24</div>
+            <div class="tooth healthy">25</div>
+            <div class="tooth healthy">26</div>
+            <div class="tooth healthy">27</div>
+            <div class="tooth missing">28</div>
+          </div>
+          <div class="chart-divider"></div>
+          <div class="tooth-grid">
+            <div class="tooth missing">48</div>
+            <div class="tooth healthy">47</div>
+            <div class="tooth rct">46</div>
+            <div class="tooth healthy">45</div>
+            <div class="tooth healthy">44</div>
+            <div class="tooth healthy">43</div>
+            <div class="tooth healthy">42</div>
+            <div class="tooth healthy">41</div>
+            <div class="tooth healthy">31</div>
+            <div class="tooth healthy">32</div>
+            <div class="tooth healthy">33</div>
+            <div class="tooth healthy">34</div>
+            <div class="tooth healthy">35</div>
+            <div class="tooth filled">36</div>
+            <div class="tooth healthy">37</div>
+            <div class="tooth healthy">38</div>
+          </div>
+          <div class="quadrant-label">Lower Right (Q4) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Lower Left (Q3)</div>
+        </div>
+
+        <!-- Live Findings from Voice -->
+        <div class="live-findings">
+          <div class="section-label">Live Findings</div>
+
+          <div class="finding-entry">
+            <div class="finding-icon charted">✓</div>
+            <div>
+              <div class="finding-text"><strong>Tooth #21</strong> — Crown preparation needed, Ellis Class II fracture with exposed dentin</div>
+              <div class="finding-timestamp">10:32 AM · Auto-charted from voice</div>
+            </div>
+          </div>
+
+          <div class="finding-entry">
+            <div class="finding-icon ai">🧠</div>
+            <div>
+              <div class="finding-text">AI detected: <strong>Tooth #24</strong> — Existing mesial caries noted in previous visit (12 Jan 2026). Monitor or intervene?</div>
+              <div class="finding-timestamp">10:33 AM · AI cross-reference from patient history</div>
+            </div>
+          </div>
+
+          <div class="finding-entry">
+            <div class="finding-icon processing">⏳</div>
+            <div>
+              <div class="finding-text">Processing: "...the patient reports sensitivity to cold on the upper left side..."</div>
+              <div class="finding-timestamp">10:34 AM · Extracting clinical findings...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Copilot Panel -->
+      <div class="ai-panel">
+        <div class="ai-panel-header">
+          <h4>🧠 EndoAI Copilot <span class="ai-badge">Live</span></h4>
+          <button class="icon-btn" style="font-size: 0.8rem;">⚙️</button>
+        </div>
+
+        <div class="ai-panel-body">
+          <div class="ai-message system">
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Session started · 10:30 AM</div>
+            Patient <strong>Amit Desai</strong> loaded. Previous records: RCT on #46 (2024), composite on #16 and #36. Last radiograph: 15 Mar 2026.
+          </div>
+
+          <div class="ai-suggestion">
+            <div class="ai-suggestion-header">💡 Treatment Suggestion — Tooth #21</div>
+            <div class="ai-suggestion-body">
+              Based on Ellis Class II fracture with dentin exposure, I recommend:
+              <br><br>
+              <strong>1. Porcelain-Fused-to-Metal Crown</strong> — Gold standard for anterior teeth with significant structure loss. 95.7% survival at 10 years.
+              <br><br>
+              <strong>2. Direct Composite Buildup</strong> — Conservative option if remaining structure is adequate. Consider as interim restoration.
+            </div>
+            <div>
+              <span class="evidence-tag">📄 J Prosthet Dent 2023</span>
+              <span class="evidence-tag">📄 PMID: 38291047</span>
+              <span class="evidence-tag">📄 Dental Materials 2024</span>
+            </div>
+            <div class="ai-actions">
+              <button class="ai-btn primary">✓ Approve Crown</button>
+              <button class="ai-btn secondary">Alternatives</button>
+              <button class="ai-btn secondary">Explain</button>
+            </div>
+          </div>
+
+          <div class="ai-message assistant">
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Voice command detected</div>
+            "What are the contraindications for a composite buildup on #21?"
+            <br><br>
+            <strong>Contraindications include:</strong>
+            <br>• Insufficient tooth structure (&lt;50% remaining)
+            <br>• Heavy bruxism or parafunctional habits
+            <br>• Subgingival fracture line
+            <br>• Patient compliance concerns for follow-up
+            <br><br>
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Based on Amit's history, no bruxism reported. Fracture line appears supragingival. Composite may be viable.</span>
+          </div>
+        </div>
+
+        <!-- Voice Bar -->
+        <div class="voice-bar">
+          <div class="voice-waveform">
+            <div class="wave-bar" style="animation-delay: 0s; height: 8px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.1s; height: 14px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.2s; height: 20px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.3s; height: 12px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.4s; height: 18px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.5s; height: 8px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.6s; height: 16px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.7s; height: 10px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.8s; height: 22px;"></div>
+            <div class="wave-bar" style="animation-delay: 0.9s; height: 6px;"></div>
+            <div class="wave-bar" style="animation-delay: 1.0s; height: 14px;"></div>
+            <div class="wave-bar" style="animation-delay: 1.1s; height: 20px;"></div>
+          </div>
+          <div>
+            <div class="voice-status">🎤 Listening...</div>
+            <div class="voice-commands-hint">
+              "approve" · "alternatives" · "next tooth" · "read back"
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PAGE 3: RESEARCH MODE ==================== -->
+<div id="page-research" class="page">
+  <div class="app-layout">
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <div class="app-logo">ENDOFLOW</div>
+        <div class="mode-pills">
+          <button class="mode-pill" onclick="showPage('home')">🏠 Home</button>
+          <button class="mode-pill" onclick="showPage('clinical')">🦷 Clinical</button>
+          <button class="mode-pill active" onclick="showPage('research')">🔬 Research</button>
+          <button class="mode-pill" onclick="showPage('management')">⚙️ Management</button>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <button class="icon-btn">🔔</button>
+        <div class="user-avatar">NS</div>
+      </div>
+    </div>
+
+    <div class="research-content">
+      <!-- Research Sidebar -->
+      <div class="research-sidebar">
+        <div class="section-label" style="padding-left: 1rem;">Research Tools</div>
+        <button class="research-nav-item active">
+          <div class="research-nav-icon" style="background: rgba(168,85,247,0.12); color: var(--purple);">📊</div>
+          Clinic Analysis
+        </button>
+        <button class="research-nav-item">
+          <div class="research-nav-icon" style="background: rgba(59,130,246,0.12); color: var(--blue);">🔬</div>
+          Research Projects
+        </button>
+        <button class="research-nav-item">
+          <div class="research-nav-icon" style="background: rgba(20,184,166,0.12); color: var(--teal);">📚</div>
+          Medical Knowledge
+        </button>
+        <button class="research-nav-item">
+          <div class="research-nav-icon" style="background: rgba(245,158,11,0.12); color: var(--amber);">🎓</div>
+          Self-Learning AI
+        </button>
+
+        <div style="margin-top: 1.5rem;">
+          <div class="section-label" style="padding-left: 1rem;">Recent Projects</div>
+          <div style="padding: 0 1rem;">
+            <div style="padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">
+              📋 Endodontic Success Rates Study
+            </div>
+            <div style="padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">
+              📋 Ceramic Crown Longevity Analysis
+            </div>
+            <div style="padding: 0.6rem 0; font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;">
+              📋 Patient Satisfaction Survey Q1
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Research Content -->
+      <div class="research-main">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <div>
+            <h2 style="font-size: 1.5rem; font-weight: 700;">Clinic Analysis</h2>
+            <p style="font-size: 0.82rem; color: var(--text-muted);">March 2026 · All procedures</p>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="icon-btn" style="width: auto; padding: 0 12px; font-size: 0.75rem; gap: 6px;">📥 Export</button>
+            <button class="icon-btn" style="width: auto; padding: 0 12px; font-size: 0.75rem;">🔄</button>
+          </div>
+        </div>
+
+        <!-- Chart Area -->
+        <div class="research-chart-area">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4 style="font-size: 0.85rem; font-weight: 600;">Treatment Distribution</h4>
+            <div style="display: flex; gap: 0.5rem;">
+              <span style="font-size: 0.65rem; padding: 4px 10px; border-radius: 8px; background: var(--teal); color: white;">This Month</span>
+              <span style="font-size: 0.65rem; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--text-muted);">Quarter</span>
+              <span style="font-size: 0.65rem; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--text-muted);">Year</span>
+            </div>
+          </div>
+          <div class="chart-placeholder">
+            <div class="chart-bar" style="height: 85%;"></div>
+            <div class="chart-bar" style="height: 65%;"></div>
+            <div class="chart-bar" style="height: 45%;"></div>
+            <div class="chart-bar" style="height: 75%;"></div>
+            <div class="chart-bar" style="height: 35%;"></div>
+            <div class="chart-bar" style="height: 55%;"></div>
+            <div class="chart-bar" style="height: 90%;"></div>
+            <div class="chart-bar" style="height: 40%;"></div>
+            <div class="chart-bar" style="height: 70%;"></div>
+            <div class="chart-bar" style="height: 25%;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--text-muted); padding: 0 4px;">
+            <span>RCT</span><span>Crown</span><span>Filling</span><span>Extract</span><span>Scaling</span>
+            <span>Implant</span><span>Ortho</span><span>Endo</span><span>Perio</span><span>Other</span>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="research-stats">
+          <div class="research-stat">
+            <div class="research-stat-value">142</div>
+            <div class="research-stat-label">Total Procedures</div>
+          </div>
+          <div class="research-stat">
+            <div class="research-stat-value">96.2%</div>
+            <div class="research-stat-label">Success Rate</div>
+          </div>
+          <div class="research-stat">
+            <div class="research-stat-value">23</div>
+            <div class="research-stat-label">New Patients</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Research Panel -->
+      <div class="research-ai-panel">
+        <div class="ai-panel-header">
+          <h4>🧠 Research AI <span class="ai-badge">RAG</span></h4>
+        </div>
+        <div class="chat-messages">
+          <div class="ai-message assistant">
+            I'm your research assistant. Ask me anything about your clinic data, published literature, or clinical outcomes. I can cross-reference your patient records with PubMed.
+          </div>
+          <div class="ai-message" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border);">
+            What's our RCT success rate compared to the literature?
+          </div>
+          <div class="ai-message assistant">
+            Your clinic's RCT success rate is <strong>96.2%</strong> (n=42, March 2026).
+            <br><br>
+            Literature benchmarks:
+            <br>• Primary RCT: 86-98% at 4-6 years
+            <br>• Retreatment: 77-89%
+            <br><br>
+            Your rate sits in the upper quartile. Notable: your #46 RCTs show 100% success (n=8).
+            <br><br>
+            <span class="evidence-tag">📄 JOE 2023 Meta-analysis</span>
+            <span class="evidence-tag">📄 PMID: 37829104</span>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <textarea class="chat-input" placeholder="Ask about your data or literature..." rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="floating-voice">
+    <button class="floating-voice-btn">🎤</button>
+    <div class="floating-voice-label">Say "Endoflow"</div>
+  </div>
+</div>
+
+<!-- ==================== PAGE 4: MANAGEMENT MODE ==================== -->
+<div id="page-management" class="page">
+  <div class="app-layout">
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <div class="app-logo">ENDOFLOW</div>
+        <div class="mode-pills">
+          <button class="mode-pill" onclick="showPage('home')">🏠 Home</button>
+          <button class="mode-pill" onclick="showPage('clinical')">🦷 Clinical</button>
+          <button class="mode-pill" onclick="showPage('research')">🔬 Research</button>
+          <button class="mode-pill active" onclick="showPage('management')">⚙️ Management</button>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <button class="icon-btn">🔔</button>
+        <div class="user-avatar">NS</div>
+      </div>
+    </div>
+
+    <div class="management-content">
+      <div class="management-sidebar">
+        <div class="section-label" style="padding-left: 0.5rem;">Operations</div>
+        <button class="management-nav-item active">📋 Assistant Tasks</button>
+        <button class="management-nav-item">📅 Appointments</button>
+        <button class="management-nav-item">📝 Templates</button>
+        <button class="management-nav-item">💬 Messages</button>
+        <div class="section-label" style="padding-left: 0.5rem; margin-top: 1rem;">Coming Soon</div>
+        <button class="management-nav-item" style="opacity: 0.5;">📦 Inventory</button>
+        <button class="management-nav-item" style="opacity: 0.5;">💰 Billing</button>
+        <button class="management-nav-item" style="opacity: 0.5;">👥 Staff</button>
+      </div>
+
+      <div class="management-main">
+        <div class="management-header">
+          <h2>Assistant Tasks</h2>
+          <button class="add-btn">+ New Task</button>
+        </div>
+
+        <div class="task-board">
+          <div class="task-column">
+            <div class="task-column-header">
+              <div class="task-column-title">
+                <span style="color: var(--amber);">●</span> To Do
+              </div>
+              <span class="task-count">4</span>
+            </div>
+            <div class="task-card">
+              <div class="task-card-title">Prepare sterilization for afternoon patients</div>
+              <div class="task-card-meta">
+                <span class="task-tag urgent">Urgent</span>
+                <span class="task-assignee">→ Priya</span>
+              </div>
+            </div>
+            <div class="task-card">
+              <div class="task-card-title">Call Vikram Singh to confirm 2:00 PM appointment</div>
+              <div class="task-card-meta">
+                <span class="task-tag high">High</span>
+                <span class="task-assignee">→ Ravi</span>
+              </div>
+            </div>
+            <div class="task-card">
+              <div class="task-card-title">Upload Rahul Sharma's X-ray from today</div>
+              <div class="task-card-meta">
+                <span class="task-tag medium">Medium</span>
+                <span class="task-assignee">→ Priya</span>
+              </div>
+            </div>
+            <div class="task-card">
+              <div class="task-card-title">Order dental cement — stock running low</div>
+              <div class="task-card-meta">
+                <span class="task-tag low">Low</span>
+                <span class="task-assignee">→ Ravi</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="task-column">
+            <div class="task-column-header">
+              <div class="task-column-title">
+                <span style="color: var(--blue);">●</span> In Progress
+              </div>
+              <span class="task-count">2</span>
+            </div>
+            <div class="task-card">
+              <div class="task-card-title">Verify new patient registration: Sneha Kulkarni</div>
+              <div class="task-card-meta">
+                <span class="task-tag high">High</span>
+                <span class="task-assignee">→ Priya</span>
+              </div>
+            </div>
+            <div class="task-card">
+              <div class="task-card-title">Organize patient files for audit (Q1 2026)</div>
+              <div class="task-card-meta">
+                <span class="task-tag medium">Medium</span>
+                <span class="task-assignee">→ Ravi</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="task-column">
+            <div class="task-column-header">
+              <div class="task-column-title">
+                <span style="color: var(--green);">●</span> Completed
+              </div>
+              <span class="task-count">3</span>
+            </div>
+            <div class="task-card" style="opacity: 0.6;">
+              <div class="task-card-title">Set up operatory for Rahul Sharma RCT</div>
+              <div class="task-card-meta">
+                <span class="task-tag" style="background: rgba(34,197,94,0.12); color: var(--green);">Done</span>
+                <span class="task-assignee">✓ Priya</span>
+              </div>
+            </div>
+            <div class="task-card" style="opacity: 0.6;">
+              <div class="task-card-title">Send follow-up SMS to yesterday's patients</div>
+              <div class="task-card-meta">
+                <span class="task-tag" style="background: rgba(34,197,94,0.12); color: var(--green);">Done</span>
+                <span class="task-assignee">✓ Ravi</span>
+              </div>
+            </div>
+            <div class="task-card" style="opacity: 0.6;">
+              <div class="task-card-title">Restock PPE kits for the week</div>
+              <div class="task-card-meta">
+                <span class="task-tag" style="background: rgba(34,197,94,0.12); color: var(--green);">Done</span>
+                <span class="task-assignee">✓ Priya</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="floating-voice">
+    <button class="floating-voice-btn">🎤</button>
+    <div class="floating-voice-label">Say "Endoflow"</div>
+  </div>
+</div>
+
+<!-- ==================== PAGE 5: MOBILE CLINICAL MODE ==================== -->
+<div id="page-mobile" class="page">
+  <div style="padding: 2rem; text-align: center;">
+    <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Mobile Clinical Mode</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem;">Voice-first, hands-free consultation on phone</p>
+    <p style="color: var(--text-muted); font-size: 0.75rem;">The entire interaction is voice-driven. Touch is optional.</p>
+  </div>
+
+  <div class="mobile-frame">
+    <div class="mobile-notch"></div>
+    <div class="mobile-status-bar">
+      <span style="color: var(--text-secondary);">10:34 AM</span>
+      <span style="color: var(--text-muted);">🔋 87%</span>
+    </div>
+
+    <div class="mobile-content">
+      <!-- Recording Bar -->
+      <div class="mobile-recording-bar">
+        <div class="rec-dot"></div>
+        <span style="font-size: 0.75rem; font-weight: 600; color: var(--red);">RECORDING</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: auto;">⏱ 04:12</span>
+      </div>
+
+      <!-- Patient Info -->
+      <div class="mobile-patient-card">
+        <div class="patient-avatar-lg" style="width: 44px; height: 44px;">AD</div>
+        <div>
+          <div style="font-weight: 700; font-size: 0.95rem;">Amit Desai</div>
+          <div style="font-size: 0.72rem; color: var(--text-muted);">M · 34 · Crown Prep #21</div>
+        </div>
+      </div>
+
+      <!-- Mini Dental Chart -->
+      <div class="mobile-chart-area">
+        <div style="font-size: 0.65rem; color: var(--text-muted); margin-bottom: 6px; text-align: center; font-weight: 600;">UPPER</div>
+        <div class="mobile-tooth-row">
+          <div class="mobile-tooth healthy">18</div>
+          <div class="mobile-tooth healthy">17</div>
+          <div class="mobile-tooth filled">16</div>
+          <div class="mobile-tooth healthy">15</div>
+          <div class="mobile-tooth healthy">14</div>
+          <div class="mobile-tooth healthy">13</div>
+          <div class="mobile-tooth healthy">12</div>
+          <div class="mobile-tooth healthy">11</div>
+          <div class="mobile-tooth active-finding">21</div>
+          <div class="mobile-tooth healthy">22</div>
+          <div class="mobile-tooth healthy">23</div>
+          <div class="mobile-tooth caries">24</div>
+          <div class="mobile-tooth healthy">25</div>
+          <div class="mobile-tooth healthy">26</div>
+          <div class="mobile-tooth healthy">27</div>
+          <div class="mobile-tooth missing">28</div>
+        </div>
+        <div style="height: 4px; background: var(--border); margin: 4px 0; border-radius: 2px;"></div>
+        <div class="mobile-tooth-row">
+          <div class="mobile-tooth missing">48</div>
+          <div class="mobile-tooth healthy">47</div>
+          <div class="mobile-tooth rct">46</div>
+          <div class="mobile-tooth healthy">45</div>
+          <div class="mobile-tooth healthy">44</div>
+          <div class="mobile-tooth healthy">43</div>
+          <div class="mobile-tooth healthy">42</div>
+          <div class="mobile-tooth healthy">41</div>
+          <div class="mobile-tooth healthy">31</div>
+          <div class="mobile-tooth healthy">32</div>
+          <div class="mobile-tooth healthy">33</div>
+          <div class="mobile-tooth healthy">34</div>
+          <div class="mobile-tooth healthy">35</div>
+          <div class="mobile-tooth filled">36</div>
+          <div class="mobile-tooth healthy">37</div>
+          <div class="mobile-tooth healthy">38</div>
+        </div>
+        <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 6px; text-align: center; font-weight: 600;">LOWER</div>
+      </div>
+
+      <!-- Live Transcript -->
+      <div class="mobile-transcript">
+        <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 0.5rem;">Live Transcript</div>
+
+        <div class="mobile-transcript-line">
+          <span class="speaker">Dr:</span> So Amit, you mentioned you fell and chipped your front tooth yesterday?
+        </div>
+        <div class="mobile-transcript-line">
+          <span class="speaker" style="color: var(--blue);">Patient:</span> Yes doctor, I was playing cricket and the ball hit my face.
+        </div>
+        <div class="mobile-transcript-line">
+          <span class="speaker">Dr:</span> I can see tooth 21 has an Ellis Class II fracture with exposed dentin. There's sensitivity to air.
+          <span class="ai-action">🧠 AI: Charting #21 → Ellis II fracture, dentin exposure ✓</span>
+        </div>
+        <div class="mobile-transcript-line">
+          <span class="speaker">Dr:</span> Let me check the vitality... Tooth is vital, positive response to cold test.
+          <span class="ai-action">🧠 AI: Vitality test positive. Pulp status: vital ✓</span>
+        </div>
+        <div class="mobile-transcript-line" style="border-bottom: none; color: var(--teal);">
+          <span class="speaker" style="color: var(--purple);">EndoAI:</span> Suggest: PFM crown or direct composite. Shall I detail the options?
+          <span class="ai-action" style="color: var(--teal);">💬 Say "yes", "crown", or "composite" to respond</span>
+        </div>
+      </div>
+
+      <!-- Voice Area -->
+      <div class="mobile-voice-area">
+        <div class="mobile-waveform">
+          <div class="m-wave" style="height: 6px; animation: wave 0.8s ease-in-out infinite 0s;"></div>
+          <div class="m-wave" style="height: 14px; animation: wave 0.8s ease-in-out infinite 0.1s;"></div>
+          <div class="m-wave" style="height: 22px; animation: wave 0.8s ease-in-out infinite 0.2s;"></div>
+          <div class="m-wave" style="height: 10px; animation: wave 0.8s ease-in-out infinite 0.3s;"></div>
+          <div class="m-wave" style="height: 18px; animation: wave 0.8s ease-in-out infinite 0.4s;"></div>
+          <div class="m-wave" style="height: 26px; animation: wave 0.8s ease-in-out infinite 0.5s;"></div>
+          <div class="m-wave" style="height: 12px; animation: wave 0.8s ease-in-out infinite 0.6s;"></div>
+          <div class="m-wave" style="height: 20px; animation: wave 0.8s ease-in-out infinite 0.7s;"></div>
+          <div class="m-wave" style="height: 8px; animation: wave 0.8s ease-in-out infinite 0.8s;"></div>
+          <div class="m-wave" style="height: 16px; animation: wave 0.8s ease-in-out infinite 0.9s;"></div>
+          <div class="m-wave" style="height: 24px; animation: wave 0.8s ease-in-out infinite 1.0s;"></div>
+          <div class="m-wave" style="height: 10px; animation: wave 0.8s ease-in-out infinite 1.1s;"></div>
+        </div>
+        <div class="mobile-voice-hint">
+          <strong>"approve"</strong> · <strong>"next tooth"</strong> · <strong>"read back"</strong> · <strong>"end consultation"</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showPage(pageId) {
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(p => {
+      p.classList.remove('active', 'grid-active');
+    });
+
+    // Show selected page
+    const page = document.getElementById('page-' + pageId);
+    if (page) {
+      page.classList.add('active');
+    }
+
+    // Update nav buttons
+    document.querySelectorAll('.mockup-nav-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+  }
+</script>
+</body>
+</html>

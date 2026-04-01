@@ -197,7 +197,7 @@ export async function getAITreatmentSuggestionAction(params: {
         evidence_sources: suggestion.sources,
         alternative_treatments: suggestion.alternativeTreatments || [],
         contraindications: suggestion.contraindications || [],
-        ai_model: 'gemini-2.0-flash',
+        ai_model: 'gemini-2.5-flash',
         processing_time: processingTime
       })
 

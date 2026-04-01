@@ -1,0 +1,666 @@
+[
+  {
+    "pmid": "41473735",
+    "doi": "10.1155/bmri/5527391",
+    "pmc": "PMC12745653",
+    "title": "A Digital Clinical Records Versus Paper Records in Dental Practice: A Comparative Study.",
+    "journal": "BioMed research international",
+    "open_access": true
+  },
+  {
+    "pmid": "41610430",
+    "doi": "10.2196/82691",
+    "pmc": "PMC12854659",
+    "title": "Exploring Medical Information Needs and Accessibility in Swedish Dental Care by Analysis of Documentation Workflows and Electronic Dental Records in Dalarna: Sociotechnical Qualitative Study.",
+    "journal": "JMIR human factors",
+    "open_access": true
+  },
+  {
+    "pmid": "41673528",
+    "doi": "10.1177/23800844251408849",
+    "pmc": "",
+    "title": "Periodontitis Prediction Model Using Linked Electronic Health and Dental Records.",
+    "journal": "JDR clinical and translational research",
+    "open_access": false
+  },
+  {
+    "pmid": "41825998",
+    "doi": "10.1016/j.cden.2025.11.005",
+    "pmc": "",
+    "title": "Introduction to Large Language Models and the Application of Generative Artifical Intelligence in Dental Education and Clinical Practice.",
+    "journal": "Dental clinics of North America",
+    "open_access": false
+  },
+  {
+    "pmid": "41454488",
+    "doi": "10.1111/edt.70035",
+    "pmc": "",
+    "title": "Optimizing Documentation in Dental Trauma Cases: Quantitative and Qualitative Analysis.",
+    "journal": "Dental traumatology : official publication of International Association for Dental Traumatology",
+    "open_access": false
+  },
+  {
+    "pmid": "41291643",
+    "doi": "10.1186/s12909-025-07585-x",
+    "pmc": "PMC12648810",
+    "title": "Integrating digital technologies in clinical dentistry training: a framework for competency-based education.",
+    "journal": "BMC medical education",
+    "open_access": true
+  },
+  {
+    "pmid": "41744966",
+    "doi": "10.3390/dj14020128",
+    "pmc": "PMC12939967",
+    "title": "International Perspectives on Digital and Generative AI Adoption and Governance in Undergraduate Dental Education: A Cross-Sectional Survey.",
+    "journal": "Dentistry journal",
+    "open_access": true
+  },
+  {
+    "pmid": "41061312",
+    "doi": "10.1016/j.identj.2025.103933",
+    "pmc": "PMC12538124",
+    "title": "AI Acceptability in Dentistry: Insights from Dental Professionals and Students in the Netherlands: A Pilot Study.",
+    "journal": "International dental journal",
+    "open_access": true
+  },
+  {
+    "pmid": "21382141",
+    "doi": "10.1111/j.1601-0825.2011.01794.x",
+    "pmc": "",
+    "title": "Advancing oral medicine through informatics and information technology: a proposed framework and strategy.",
+    "journal": "Oral diseases",
+    "open_access": false
+  },
+  {
+    "pmid": "19433534",
+    "doi": "",
+    "pmc": "",
+    "title": "Factors influencing implementation and outcomes of a dental electronic patient record system.",
+    "journal": "Journal of dental education",
+    "open_access": false
+  },
+  {
+    "pmid": "41728543",
+    "doi": "10.7759/cureus.102000",
+    "pmc": "PMC12922785",
+    "title": "Dentistry 5.0: An Emerging Framework Integrating Bioengineering, AI, and Global Innovation Pathways for Equitable Oral Health.",
+    "journal": "Cureus",
+    "open_access": true
+  },
+  {
+    "pmid": "28981172",
+    "doi": "10.1111/jocn.14097",
+    "pmc": "",
+    "title": "Quality of nursing documentation: Paper-based health records versus electronic-based health records.",
+    "journal": "Journal of clinical nursing",
+    "open_access": false
+  },
+  {
+    "pmid": "28104042",
+    "doi": "10.1071/AH16095",
+    "pmc": "",
+    "title": "Electronic health records and online medical records: an asset or a liability under current conditions?",
+    "journal": "Australian health review : a publication of the Australian Hospital Association",
+    "open_access": false
+  },
+  {
+    "pmid": "33589503",
+    "doi": "10.1136/bmjoq-2020-000918",
+    "pmc": "PMC7887344",
+    "title": "Improving clinical documentation: introduction of electronic health records in paediatrics.",
+    "journal": "BMJ open quality",
+    "open_access": true
+  },
+  {
+    "pmid": "41368793",
+    "doi": "10.1111/ans.70416",
+    "pmc": "",
+    "title": "Completeness of Pre-Anaesthetic Assessment Documentation-Paper Versus Electronic Medical Record: Audit of Compliance With Current Australian Guidelines.",
+    "journal": "ANZ journal of surgery",
+    "open_access": false
+  },
+  {
+    "pmid": "39075337",
+    "doi": "10.1186/s12873-024-01022-w",
+    "pmc": "PMC11288075",
+    "title": "Implementation of major trauma app: usability and data completeness.",
+    "journal": "BMC emergency medicine",
+    "open_access": true
+  },
+  {
+    "pmid": "41264873",
+    "doi": "10.2196/66764",
+    "pmc": "PMC12634005",
+    "title": "Creation and Implementation of an Electronic Sexual Assault Record at the Geneva University Hospital.",
+    "journal": "JMIR medical informatics",
+    "open_access": true
+  },
+  {
+    "pmid": "30099330",
+    "doi": "10.1016/j.jcrc.2018.07.021",
+    "pmc": "",
+    "title": "Secondary EMR data for quality improvement and research: A comparison of manual and electronic data collection from an integrated critical care electronic medical record system.",
+    "journal": "Journal of critical care",
+    "open_access": false
+  },
+  {
+    "pmid": "32036459",
+    "doi": "10.1007/s10916-020-1532-x",
+    "pmc": "",
+    "title": "Problems and Barriers during the Process of Clinical Coding: a Focus Group Study of Coders' Perceptions.",
+    "journal": "Journal of medical systems",
+    "open_access": false
+  },
+  {
+    "pmid": "32925343",
+    "doi": "10.1213/ANE.0000000000005084",
+    "pmc": "",
+    "title": "Improving Transfusion Safety in the Operating Room With a Barcode Scanning System Designed Specifically for the Surgical Environment and Existing Electronic Medical Record Systems: An Interrupted Time Series Analysis.",
+    "journal": "Anesthesia and analgesia",
+    "open_access": false
+  },
+  {
+    "pmid": "33906650",
+    "doi": "10.1186/s12936-021-03742-x",
+    "pmc": "PMC8077781",
+    "title": "Leveraging phone-based mobile technology to improve data quality at health facilities in rural Malawi: a best practice project.",
+    "journal": "Malaria journal",
+    "open_access": true
+  },
+  {
+    "pmid": "29107565",
+    "doi": "10.1016/j.ijmedinf.2017.10.014",
+    "pmc": "PMC6997026",
+    "title": "Rubber stamp templates for improving clinical documentation: A paper-based, m-Health approach for quality improvement in low-resource settings.",
+    "journal": "International journal of medical informatics",
+    "open_access": true
+  },
+  {
+    "pmid": "41875421",
+    "doi": "10.2196/80549",
+    "pmc": "",
+    "title": "Evaluating Patient and Professional Satisfaction and Documentation Time Reduction Through AI-Driven Automatic Clinical Note Generation in Primary Care: Proof-of-Concept Study.",
+    "journal": "JMIR AI",
+    "open_access": false
+  },
+  {
+    "pmid": "41875245",
+    "doi": "10.2196/83335",
+    "pmc": "PMC13012219",
+    "title": "A Bilingual Arabic-English Ambient AI Scribe for Clinical Documentation: Prospective Evaluation Study.",
+    "journal": "JMIR medical informatics",
+    "open_access": true
+  },
+  {
+    "pmid": "41691106",
+    "doi": "10.1007/s10266-026-01335-1",
+    "pmc": "",
+    "title": "Comparative performance of AI models on case-based oral medicine questions across Bloom's taxonomy levels and subtopics.",
+    "journal": "Odontology",
+    "open_access": false
+  },
+  {
+    "pmid": "41691654",
+    "doi": "10.1093/jamia/ocag005",
+    "pmc": "",
+    "title": "The impact of artificial intelligence scribes on physician and advanced practice provider cognitive load and well-being.",
+    "journal": "Journal of the American Medical Informatics Association : JAMIA",
+    "open_access": false
+  },
+  {
+    "pmid": "41483142",
+    "doi": "10.1007/s10916-025-02319-4",
+    "pmc": "",
+    "title": "The Current State of Digital Scribes in Primary Care: A Scoping Review.",
+    "journal": "Journal of medical systems",
+    "open_access": false
+  },
+  {
+    "pmid": "41533034",
+    "doi": "10.1111/jep.70365",
+    "pmc": "",
+    "title": "Usability-Related Barriers and Facilitators Influencing the Adoption and Use of AI Scribes in Healthcare: A Scoping Review.",
+    "journal": "Journal of evaluation in clinical practice",
+    "open_access": false
+  },
+  {
+    "pmid": "40584736",
+    "doi": "10.1093/jamiaopen/ooaf061",
+    "pmc": "PMC12205731",
+    "title": "Cross-institutional dental electronic health record entity extraction via generative artificial intelligence and synthetic notes.",
+    "journal": "JAMIA open",
+    "open_access": true
+  },
+  {
+    "pmid": "41852979",
+    "doi": "10.4103/jpbs.jpbs_1501_25",
+    "pmc": "PMC12995112",
+    "title": "Evaluation of Artificial Intelligence-Generated Emergency Department Summaries and their Impact on Hospital Handoff Efficiency and Patient Outcomes.",
+    "journal": "Journal of pharmacy & bioallied sciences",
+    "open_access": true
+  },
+  {
+    "pmid": "41849833",
+    "doi": "10.1016/j.ajem.2026.03.007",
+    "pmc": "",
+    "title": "Automated auditing of emergency department documentation using large language models.",
+    "journal": "The American journal of emergency medicine",
+    "open_access": false
+  },
+  {
+    "pmid": "41444572",
+    "doi": "10.1186/s13037-025-00460-0",
+    "pmc": "PMC12729816",
+    "title": "Development and evaluation of a novel voice-enabled prototype to support consistent application of surgical safety checklists: a proof-of-concept study.",
+    "journal": "Patient safety in surgery",
+    "open_access": true
+  },
+  {
+    "pmid": "41854578",
+    "doi": "10.1016/j.annemergmed.2026.01.022",
+    "pmc": "PMC13004171",
+    "title": "A Pilot Study to Evaluate Artificial Intelligence-Driven Early Retrieval of Medical Histories in the Emergency Department.",
+    "journal": "Annals of emergency medicine",
+    "open_access": true
+  },
+  {
+    "pmid": "41835486",
+    "doi": "10.1136/tsaco-2026-002272",
+    "pmc": "PMC12983730",
+    "title": "Artificial Intelligence documentation in trauma resuscitation: efficiency requires guardrails.",
+    "journal": "Trauma surgery & acute care open",
+    "open_access": true
+  },
+  {
+    "pmid": "40277504",
+    "doi": "10.3390/dj13040174",
+    "pmc": "PMC12025436",
+    "title": "Evaluation of Quality of Record-Keeping and Root Canal Therapy Performed by Two Predoctoral Cohorts.",
+    "journal": "Dentistry journal",
+    "open_access": true
+  },
+  {
+    "pmid": "41634727",
+    "doi": "10.1186/s12909-026-08676-z",
+    "pmc": "PMC12918063",
+    "title": "An audit of endodontic diagnostic documentation compliance among undergraduate dental students in a UK primary care-based dental school.",
+    "journal": "BMC medical education",
+    "open_access": true
+  },
+  {
+    "pmid": "28281608",
+    "doi": "10.1038/sj.bdj.2017.223",
+    "pmc": "",
+    "title": "Improving the quality of endodontic record keeping through clinical audit.",
+    "journal": "British dental journal",
+    "open_access": false
+  },
+  {
+    "pmid": "28644527",
+    "doi": "10.1111/iej.12803",
+    "pmc": "",
+    "title": "An audit on technical quality of root fillings performed by undergraduate students.",
+    "journal": "International endodontic journal",
+    "open_access": false
+  },
+  {
+    "pmid": "23660929",
+    "doi": "10.1038/sj.bdj.2013.434",
+    "pmc": "",
+    "title": "Can audit improve patient care and treatment outcomes in endodontics?",
+    "journal": "British dental journal",
+    "open_access": false
+  },
+  {
+    "pmid": "36191029",
+    "doi": "10.1371/journal.pone.0275634",
+    "pmc": "PMC9529118",
+    "title": "Quality of endodontic record-keeping and root canal obturation performed by final year undergraduate dental students: An audit during the COVID-19 pandemic.",
+    "journal": "PloS one",
+    "open_access": true
+  },
+  {
+    "pmid": "33911363",
+    "doi": "10.4103/JCD.JCD_220_19",
+    "pmc": "PMC8066672",
+    "title": "Is there a justification of conducting clinical audit in the endodontic treatment outcomes?",
+    "journal": "Journal of conservative dentistry : JCD",
+    "open_access": true
+  },
+  {
+    "pmid": "38888078",
+    "doi": "10.1177/20501684241230799",
+    "pmc": "",
+    "title": "GIRFT and Measuring Outcomes in MCNs: endodontics in 646 teeth treated in Tier 2 (Primary Care) and Tier 3 (Secondary Care) settings in England.",
+    "journal": "Primary dental journal",
+    "open_access": false
+  },
+  {
+    "pmid": "38659337",
+    "doi": "10.1111/jphd.12618",
+    "pmc": "PMC11499288",
+    "title": "Systematically assessing the quality of dental electronic health record data for an investigation into oral health care disparities.",
+    "journal": "Journal of public health dentistry",
+    "open_access": true
+  },
+  {
+    "pmid": "36788907",
+    "doi": "10.7759/cureus.33645",
+    "pmc": "PMC9912857",
+    "title": "Evaluation of Record Keeping in Exodontia Department of Punjab Dental Hospital, Lahore: A Clinical Audit.",
+    "journal": "Cureus",
+    "open_access": true
+  },
+  {
+    "pmid": "39261854",
+    "doi": "10.1186/s12903-024-04811-8",
+    "pmc": "PMC11391798",
+    "title": "Assessment of the quality of oral squamous cell carcinoma clinical records in oral surgery with Surgical Tool for Auditing Records (STAR) scoring.",
+    "journal": "BMC oral health",
+    "open_access": true
+  },
+  {
+    "pmid": "41238880",
+    "doi": "10.1038/s41415-025-9104-6",
+    "pmc": "",
+    "title": "Evaluating the integration of the International Caries Classification and Management System in undergraduate dental education: insights from staff and students.",
+    "journal": "British dental journal",
+    "open_access": false
+  },
+  {
+    "pmid": "41044215",
+    "doi": "10.1038/s41415-025-9047-y",
+    "pmc": "",
+    "title": "General dental practitioner referral letters: a service evaluation on the reasons for rejection.",
+    "journal": "British dental journal",
+    "open_access": false
+  },
+  {
+    "pmid": "41285408",
+    "doi": "10.1055/a-2751-1896",
+    "pmc": "PMC12700715",
+    "title": "A Preliminary Conceptual Framework of Clinical Documentation Burden: Exploratory Factor Analysis Investigating Usability, Effort, and Perceived Burden among Health Care Providers.",
+    "journal": "Applied clinical informatics",
+    "open_access": true
+  },
+  {
+    "pmid": "41625485",
+    "doi": "10.1056/aioa2500945",
+    "pmc": "PMC12858090",
+    "title": "A Pragmatic Randomized Controlled Trial of Ambient Artificial Intelligence to Improve Health Practitioner Well-Being.",
+    "journal": "NEJM AI",
+    "open_access": true
+  },
+  {
+    "pmid": "41118162",
+    "doi": "10.1001/jamanetworkopen.2025.38427",
+    "pmc": "PMC12541540",
+    "title": "Large Language Model Assistant for Emergency Department Discharge Documentation.",
+    "journal": "JAMA network open",
+    "open_access": true
+  },
+  {
+    "pmid": "41251650",
+    "doi": "10.1016/j.annemergmed.2025.10.006",
+    "pmc": "",
+    "title": "Ambient Artificial Intelligence Versus Human Scribes in the Emergency Department.",
+    "journal": "Annals of emergency medicine",
+    "open_access": false
+  },
+  {
+    "pmid": "28018563",
+    "doi": "10.4047/jap.2016.8.6.457",
+    "pmc": "PMC5179484",
+    "title": "Comparing a tablet computer and paper forms for assessing patient-reported outcomes in edentulous patients.",
+    "journal": "The journal of advanced prosthodontics",
+    "open_access": true
+  },
+  {
+    "pmid": "38034181",
+    "doi": "10.7759/cureus.48007",
+    "pmc": "PMC10687325",
+    "title": "It's About Time: A Study of Rheumatology Patient Consultation Times.",
+    "journal": "Cureus",
+    "open_access": true
+  },
+  {
+    "pmid": "40193189",
+    "doi": "10.2196/66232",
+    "pmc": "PMC12012399",
+    "title": "Assessing Patient-Reported Satisfaction With Care and Documentation Time in Primary Care Through AI-Driven Automatic Clinical Note Generation: Protocol for a Proof-of-Concept Study.",
+    "journal": "JMIR research protocols",
+    "open_access": true
+  },
+  {
+    "pmid": "41487870",
+    "doi": "10.7759/cureus.98469",
+    "pmc": "PMC12764382",
+    "title": "Electronic Health Record Burnout in Surgery and Strategies to Improve Burnout: A Narrative Review.",
+    "journal": "Cureus",
+    "open_access": true
+  },
+  {
+    "pmid": "41801972",
+    "doi": "10.1002/jper.70106",
+    "pmc": "",
+    "title": "Usability of a deep learning platform for detecting radiographic bone loss and furcation involvement.",
+    "journal": "Journal of periodontology",
+    "open_access": false
+  },
+  {
+    "pmid": "41794718",
+    "doi": "10.1186/s12903-026-08004-3",
+    "pmc": "",
+    "title": "A web-based augmented reality system for orthodontic biomechanics: perceived usability and acceptability among dental students.",
+    "journal": "BMC oral health",
+    "open_access": false
+  },
+  {
+    "pmid": "41566298",
+    "doi": "10.1186/s12903-026-07723-x",
+    "pmc": "PMC12930619",
+    "title": "Assessing a virtual scenario-based training system for enhancing clinical reasoning and communication in dental education.",
+    "journal": "BMC oral health",
+    "open_access": true
+  },
+  {
+    "pmid": "41539203",
+    "doi": "10.1016/j.identj.2025.109361",
+    "pmc": "PMC12829107",
+    "title": "Acceptability and Usability of a Digital Medicines Tool for Dental Practitioners in four Southeast Asian Countries.",
+    "journal": "International dental journal",
+    "open_access": true
+  },
+  {
+    "pmid": "41834175",
+    "doi": "10.2196/78849",
+    "pmc": "PMC13000691",
+    "title": "Patient Perceptions of Blockchain-Based Health Information Exchange: User-Centered Design Study.",
+    "journal": "Journal of medical Internet research",
+    "open_access": true
+  },
+  {
+    "pmid": "40665326",
+    "doi": "10.1186/s12909-025-07673-y",
+    "pmc": "PMC12265272",
+    "title": "Assessing oral surgery residents' competencies and training needs in tomography interfaces through a usability framework.",
+    "journal": "BMC medical education",
+    "open_access": true
+  },
+  {
+    "pmid": "41785738",
+    "doi": "10.1016/j.ijmedinf.2026.106367",
+    "pmc": "",
+    "title": "Accuracy, Efficiency, and usability of a Semi-Automated SMART on FHIR venous thromboembolism risk assessment App: A randomised crossover simulation study.",
+    "journal": "International journal of medical informatics",
+    "open_access": false
+  },
+  {
+    "pmid": "40045296",
+    "doi": "10.1186/s12903-025-05729-5",
+    "pmc": "PMC11881495",
+    "title": "Developing and evaluating a dental incident reporting system: a user-centered approach to risk management.",
+    "journal": "BMC oral health",
+    "open_access": true
+  },
+  {
+    "pmid": "41355200",
+    "doi": "10.1002/jdd.70112",
+    "pmc": "",
+    "title": "Augmented Reality of Anatomical Structures of the Maxillomandibular Complex for Learning Dental Radiographic Techniques.",
+    "journal": "Journal of dental education",
+    "open_access": false
+  },
+  {
+    "pmid": "41687093",
+    "doi": "10.2196/85916",
+    "pmc": "PMC12949397",
+    "title": "Anxiety-Free Public Dentistry for Adults With Disabilities by Using Head-Mounted Virtual Reality Technology: Protocol for a Feasibility Mixed Methods Study.",
+    "journal": "JMIR research protocols",
+    "open_access": true
+  },
+  {
+    "pmid": "41685843",
+    "doi": "10.14744/eej.2025.83788",
+    "pmc": "PMC12686871",
+    "title": "Artificial Intelligence in The Diagnosis, Treatment, and Prognostication in Endodontics: A Comprehensive Literature Review.",
+    "journal": "European endodontic journal",
+    "open_access": true
+  },
+  {
+    "pmid": "41826005",
+    "doi": "10.1016/j.cden.2025.11.010",
+    "pmc": "",
+    "title": "Artificial Intelligence and Its Application in Endodontics.",
+    "journal": "Dental clinics of North America",
+    "open_access": false
+  },
+  {
+    "pmid": "41836485",
+    "doi": "10.3389/fdmed.2026.1730454",
+    "pmc": "PMC12982180",
+    "title": "Developing an AI-powered tool for radiographic feedback on working length determination in pre-clinical endodontic training.",
+    "journal": "Frontiers in dental medicine",
+    "open_access": true
+  },
+  {
+    "pmid": "41867636",
+    "doi": "10.3389/fdmed.2026.1783828",
+    "pmc": "PMC13002594",
+    "title": "Performance of artificial intelligence models designed as adjuncts for determining working length and apical landmark assessment in endodontic procedures: a systematic review.",
+    "journal": "Frontiers in dental medicine",
+    "open_access": true
+  },
+  {
+    "pmid": "41675776",
+    "doi": "10.1097/MS9.0000000000004385",
+    "pmc": "PMC12889264",
+    "title": "AI in endodontics: enhancing precision, efficiency, and personalized care.",
+    "journal": "Annals of medicine and surgery (2012)",
+    "open_access": true
+  },
+  {
+    "pmid": "41749771",
+    "doi": "10.3390/bioengineering13020232",
+    "pmc": "PMC12937961",
+    "title": "Artificial Intelligence Versus Human Dental Expertise in Diagnosing Periapical Pathosis on Periapical Radiographs: A Multicenter Study.",
+    "journal": "Bioengineering (Basel, Switzerland)",
+    "open_access": true
+  },
+  {
+    "pmid": "41865812",
+    "doi": "10.1016/j.jdent.2026.106643",
+    "pmc": "",
+    "title": "TAPSeg: An Open-Source Deep Learning Tool for Instance-Level Tooth and Pulp Segmentation in CBCT.",
+    "journal": "Journal of dentistry",
+    "open_access": false
+  },
+  {
+    "pmid": "41850234",
+    "doi": "10.1016/j.xcrm.2026.102652",
+    "pmc": "PMC13006406",
+    "title": "Developing and evaluating multimodal large language model for orthopantomography analysis to support clinical dentistry.",
+    "journal": "Cell reports. Medicine",
+    "open_access": true
+  },
+  {
+    "pmid": "41833430",
+    "doi": "10.1016/j.jebdp.2025.102225",
+    "pmc": "",
+    "title": "DIAGNOSTIC PERFORMANCE OF MACHINE LEARNING-AIDED PROXIMAL CARIES DETECTION: A SYSTEMATIC REVIEW AND META-ANALYSIS.",
+    "journal": "The journal of evidence-based dental practice",
+    "open_access": false
+  },
+  {
+    "pmid": "40900876",
+    "doi": "10.5662/wjm.v15.i4.105516",
+    "pmc": "PMC12400324",
+    "title": "Artificial intelligence for early diagnosis and risk prediction of periodontal-systemic interactions: Clinical utility and future directions.",
+    "journal": "World journal of methodology",
+    "open_access": true
+  },
+  {
+    "pmid": "25216146",
+    "doi": "10.11607/jomi.3486",
+    "pmc": "",
+    "title": "Analysis of professional malpractice claims in implant dentistry in Italy from insurance company technical reports, 2006 to 2010.",
+    "journal": "The International journal of oral & maxillofacial implants",
+    "open_access": false
+  },
+  {
+    "pmid": "25796809",
+    "doi": "",
+    "pmc": "",
+    "title": "Adverse events in Public Dental Service in a Swedish county--a survey of reported cases over two years.",
+    "journal": "Swedish dental journal",
+    "open_access": false
+  },
+  {
+    "pmid": "23314462",
+    "doi": "",
+    "pmc": "PMC3545411",
+    "title": "Assessing use of a standardized dental diagnostic terminology in an electronic health record.",
+    "journal": "Journal of dental education",
+    "open_access": true
+  },
+  {
+    "pmid": "19047669",
+    "doi": "10.14219/jada.archive.2008.0105",
+    "pmc": "PMC2614265",
+    "title": "A usability evaluation of four commercial dental computer-based patient record systems.",
+    "journal": "Journal of the American Dental Association (1939)",
+    "open_access": true
+  },
+  {
+    "pmid": "30556409",
+    "doi": "10.1556/650.2018.31212",
+    "pmc": "",
+    "title": "[Analysis of medical diagnostic reports (constats) on dental injuries from terminological, dental and forensic medical points of view].",
+    "journal": "Orvosi hetilap",
+    "open_access": false
+  },
+  {
+    "pmid": "40861569",
+    "doi": "10.7759/cureus.88685",
+    "pmc": "PMC12374792",
+    "title": "Implementation of a Standardized Surgical Operative Note: A Clinical Audit at Atbara Teaching Hospital.",
+    "journal": "Cureus",
+    "open_access": true
+  },
+  {
+    "pmid": "34658378",
+    "doi": "10.15644/asc55/3/9",
+    "pmc": "PMC8514230",
+    "title": "Preventing Wrong Tooth Extraction.",
+    "journal": "Acta stomatologica Croatica",
+    "open_access": true
+  },
+  {
+    "pmid": "30576279",
+    "doi": "10.5888/pcd15.180371",
+    "pmc": "PMC6307836",
+    "title": "Using Calibration to Reduce Measurement Error in Prevalence Estimates Based on Electronic Health Records.",
+    "journal": "Preventing chronic disease",
+    "open_access": true
+  }
+]

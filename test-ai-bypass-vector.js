@@ -72,7 +72,7 @@ async function testAIWithoutVectorSearch() {
         evidence_sources: suggestion.sources,
         alternative_treatments: suggestion.alternativeTreatments || [],
         contraindications: suggestion.contraindications || [],
-        ai_model: 'gemini-2.0-flash',
+        ai_model: 'gemini-2.5-flash',
         processing_time: 1500
       })
 
@@ -128,7 +128,7 @@ Confidence score should be 0-100 based on evidence strength.`
 
   // Call Gemini directly
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

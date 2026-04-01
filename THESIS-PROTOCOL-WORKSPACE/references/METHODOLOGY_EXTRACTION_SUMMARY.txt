@@ -1,0 +1,187 @@
+================================================================================
+ARTICLE METHODOLOGY EXTRACTION - COMPLETION REPORT
+================================================================================
+
+Project: Endoflow AIIMS IEC Thesis Protocol - Materials & Methods Development
+Extraction Date: March 25, 2026
+Document Created: Article_Methodology_Extracts.md
+
+================================================================================
+EXTRACTION RESULTS SUMMARY
+================================================================================
+
+TOTAL ARTICLES REVIEWED: 67 articles from PubMed
+ARTICLES WITH COMPLETE METHODOLOGY: 6 articles (with available abstracts/full-text)
+ARTICLES SUCCESSFULLY EXTRACTED: 6 (100% of available target articles)
+
+TARGET ARTICLES FOUND:
+✓ PMC8066672  - Endodontic clinical audit (PMID: 33911363)
+✓ PMC12858090 - AI RCT for practitioner well-being (PMID: 41625485)
+✓ PMC12700715 - Documentation burden framework (PMID: 41285408)
+✓ PMC5179484  - Tablet vs paper comparison (PMID: 28018563)
+✓ PMC12012399 - AI documentation time study (PMID: 40193189)
+✓ PMC12829107 - Digital medicines tool usability (PMID: 41539203)
+
+TARGET ARTICLES NOT FOUND IN RESULTS:
+✗ PMC12745653 - Digital vs Paper dental records
+✗ PMC12025436 - Root canal record-keeping quality
+✗ PMC12918063 - Endodontic diagnostic documentation audit
+✗ PMC9529118  - Endodontic record-keeping quality
+✗ PMC12983730 - AI documentation in trauma
+✗ PMC12729816 - Voice-enabled surgical checklist prototype
+✗ PMC11288075 - Trauma app usability
+✗ PMC2614265  - Dental EHR usability
+
+================================================================================
+METHODOLOGY ELEMENTS EXTRACTED PER ARTICLE
+================================================================================
+
+For each article, the following data was systematically extracted:
+
+1. STUDY DESIGN
+   - Classification (audit, RCT, cross-sectional, etc.)
+   - Study structure and approach
+
+2. SAMPLE SIZE & CALCULATION
+   - Total sample numbers
+   - Sampling methodology
+   - Sample size calculation approach
+
+3. PRIMARY OUTCOME MEASURES
+   - Main endpoints measured
+   - Outcome assessment frameworks
+
+4. DATA COLLECTION METHODS
+   - Data sources
+   - Collection procedures
+   - Study duration/timeline
+
+5. ASSESSMENT INSTRUMENTS & TOOLS
+   - Validated questionnaires (SUS, TAM, etc.)
+   - Custom instruments
+   - Measurement tools used
+
+6. STATISTICAL METHODS
+   - Analytical approaches
+   - Inference methods
+   - Quality assurance
+
+7. KEY QUANTITATIVE FINDINGS
+   - Percentages
+   - P-values and confidence intervals
+   - Effect sizes where available
+
+================================================================================
+DOCUMENT STRUCTURE
+================================================================================
+
+File: Article_Methodology_Extracts.md (16 KB, 313 lines)
+
+Contents:
+├── Header: Document purpose and extraction summary
+├── Article 1: PMC8066672 (Endodontic Audit)
+├── Article 2: PMC12858090 (AI RCT)
+├── Article 3: PMC12700715 (Documentation Burden)
+├── Article 4: PMC5179484 (Tablet vs Paper)
+├── Article 5: PMC12012399 (AI Documentation)
+├── Article 6: PMC12829107 (Digital Tool Usability)
+├── Cross-article patterns and recommendations
+├── Missing articles notation
+└── Citation and attribution requirements
+
+================================================================================
+KEY METHODOLOGY INSIGHTS FOR THESIS PROTOCOL
+================================================================================
+
+RECOMMENDED STUDY DESIGNS:
+- Clinical Audit (50-200 cases) - Proven in endodontics
+- Pragmatic RCT (60+ practitioners) - For intervention testing
+- Cross-sectional Usability Study (30+ per site) - For tool evaluation
+- Mixed-methods (quantitative + qualitative) - For comprehensive assessment
+
+SUGGESTED INSTRUMENTS:
+- System Usability Scale (10 items)
+- Custom Audit Tool (clinical evidence-based)
+- Time-motion Analysis
+- Professional Burden Assessment
+- Acceptability Framework
+
+BENCHMARK METRICS FROM LITERATURE:
+- Documentation burden: 36 min charting per 30 min clinical time
+- Time for digital vs paper: No significant difference (8.5-9.2 min)
+- AI assistance benefit: 0.36 hours per day reduction
+- Burnout reduction: -0.44 points (significant, p<0.001)
+- Usability acceptance: 90%+ agreement in target populations
+
+STATISTICAL APPROACH:
+- Descriptive statistics (audits, surveys)
+- Linear mixed models (RCTs with timepoints)
+- Thematic analysis (qualitative components)
+- Factor analysis (framework development)
+- Correlation analysis (validation studies)
+
+================================================================================
+ATTRIBUTION AND CITATION COMPLIANCE
+================================================================================
+
+As per PubMed terms of use, all information must include:
+✓ Clear attribution to PubMed
+✓ DOI links to original articles (included in markdown)
+✓ Original author citations
+✓ Journal information
+
+The extracted methodology document includes full DOI links for:
+- 10.4103/JCD.JCD_220_19 (PMC8066672)
+- 10.1056/aioa2500945 (PMC12858090)
+- 10.1055/a-2751-1896 (PMC12700715)
+- 10.4047/jap.2016.8.6.457 (PMC5179484)
+- 10.2196/66232 (PMC12012399)
+- 10.1016/j.identj.2025.109361 (PMC12829107)
+
+================================================================================
+RECOMMENDATIONS FOR NEXT STEPS
+================================================================================
+
+1. PROTOCOL DEVELOPMENT
+   - Use endodontic audit (PMC8066672) as primary methodology model
+   - Incorporate AI intervention elements from pragmatic RCT (PMC12858090)
+   - Include burden assessment framework (PMC12700715)
+
+2. ADDITIONAL LITERATURE REVIEW
+   - Directly access missing 8 target articles via institutional library
+   - Particularly PMC12745653 (Gold standard digital vs paper comparison)
+   - Search for additional endodontic-specific documentation quality studies
+
+3. SAMPLE SIZE DETERMINATION
+   - Consult biostatistician using benchmark: 60-100 practitioners, 50-200 cases
+   - Based on pragmatic RCT guidance from PMC12858090
+   - Account for multi-center design if applicable
+
+4. INSTRUMENT SELECTION
+   - Adapt custom audit tool from PMC8066672 for endodontic documentation
+   - Include validated tools: SUS, burnout scales
+   - Develop time-tracking methodology per PMC12700715
+
+5. INSTITUTIONAL REVIEW
+   - Use extracted methodology for IEC submission materials
+   - Reference documented study designs and sample sizes
+   - Cite benchmarks for outcome expectations
+
+================================================================================
+DATA SOURCES
+================================================================================
+
+Tool Results Directory:
+/sessions/nifty-festive-ritchie/mnt/.claude/projects/-sessions-nifty-festive-ritchie/f0ddeab2-f217-4c4d-b63b-785e59021585/tool-results/
+
+Files Processed:
+- 7 get_article_metadata files (abstracts and structured data)
+- 3 get_full_text_article files (full article text)
+- Total articles in database: 67
+
+Output Document:
+/sessions/nifty-festive-ritchie/mnt/Endoflow-publish/Article_Methodology_Extracts.md
+
+================================================================================
+END OF REPORT
+================================================================================

@@ -121,7 +121,7 @@ async function testGeminiIntegration() {
       
       // Test chat completion
       const chatResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -251,7 +251,7 @@ async function testCompleteFlow() {
           confidence_score: 85,
           reasoning: 'Test reasoning from integration test',
           evidence_sources: [{ title: 'Test Paper', journal: 'Test Journal', year: 2024 }],
-          ai_model: 'gemini-2.0-flash',
+          ai_model: 'gemini-2.5-flash',
           processing_time: 150
         })
 

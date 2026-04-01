@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EndoFlow - Voice-First Consultation UI v2</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: #111118;
+    --card-hover: #16161f;
+    --border: #1e1e2e;
+    --text: #e0e0e8;
+    --text-muted: #6b6b80;
+    --text-dim: #44445a;
+    --teal: #00b894;
+    --teal-dim: #00b89430;
+    --red: #e74c3c;
+    --red-dim: #e74c3c25;
+    --blue: #3498db;
+    --blue-dim: #3498db25;
+    --yellow: #f39c12;
+    --yellow-dim: #f39c1225;
+    --green: #27ae60;
+    --green-dim: #27ae6025;
+    --purple: #9b59b6;
+    --purple-dim: #9b59b625;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+  }
+  .layout { display: flex; height: 100vh; }
+
+  /* ===== SIDEBAR RAIL ===== */
+  .sidebar-rail {
+    width: 60px; background: var(--card); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 0; gap: 8px; flex-shrink: 0; z-index: 10;
+  }
+  .rail-logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--teal), #00a085);
+    border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px; color: white; margin-bottom: 8px; cursor: pointer;
+  }
+  .rail-btn {
+    width: 40px; height: 40px; border-radius: 10px; border: none;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; transition: all 0.15s;
+  }
+  .rail-btn:hover { background: var(--border); color: var(--text); }
+  .rail-btn.active { background: var(--teal-dim); color: var(--teal); }
+  .rail-btn.recording { background: var(--red); color: white; animation: pulse-ring 1.5s ease infinite; }
+  @keyframes pulse-ring {
+    0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(231,76,60,0); }
+  }
+  .rail-sep { height: 1px; width: 30px; background: var(--border); margin: 4px 0; }
+
+  /* ===== SIDEBAR PANEL ===== */
+  .sidebar-panel {
+    width: 340px; background: var(--card); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+    position: relative; transition: width 0.3s ease;
+  }
+  .resize-handle {
+    position: absolute; right: 0; top: 0; width: 6px; height: 100%;
+    cursor: col-resize; z-index: 20; display: flex; align-items: center; justify-content: center;
+  }
+  .resize-handle:hover { background: rgba(0,184,148,0.15); }
+  .resize-handle:hover .grip-dots { opacity: 1; }
+  .grip-dots { display: flex; flex-direction: column; gap: 3px; opacity: 0; transition: opacity 0.15s; }
+  .grip-dot { width: 3px; height: 3px; background: var(--teal); border-radius: 50%; }
+
+  .panel-mode-bar {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .mode-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+  .mode-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .master-mode .mode-dot { background: var(--teal); }
+  .master-mode .mode-indicator { color: var(--teal); }
+  .copilot-mode .mode-dot { background: var(--red); animation: blink 1s ease infinite; }
+  .copilot-mode .mode-indicator { color: var(--red); }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .transform-flash { animation: flashBorder 0.6s ease; }
+  @keyframes flashBorder {
+    0% { border-color: var(--teal); box-shadow: 0 0 20px var(--teal-dim); }
+    100% { border-color: var(--border); box-shadow: none; }
+  }
+
+  /* ─── MASTER AI CONTENT ─── */
+  .master-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .master-content.hidden { display: none; }
+  .chat-area { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .chat-area::-webkit-scrollbar { width: 4px; }
+  .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .chat-msg { display: flex; gap: 8px; align-items: flex-start; }
+  .avatar { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .avatar.ai { background: var(--teal-dim); color: var(--teal); }
+  .avatar.user { background: var(--blue-dim); color: var(--blue); }
+  .bubble { font-size: 12px; line-height: 1.5; color: var(--text-muted); background: var(--bg); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); max-width: 85%; }
+  .chat-msg.user .bubble { background: var(--teal-dim); border-color: #00b89440; color: var(--text); margin-left: auto; }
+  .quick-actions { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; }
+  .qa-btn { padding: 6px 10px; font-size: 11px; font-weight: 500; background: var(--bg); border: 1px solid var(--border); border-radius: 20px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+  .qa-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .chat-input { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+  .chat-input input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text); font-size: 12px; outline: none; }
+  .chat-input input:focus { border-color: var(--teal); }
+  .send-btn { width: 32px; height: 32px; background: var(--teal); border: none; border-radius: var(--radius-sm); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+
+  /* ─── COPILOT CONTENT ─── */
+  .copilot-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .copilot-content.hidden { display: none; }
+
+  /* Recording controls strip — IN the copilot panel */
+  .copilot-controls {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+    background: var(--red-dim);
+  }
+  .ctrl-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 8px 14px; border-radius: var(--radius-sm);
+    border: 1.5px solid transparent; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .ctrl-btn svg { width: 16px; height: 16px; }
+  .ctrl-stop { background: var(--red); color: white; border-color: var(--red); }
+  .ctrl-stop:hover { background: #c0392b; }
+  .ctrl-pause { background: var(--yellow-dim); color: var(--yellow); border-color: #f39c1260; }
+  .ctrl-pause:hover { background: #f39c1240; }
+  .ctrl-process { background: var(--green-dim); color: var(--green); border-color: #27ae6060; }
+  .ctrl-process:hover { background: #27ae6040; }
+  .ctrl-discard { background: transparent; color: var(--text-muted); border-color: var(--border); padding: 8px 10px; }
+  .ctrl-discard:hover { color: var(--red); border-color: var(--red); }
+  .ctrl-timer { font-size: 14px; font-weight: 700; color: var(--red); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .ctrl-segments { font-size: 10px; color: var(--text-muted); background: var(--border); padding: 3px 6px; border-radius: 4px; }
+
+  .copilot-tabs {
+    display: flex; gap: 2px; padding: 8px 14px; border-bottom: 1px solid var(--border);
+    background: var(--bg); flex-shrink: 0;
+  }
+  .copilot-tab {
+    padding: 6px 12px; border-radius: 6px; border: none; background: transparent;
+    color: var(--text-muted); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .copilot-tab.active { background: var(--teal-dim); color: var(--teal); }
+  .copilot-tab:hover:not(.active) { color: var(--text); }
+
+  .copilot-body { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .copilot-body::-webkit-scrollbar { width: 4px; }
+  .copilot-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .copilot-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+  .copilot-card .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .card-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+  .copilot-card .card-title { font-size: 12px; font-weight: 600; color: var(--text); }
+  .copilot-card .card-body { font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+  .copilot-card .card-body strong { color: var(--text); }
+  .card-icon.diagnosis { background: var(--red-dim); color: var(--red); }
+  .card-icon.treatment { background: var(--green-dim); color: var(--green); }
+  .card-icon.gap { background: var(--yellow-dim); color: var(--yellow); }
+  .card-icon.evidence { background: var(--blue-dim); color: var(--blue); }
+
+  .gap-question { background: var(--yellow-dim); border: 1px solid #f39c1240; border-radius: var(--radius-sm); padding: 12px; }
+  .gq-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--yellow); margin-bottom: 6px; }
+  .gq-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .gq-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; font-style: italic; }
+
+  .copilot-input { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-shrink: 0; }
+  .copilot-input input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text); font-size: 12px; outline: none; }
+  .copilot-input input:focus { border-color: var(--teal); }
+
+  /* ===== MAIN CONTENT ===== */
+  .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .top-bar {
+    height: 50px; background: var(--card); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0;
+  }
+  .top-bar h1 { font-size: 15px; font-weight: 600; }
+  .patient-badge { background: var(--teal-dim); color: var(--teal); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .mode-badge { background: var(--blue-dim); color: var(--blue); padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .rec-indicator { display: flex; align-items: center; gap: 6px; color: var(--red); font-size: 12px; font-weight: 600; }
+  .rec-dot { width: 8px; height: 8px; background: var(--red); border-radius: 50%; animation: blink 1s ease infinite; }
+
+  .scroll-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .scroll-body::-webkit-scrollbar { width: 6px; }
+  .scroll-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Transcript */
+  .transcript-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; min-height: 200px; max-height: 350px; overflow-y: auto;
+  }
+  .transcript-card .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .live-dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: blink 1s ease infinite; }
+  .transcript-text { font-size: 14px; line-height: 1.8; color: var(--text); white-space: pre-wrap; }
+  .speaker-dr { color: var(--teal); font-weight: 600; }
+  .speaker-pt { color: var(--yellow); font-weight: 600; }
+  .interim { color: var(--text-dim); font-style: italic; }
+
+  /* FDI Chart */
+  .fdi-section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .fdi-section .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 10px; }
+  .fdi-grid { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .fdi-row { display: flex; gap: 3px; }
+  .tooth {
+    width: 30px; height: 30px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.1s;
+    border: 1px solid var(--border); background: var(--card); color: var(--text-muted);
+  }
+  .tooth:hover { border-color: var(--teal); color: var(--teal); transform: scale(1.1); }
+  .tooth.caries { background: #e74c3c30; color: #e74c3c; border-color: #e74c3c50; }
+  .tooth.rct { background: #9b59b630; color: #9b59b6; border-color: #9b59b650; }
+  .tooth.filled { background: #3498db30; color: #3498db; border-color: #3498db50; }
+  .tooth.attention { background: #f39c1230; color: #f39c12; border-color: #f39c1250; }
+  .tooth.selected { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal-dim); }
+  .bite-line { width: 100%; height: 1px; background: var(--border); margin: 2px 0; }
+
+  /* Uploads */
+  .upload-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .upload-block {
+    background: var(--card); border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 18px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 6px; cursor: pointer; transition: all 0.15s; min-height: 80px;
+  }
+  .upload-block:hover { border-color: var(--teal); background: var(--teal-dim); }
+  .upload-block svg { width: 24px; height: 24px; color: var(--text-muted); }
+  .upload-block:hover svg { color: var(--teal); }
+  .upload-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+  .upload-block:hover .upload-label { color: var(--teal); }
+  .upload-hint { font-size: 10px; color: var(--text-dim); }
+
+  /* Case history */
+  .case-history-block { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .case-history-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; cursor: pointer; transition: background 0.15s; }
+  .case-history-header:hover { background: var(--card-hover); }
+  .case-history-header .left { display: flex; align-items: center; gap: 10px; }
+  .ch-icon { width: 36px; height: 36px; background: var(--purple-dim); color: var(--purple); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .ch-title { font-size: 14px; font-weight: 600; }
+  .ch-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .progress-pills { display: flex; gap: 3px; }
+  .progress-pill { width: 18px; height: 4px; border-radius: 2px; background: var(--border); }
+  .progress-pill.filled { background: var(--teal); }
+  .progress-pill.partial { background: var(--yellow); }
+  .chevron { font-size: 14px; color: var(--text-muted); transition: transform 0.2s; }
+  .case-history-block.expanded .chevron { transform: rotate(180deg); }
+  .case-history-body { display: none; padding: 0 16px 16px; }
+  .case-history-block.expanded .case-history-body { display: block; }
+  .section-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .section-chip { padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s; }
+  .section-chip:hover { border-color: var(--teal); background: var(--teal-dim); }
+  .chip-name { font-size: 12px; font-weight: 600; }
+  .chip-status { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+  .section-chip.has-data { border-left: 3px solid var(--teal); }
+  .section-chip.has-data .chip-status { color: var(--teal); }
+
+  /* Demo controls */
+  .demo-controls { position: fixed; top: 10px; right: 20px; z-index: 200; display: flex; gap: 8px; }
+  .demo-btn {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .demo-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .demo-btn.active { background: var(--teal); color: white; border-color: var(--teal); }
+  .note-banner {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--teal-dim); border-top: 1px solid var(--teal);
+    padding: 8px 20px; font-size: 11px; color: var(--teal); text-align: center; z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-controls">
+  <button class="demo-btn active" id="btnMaster" onclick="showMasterMode()">Master AI Mode</button>
+  <button class="demo-btn" id="btnCopilot" onclick="showCopilotMode()">Co-Pilot Mode (Recording)</button>
+</div>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <div style="display:flex;flex-shrink:0;height:100%">
+    <!-- Rail -->
+    <div class="sidebar-rail">
+      <div class="rail-logo">EF</div>
+      <button class="rail-btn" id="railRec" title="Toggle Recording" onclick="toggleMode()">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+      </button>
+      <button class="rail-btn active" title="AI Chat">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <div class="rail-sep"></div>
+      <button class="rail-btn active" title="Clinical"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
+      <button class="rail-btn" title="Patients"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></button>
+      <div style="flex:1"></div>
+      <button class="rail-btn" title="Settings"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg></button>
+    </div>
+
+    <!-- Panel -->
+    <div class="sidebar-panel" id="sidebarPanel">
+      <div class="resize-handle"><div class="grip-dots"><div class="grip-dot"></div><div class="grip-dot"></div><div class="grip-dot"></div></div></div>
+
+      <div class="panel-mode-bar" id="modeBar">
+        <div class="mode-indicator master-mode" id="modeIndicator">
+          <span class="mode-dot"></span>
+          <span id="modeLabel">EndoFlow Master AI</span>
+        </div>
+      </div>
+
+      <!-- ═══ MASTER AI ═══ -->
+      <div class="master-content" id="masterContent">
+        <div class="chat-area">
+          <div class="chat-msg"><div class="avatar ai">AI</div><div class="bubble">Good morning, Dr. Nisarg. How can I help?</div></div>
+          <div class="chat-msg user"><div class="bubble">Start consultation with Dipti Tomar</div></div>
+          <div class="chat-msg"><div class="avatar ai">AI</div><div class="bubble">Found Dipti Tomar. Navigating to clinical mode and starting recording...</div></div>
+        </div>
+        <div class="quick-actions">
+          <button class="qa-btn">Start consultation</button>
+          <button class="qa-btn">Today's schedule</button>
+          <button class="qa-btn">Open patients</button>
+        </div>
+        <div class="chat-input"><input placeholder="Type a command or speak..." /><button class="send-btn">&#x27A4;</button></div>
+      </div>
+
+      <!-- ═══ COPILOT (during recording) ═══ -->
+      <div class="copilot-content hidden" id="copilotContent">
+        <!-- Recording controls strip -->
+        <div class="copilot-controls">
+          <button class="ctrl-btn ctrl-stop" onclick="showMasterMode()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            Stop
+          </button>
+          <button class="ctrl-btn ctrl-pause">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            Pause
+          </button>
+          <button class="ctrl-btn ctrl-process">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg>
+            Process
+          </button>
+          <button class="ctrl-btn ctrl-discard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <span class="ctrl-timer">03:42</span>
+          <span class="ctrl-segments">2 seg</span>
+        </div>
+
+        <div class="copilot-tabs">
+          <button class="copilot-tab active">Diagnosis</button>
+          <button class="copilot-tab">Treatment</button>
+          <button class="copilot-tab">Gaps</button>
+          <button class="copilot-tab">Evidence</button>
+        </div>
+
+        <div class="copilot-body">
+          <div class="copilot-card">
+            <div class="card-header"><div class="card-icon diagnosis">&#x1F9E0;</div><div class="card-title">AI Diagnosis — Tooth #46</div></div>
+            <div class="card-body"><strong>Irreversible Pulpitis</strong> (87%)<br><br>Sharp thermal pain, nocturnal episodes (5 days), deep caries. AAE: Symptomatic Irreversible Pulpitis + SAP.</div>
+          </div>
+
+          <div class="copilot-card">
+            <div class="card-header"><div class="card-icon treatment">&#x2695;</div><div class="card-title">Differentials</div></div>
+            <div class="card-body">1. <strong>Irreversible Pulpitis</strong> (87%)<br>2. Reversible Pulpitis (8%)<br>3. Cracked Tooth (5%)<br><br><em style="color:var(--yellow)">Recommend: Cold test + EPT</em></div>
+          </div>
+
+          <div class="gap-question">
+            <div class="gq-label">&#x1F50D; Gap Analyzer</div>
+            <div class="gq-text">Has the patient had <strong>previous endodontic treatment</strong> on #46 or adjacent teeth?</div>
+            <div class="gq-hint">&#x1F50A; Speaking this question via TTS. Answer verbally or type below.</div>
+          </div>
+
+          <div class="copilot-card">
+            <div class="card-header"><div class="card-icon evidence">&#x1F4DA;</div><div class="card-title">Clinical Evidence</div></div>
+            <div class="card-body"><strong>AAE (2023)</strong>: Spontaneous lingering pain + nocturnal = pathognomonic for irreversible pulpitis.<br><br><strong>Glickman (2022)</strong>: Periapical changes + deep caries suggest SAP.</div>
+          </div>
+        </div>
+
+        <div class="copilot-input"><input placeholder="Answer gap question or ask co-pilot..." /><button class="send-btn">&#x27A4;</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div class="main-content">
+    <div class="top-bar">
+      <h1>Consultation</h1>
+      <span class="patient-badge">Dipti Tomar</span>
+      <span class="mode-badge">New Consultation</span>
+      <div style="flex:1"></div>
+      <div class="rec-indicator" id="recIndicator" style="display:none"><span class="rec-dot"></span> REC 03:42</div>
+    </div>
+
+    <div class="scroll-body">
+      <!-- Transcript -->
+      <div class="transcript-card">
+        <div class="label"><span class="live-dot"></span> Live Transcript</div>
+        <div class="transcript-text">
+<span class="speaker-dr">Dr. Nisarg:</span> So when did the pain start?
+
+<span class="speaker-pt">Patient:</span> It started about five days ago. Sharp pain in the lower right side, comes and goes with cold or hot food.
+
+<span class="speaker-dr">Dr. Nisarg:</span> On a scale of one to ten?
+
+<span class="speaker-pt">Patient:</span> About seven or eight. Keeping me up at night since five days.
+
+<span class="speaker-dr">Dr. Nisarg:</span> Let me check tooth 46. I can see <span class="interim">deep caries extending to the pulp...</span>
+        </div>
+      </div>
+
+      <!-- FDI Chart -->
+      <div class="fdi-section">
+        <div class="label">Interactive FDI Chart — Click tooth to annotate</div>
+        <div class="fdi-grid">
+          <div class="fdi-row">
+            <div class="tooth caries">18</div><div class="tooth">17</div><div class="tooth filled">16</div><div class="tooth">15</div><div class="tooth">14</div><div class="tooth">13</div><div class="tooth">12</div><div class="tooth">11</div>
+            <div class="tooth">21</div><div class="tooth">22</div><div class="tooth">23</div><div class="tooth">24</div><div class="tooth">25</div><div class="tooth">26</div><div class="tooth">27</div><div class="tooth">28</div>
+          </div>
+          <div class="bite-line"></div>
+          <div class="fdi-row">
+            <div class="tooth">48</div><div class="tooth attention">47</div><div class="tooth selected caries">46</div><div class="tooth">45</div><div class="tooth rct">44</div><div class="tooth">43</div><div class="tooth">42</div><div class="tooth">41</div>
+            <div class="tooth">31</div><div class="tooth">32</div><div class="tooth">33</div><div class="tooth">34</div><div class="tooth">35</div><div class="tooth">36</div><div class="tooth">37</div><div class="tooth">38</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Uploads -->
+      <div class="upload-row">
+        <div class="upload-block">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          <span class="upload-label">Upload X-Ray</span>
+          <span class="upload-hint">or say "Upload X-ray"</span>
+        </div>
+        <div class="upload-block">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          <span class="upload-label">Clinical Photos</span>
+          <span class="upload-hint">or say "Take photo"</span>
+        </div>
+      </div>
+
+      <!-- Case History -->
+      <div class="case-history-block" onclick="this.classList.toggle('expanded')">
+        <div class="case-history-header">
+          <div class="left">
+            <div class="ch-icon">&#x1F4CB;</div>
+            <div><div class="ch-title">Case History Sections</div><div class="ch-subtitle">2 of 12 auto-filled from voice</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="progress-pills">
+              <div class="progress-pill filled"></div><div class="progress-pill filled"></div><div class="progress-pill partial"></div>
+              <div class="progress-pill"></div><div class="progress-pill"></div><div class="progress-pill"></div>
+              <div class="progress-pill"></div><div class="progress-pill"></div><div class="progress-pill"></div>
+              <div class="progress-pill"></div><div class="progress-pill"></div><div class="progress-pill"></div>
+            </div>
+            <span class="chevron">&#x25BC;</span>
+          </div>
+        </div>
+        <div class="case-history-body">
+          <div class="section-grid">
+            <div class="section-chip has-data"><div class="chip-name">Chief Complaint</div><div class="chip-status">Auto-filled</div></div>
+            <div class="section-chip has-data"><div class="chip-name">HOPI</div><div class="chip-status">Auto-filled</div></div>
+            <div class="section-chip"><div class="chip-name">Medical History</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Personal History</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Clinical Exam</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Investigations</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Diagnosis</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Treatment Plan</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Prognosis</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Follow-Up</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Prescription</div><div class="chip-status">Pending</div></div>
+            <div class="section-chip"><div class="chip-name">Consent</div><div class="chip-status">Pending</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note-banner">
+  Click "Master AI Mode" / "Co-Pilot Mode" buttons (top right) to see the LEFT sidebar transform. Action buttons (Stop/Pause/Process) are now inside the co-pilot panel. Main area = Transcript + FDI Chart + Uploads + Case History.
+</div>
+
+<script>
+  let isCopilotMode = false;
+  function showMasterMode() {
+    isCopilotMode = false;
+    document.getElementById('masterContent').classList.remove('hidden');
+    document.getElementById('copilotContent').classList.add('hidden');
+    document.getElementById('modeIndicator').className = 'mode-indicator master-mode';
+    document.getElementById('modeLabel').textContent = 'EndoFlow Master AI';
+    document.getElementById('btnMaster').classList.add('active');
+    document.getElementById('btnCopilot').classList.remove('active');
+    document.getElementById('railRec').classList.remove('recording');
+    document.getElementById('recIndicator').style.display = 'none';
+    document.getElementById('sidebarPanel').classList.add('transform-flash');
+    setTimeout(() => document.getElementById('sidebarPanel').classList.remove('transform-flash'), 600);
+  }
+  function showCopilotMode() {
+    isCopilotMode = true;
+    document.getElementById('masterContent').classList.add('hidden');
+    document.getElementById('copilotContent').classList.remove('hidden');
+    document.getElementById('modeIndicator').className = 'mode-indicator copilot-mode';
+    document.getElementById('modeLabel').textContent = 'Clinical Co-Pilot (Recording)';
+    document.getElementById('btnCopilot').classList.add('active');
+    document.getElementById('btnMaster').classList.remove('active');
+    document.getElementById('railRec').classList.add('recording');
+    document.getElementById('recIndicator').style.display = 'flex';
+    document.getElementById('sidebarPanel').classList.add('transform-flash');
+    setTimeout(() => document.getElementById('sidebarPanel').classList.remove('transform-flash'), 600);
+  }
+  function toggleMode() { isCopilotMode ? showMasterMode() : showCopilotMode(); }
+</script>
+</body>
+</html>
